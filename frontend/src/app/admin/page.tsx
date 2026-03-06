@@ -297,6 +297,7 @@ export default function AdminDashboard() {
                         </div>
                     </div>
                 </div>
+            )}
             {activeTab === 'maintenance' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-white/5 border border-white/5 p-8 rounded-3xl space-y-6">
