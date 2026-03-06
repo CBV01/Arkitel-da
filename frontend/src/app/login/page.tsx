@@ -75,7 +75,7 @@ export default function LoginPage() {
                             </div>
                         )}
 
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <label className="text-[13px] font-medium text-white/70 ml-1">
                                 Email
                             </label>
@@ -87,14 +87,14 @@ export default function LoginPage() {
                                     type="text"
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    className="w-full bg-[#1c2231] border border-transparent rounded-[10px] pl-12 pr-4 py-3.5 text-white placeholder:text-white/20 focus:outline-none transition-all text-sm"
+                                    className="w-full bg-[#1c2231] border border-transparent rounded-[10px] pl-12 pr-4 py-3 text-white placeholder:text-white/20 focus:outline-none transition-all text-sm"
                                     placeholder="webyzoid@gmail.com"
                                     required
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                             <label className="text-[13px] font-medium text-white/70 ml-1">
                                 Password
                             </label>
@@ -106,7 +106,7 @@ export default function LoginPage() {
                                     type="password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-[#1c2231] border border-transparent rounded-[10px] pl-12 pr-4 py-3.5 text-white placeholder:text-white/20 focus:outline-none transition-all text-sm"
+                                    className="w-full bg-[#1c2231] border border-transparent rounded-[10px] pl-12 pr-4 py-3 text-white placeholder:text-white/20 focus:outline-none transition-all text-sm"
                                     placeholder="••••••••"
                                     required
                                 />
@@ -116,7 +116,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-[#7c7fff] hover:bg-[#6c6fef] text-white font-semibold py-3.5 rounded-[10px] transition-all disabled:opacity-50 text-[15px]"
+                            className="w-full bg-[#7c7fff] hover:bg-[#6c6fef] text-white font-semibold py-3 rounded-[10px] transition-all disabled:opacity-50 text-[15px] mt-4"
                         >
                             {loading ? (
                                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />

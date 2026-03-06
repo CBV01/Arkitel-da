@@ -5,11 +5,13 @@ import { Search, Loader2, Users, UsersRound, Megaphone, CheckCircle2, X, Externa
 import { apiFetch } from '@/lib/auth';
 
 interface ScrapeResult {
-    id: number;
+    id: string;
     title: string;
     username: string | null;
     participants_count: number;
     type: string;
+    is_private: boolean;
+    country: string;
 }
 
 export default function ScraperPage() {
@@ -18,7 +20,9 @@ export default function ScraperPage() {
     const [error, setError] = useState('');
     const [results, setResults] = useState<ScrapeResult[]>([]);
     const [searched, setSearched] = useState(false);
-    const [selectedGroups, setSelectedGroups] = useState<Set<number>>(new Set());
+    const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
+    const [filter, setFilter] = useState<'all' | 'group' | 'channel'>('all');
+    const [joining, setJoining] = useState(false);
 
     // Member Extraction State
     const [isExtracting, setIsExtracting] = useState(false);
@@ -31,11 +35,28 @@ export default function ScraperPage() {
         setIsExtracting(true);
         setMemberLoading(true);
         setExtractedMembers([]);
+        setError('');
         try {
-            const res = await apiFetch(`/api/telegram/members?group_id=${groupId}`);
+            // Get first available account for extraction
+            const accRes = await apiFetch('/api/telegram/accounts');
+            const accData = await accRes.json();
+            const phoneNumber = accData.accounts?.[0]?.phone_number;
+
+            if (!phoneNumber) {
+                setError('No connected account found for extraction.');
+                setMemberLoading(false);
+                return;
+            }
+
+            const res = await apiFetch('/api/telegram/extract', {
+                method: 'POST',
+                body: JSON.stringify({ group_id: groupId, phone_number: phoneNumber })
+            });
             const data = await res.json();
             if (res.ok) {
-                setExtractedMembers(data.members || []);
+                // Success - the backend already saved to DB, so we can just show a success msg or fetch members
+                alert(`Successfully extracted ${data.count} members as Leads!`);
+                setIsExtracting(false);
             } else {
                 setError(data.detail || 'Failed to extract members');
             }
@@ -62,6 +83,38 @@ export default function ScraperPage() {
         }
     };
 
+    const handleBulkJoin = async () => {
+        if (selectedGroups.size === 0) return;
+        setJoining(true);
+        setError('');
+        try {
+            const accRes = await apiFetch('/api/telegram/accounts');
+            const accData = await accRes.json();
+            const phoneNumber = accData.accounts?.[0]?.phone_number;
+
+            if (!phoneNumber) throw new Error('No connected account found.');
+
+            const res = await apiFetch('/api/telegram/bulk-join', {
+                method: 'POST',
+                body: JSON.stringify({ 
+                    group_ids: Array.from(selectedGroups), 
+                    phone_number: phoneNumber 
+                })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(`Bulk operation complete. Joined ${data.joined} entities with human intervals.`);
+                setSelectedGroups(new Set());
+            } else {
+                setError(data.detail || 'Bulk join failed');
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setJoining(false);
+        }
+    };
+
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!keyword.trim()) return;
@@ -70,7 +123,7 @@ export default function ScraperPage() {
         setError('');
         setSearched(true);
         try {
-            const res = await apiFetch(`/api/telegram/scrape?query=${encodeURIComponent(keyword)}&limit=15`);
+            const res = await apiFetch(`/api/telegram/scrape?query=${encodeURIComponent(keyword)}&limit=200`);
             const data = await res.json();
             if (res.ok) {
                 setResults(data.groups || []);
@@ -84,12 +137,17 @@ export default function ScraperPage() {
         }
     };
 
-    const toggleSelection = (id: number) => {
+    const toggleSelection = (id: string) => {
         const newSet = new Set(selectedGroups);
         if (newSet.has(id)) newSet.delete(id);
         else newSet.add(id);
         setSelectedGroups(newSet);
     };
+
+    const filteredResults = results.filter(r => {
+        if (filter === 'all') return true;
+        return r.type === filter;
+    });
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -98,11 +156,23 @@ export default function ScraperPage() {
                     <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground">Scraper</h2>
                     <p className="text-sm text-foreground/60">Discover new groups and extract target members.</p>
                 </div>
-                {selectedGroups.size > 0 && (
-                    <button className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300">
-                        <CheckCircle2 size={16} /> Added {selectedGroups.size} to Targets
-                    </button>
-                )}
+                <div className="flex gap-3">
+                    {selectedGroups.size > 0 && (
+                        <button 
+                            onClick={handleBulkJoin}
+                            disabled={joining}
+                            className="bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300 disabled:opacity-50"
+                        >
+                            {joining ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} 
+                            Bulk Join ({selectedGroups.size})
+                        </button>
+                    )}
+                    {selectedGroups.size > 0 && (
+                        <button className="bg-emerald-600 hover:bg-emerald-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300">
+                            <CheckCircle2 size={16} /> Mark {selectedGroups.size} Targets
+                        </button>
+                    )}
+                </div>
             </header>
 
             {error && (
@@ -118,37 +188,50 @@ export default function ScraperPage() {
                 </div>
             )}
 
-            <form onSubmit={handleSearch} className="bg-background border border-white/5 dark:border-white/5 border-black/5 rounded-2xl p-6 shadow-xl shadow-black/5 dark:shadow-black/20 mb-8 relative overflow-hidden group">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-purple-500/10 z-0"></div>
-                <label className="text-xs font-semibold tracking-wide uppercase text-foreground/50 mb-3 block relative z-10">Keyword Search</label>
-                <div className="flex gap-3 relative z-10 flex-col md:flex-row">
-                    <div className="relative flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-foreground/40">
-                            <Search size={20} />
+            <div className="flex flex-col md:flex-row gap-6 mb-8 items-end">
+                <form onSubmit={handleSearch} className="flex-1 bg-background border border-white/5 rounded-2xl p-6 shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-purple-500/10 z-0"></div>
+                    <label className="text-xs font-semibold tracking-wide uppercase text-foreground/50 mb-3 block relative z-10">Keyword Search</label>
+                    <div className="flex gap-3 relative z-10 flex-col md:flex-row">
+                        <div className="relative flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-foreground/40">
+                                <Search size={20} />
+                            </div>
+                            <input
+                                type="text"
+                                value={keyword}
+                                onChange={(e) => setKeyword(e.target.value)}
+                                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-foreground rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-foreground/30"
+                                placeholder="e.g. Crypto, Marketing, Real Estate..."
+                                required
+                            />
                         </div>
-                        <input
-                            type="text"
-                            value={keyword}
-                            onChange={(e) => setKeyword(e.target.value)}
-                            className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-foreground rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-foreground/30"
-                            placeholder="e.g. Crypto, Marketing, Real Estate..."
-                            required
-                            suppressHydrationWarning={true}
-                        />
+                        <button
+                            type="submit"
+                            disabled={loading || !keyword}
+                            className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-70 transition-all text-white px-8 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 active:scale-95 flex justify-center items-center gap-2 min-w-[140px]"
+                        >
+                            {loading ? <Loader2 size={18} className="animate-spin" /> : (
+                                <>
+                                    Search <Search size={16} />
+                                </>
+                            )}
+                        </button>
                     </div>
-                    <button
-                        type="submit"
-                        disabled={loading || !keyword}
-                        className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-70 transition-all text-white px-8 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 active:scale-95 flex justify-center items-center gap-2 min-w-[140px]"
-                    >
-                        {loading ? <Loader2 size={18} className="animate-spin" /> : (
-                            <>
-                                Search <Search size={16} />
-                            </>
-                        )}
-                    </button>
+                </form>
+
+                <div className="bg-white/5 border border-white/5 p-1.5 rounded-2xl flex gap-1 h-fit mb-1">
+                    {(['all', 'group', 'channel'] as const).map((t) => (
+                        <button
+                            key={t}
+                            onClick={() => setFilter(t)}
+                            className={`px-6 py-2 rounded-xl text-xs font-bold capitalize transition-all ${filter === t ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                        >
+                            {t}s
+                        </button>
+                    ))}
                 </div>
-            </form>
+            </div>
 
             {/* Results Area */}
             {loading ? (

@@ -68,16 +68,16 @@ export default function VerifyPasskeyPage() {
                             </div>
                         )}
 
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                             <label className="text-[13px] font-medium text-white/70 ml-1">
                                 Security Passkey
                             </label>
-                            <div className="relative group/input">
+                            <div className="relative group/input mt-1.5">
                                 <input
                                     type="password"
                                     value={passkey}
                                     onChange={(e) => setPasskey(e.target.value)}
-                                    className="w-full bg-[#1c2231]/40 border border-white/[0.05] rounded-[10px] px-4 py-4 text-white text-center text-3xl tracking-[0.6em] placeholder:text-white/10 focus:outline-none transition-all"
+                                    className="w-full bg-[#1c2231]/40 border border-white/[0.05] rounded-[10px] px-4 py-3 text-white text-center text-3xl tracking-[0.6em] placeholder:text-white/10 focus:outline-none transition-all"
                                     placeholder="••••••"
                                     maxLength={6}
                                     required
@@ -88,7 +88,7 @@ export default function VerifyPasskeyPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-[#7c7fff] hover:bg-[#6c6fef] text-white font-semibold py-4 rounded-[10px] transition-all disabled:opacity-50 text-[16px]"
+                            className="w-full bg-[#7c7fff] hover:bg-[#6c6fef] text-white font-semibold py-3 rounded-[10px] transition-all disabled:opacity-50 text-[16px] mt-6"
                         >
                             {loading ? (
                                 <Loader2 className="w-6 h-6 animate-spin mx-auto" />

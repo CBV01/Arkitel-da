@@ -60,13 +60,24 @@ class TursoConnection:
 
     def execute(self, sql: str, params: tuple = ()) -> TursoCursor:
         """Execute a single SQL statement and return a cursor-like object."""
+        args = []
+        for p in params:
+            if p is None:
+                args.append({"type": "null"})
+            elif isinstance(p, int):
+                args.append({"type": "integer", "value": str(p)})
+            elif isinstance(p, float):
+                args.append({"type": "float", "value": p})
+            else:
+                args.append({"type": "text", "value": str(p)})
+
         payload = {
             "requests": [
                 {
                     "type": "execute",
                     "stmt": {
                         "sql": sql,
-                        "args": [{"type": "text", "value": str(p)} if p is not None else {"type": "null"} for p in params],
+                        "args": args,
                     }
                 },
                 {"type": "close"}

@@ -114,75 +114,82 @@ export default function AccountsPage() {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             <header className="flex justify-between items-center mb-10">
                 <div>
-                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground">Accounts</h2>
-                    <p className="text-sm text-foreground/60">Manage your connected Telegram sessions.</p>
+                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-white font-sans">Telegram Fleet</h2>
+                    <p className="text-sm text-white/40 font-medium tracking-tight">Manage your autonomous identity cluster.</p>
                 </div>
                 <button
-                    onClick={() => setIsConnecting(true)}
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2"
+                    onClick={() => {
+                        setStep('phone');
+                        setIsConnecting(true);
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-6 py-3 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 active:scale-95 flex items-center gap-2"
                 >
-                    <Plus size={16} /> Connect Account
+                    <Plus size={18} /> Connect New Account
                 </button>
             </header>
 
-            {/* Main Content Area */}
             {fetchingAccounts ? (
-                <div className="border border-dashed border-black/10 dark:border-white/10 rounded-2xl p-16 flex flex-col items-center justify-center text-center">
-                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
-                    <p className="text-sm text-foreground/60 font-medium">Loading connected accounts...</p>
+                <div className="flex flex-col items-center justify-center py-24 gap-4">
+                    <Loader2 className="animate-spin text-indigo-500/40" size={40} />
+                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Accessing Fleet Data...</p>
                 </div>
             ) : accounts.length === 0 ? (
-                /* Empty State */
-                <div className="bg-background/50 border border-white/5 dark:border-white/5 border-black/5 rounded-2xl p-10 flex flex-col items-center justify-center text-center shadow-xl shadow-black/5 dark:shadow-black/20 relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-indigo-500/10"></div>
-                    <div className="w-16 h-16 rounded-2xl bg-black/5 dark:bg-white/5 flex items-center justify-center text-foreground/40 mb-4 border border-black/5 dark:border-white/10 ring-4 ring-black/5 dark:ring-white/5">
-                        <Users className="w-8 h-8" />
+                <div className="bg-[#0b0c10] border border-dashed border-white/10 rounded-[32px] p-24 text-center shadow-2xl">
+                    <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 text-white/10">
+                        <Users size={40} />
                     </div>
-                    <h3 className="text-lg font-semibold text-foreground mb-2">No accounts connected</h3>
-                    <p className="text-sm text-foreground/50 max-w-sm mb-6">You need to connect at least one Telegram account to start automating tasks or scraping groups.</p>
+                    <h3 className="text-xl font-bold text-white mb-2">No Active Accounts</h3>
+                    <p className="text-sm text-white/30 max-w-xs mx-auto mb-8 font-medium italic">Your automation cluster is currently empty. Connect your first account to begin broadcasting.</p>
                     <button
                         onClick={() => setIsConnecting(true)}
-                        className="bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 transition-all text-foreground px-5 py-2.5 rounded-xl text-sm font-medium border border-black/5 dark:border-white/10"
+                        className="text-indigo-400 font-bold hover:text-indigo-300 transition-colors uppercase tracking-widest text-xs"
                     >
-                        Add your first account
+                        + Initialize First Node
                     </button>
                 </div>
             ) : (
-                /* Accounts Table */
-                <div className="bg-background border border-white/5 dark:border-white/5 border-black/5 rounded-2xl overflow-hidden shadow-xl shadow-black/5 dark:shadow-black/20 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-black/5 dark:border-white/5 text-foreground/50 text-[11px] uppercase tracking-wider bg-black/[0.02] dark:bg-white/[0.02]">
-                                <th className="font-semibold p-4 pl-6">Phone Number</th>
-                                <th className="font-semibold p-4">Status</th>
-                                <th className="font-semibold p-4 text-center pr-6">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-black/5 dark:divide-white/5 whitespace-nowrap">
-                            {accounts.map((acc, idx) => (
-                                <tr key={idx} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors group">
-                                    <td className="p-4 pl-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
-                                                <Phone size={18} />
-                                            </div>
-                                            <span className="font-semibold text-sm text-foreground">{acc.phone_number}</span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4">
-                                        <span className={`text-[10px] px-2 py-1 rounded-full font-bold tracking-wider uppercase border ${acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
-                                            {acc.status}
-                                        </span>
-                                    </td>
-                                    <td className="p-4 pr-6 text-center">
-                                        <button className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-all">
-                                            Disconnect
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                    {accounts.map((acc, idx) => (
+                        <div key={idx} className="bg-[#0b0c10] border border-white/5 rounded-[28px] p-6 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10"></div>
+                            
+                            <div className="flex items-center gap-4 mb-6 relative z-10">
+                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-black shadow-lg shadow-indigo-500/10 transition-transform group-hover:scale-105 duration-500">
+                                    {(acc.phone_number?.slice(-2) || 'N').toUpperCase()}
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <h4 className="font-bold text-white text-lg tracking-tight truncate">{acc.phone_number}</h4>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/70">NODE ACTIVE</span>
+                                    </div>
+                                </div>
+                                <button className="p-2.5 rounded-xl bg-white/5 text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-white/5">
+                                    <X size={16} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4 relative z-10">
+                                <div className="flex justify-between items-center py-3 border-b border-white/5">
+                                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.1em]">Identity Lock</span>
+                                    <span className="text-xs font-mono text-white/60">API-{acc.api_id?.slice(0, 4) || '••••'}</span>
+                                </div>
+                                <div className="flex justify-between items-center py-1">
+                                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.1em]">Payload Capacity</span>
+                                    <span className="text-xs font-bold text-white/80">Unlimited</span>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 pt-6 border-t border-white/5 flex gap-2 relative z-10">
+                                <button className="flex-1 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/5">
+                                    Session Dump
+                                </button>
+                                <button className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/10">
+                                    Auth Valid
+                                </button>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 

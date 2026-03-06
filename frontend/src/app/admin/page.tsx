@@ -78,7 +78,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex bg-white/[0.03] backdrop-blur-3xl p-1.5 rounded-2xl border border-white/5">
-                    {['overview', 'users', 'settings'].map((tab) => (
+                    {['overview', 'users', 'settings', 'maintenance'].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -294,6 +294,54 @@ export default function AdminDashboard() {
                         </div>
                         <div className="py-10 text-center text-sm text-foreground/20 italic">
                             Module locked. Manual database update required for master password changes.
+                        </div>
+                    </div>
+                </div>
+            {activeTab === 'maintenance' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="bg-white/5 border border-white/5 p-8 rounded-3xl space-y-6">
+                        <div className="flex items-center gap-3 text-orange-400">
+                            <Trash2 size={24} />
+                            <h2 className="text-xl font-bold">Data Management</h2>
+                        </div>
+                        <p className="text-sm text-foreground/40">Clean up database tables to maintain performance.</p>
+                        <div className="space-y-3">
+                            <button 
+                                onClick={async () => {
+                                    if(confirm("Purge all leads data?")) {
+                                        await apiFetch("/api/admin/maintenance/clear-leads", { method: 'POST' });
+                                        alert("Leads table cleared.");
+                                    }
+                                }}
+                                className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 hover:bg-red-500/10 hover:text-red-500 transition-all group border border-white/5"
+                            >
+                                <span className="text-sm font-bold">Clear All Leads</span>
+                                <Database size={18} className="opacity-20 group-hover:opacity-100" />
+                            </button>
+                            <button 
+                                onClick={async () => {
+                                    if(confirm("Purge historical task data? (Only completed/failed tasks)")) {
+                                        await apiFetch("/api/admin/maintenance/clear-tasks", { method: 'POST' });
+                                        alert("Task history purged.");
+                                    }
+                                }}
+                                className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 hover:bg-orange-500/10 hover:text-orange-500 transition-all group border border-white/5"
+                            >
+                                <span className="text-sm font-bold">Purge Task History</span>
+                                <Activity size={18} className="opacity-20 group-hover:opacity-100" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/5 p-8 rounded-3xl space-y-6">
+                        <div className="flex items-center gap-3 text-indigo-400">
+                            <Shield size={24} />
+                            <h2 className="text-xl font-bold">System Health</h2>
+                        </div>
+                        <p className="text-sm text-foreground/40">Monitor platform health and background worker status.</p>
+                        <div className="p-10 text-center text-sm text-foreground/20 italic">
+                            Worker health: OPTIMAL <br/>
+                            Background service is running on Hugging Face.
                         </div>
                     </div>
                 </div>

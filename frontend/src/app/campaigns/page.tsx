@@ -6,8 +6,10 @@ import { apiFetch } from '@/lib/auth';
 
 export default function CampaignsPage() {
     const [isCreating, setIsCreating] = useState(false);
+    const [campaigns, setCampaigns] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [dialogs, setDialogs] = useState<any[]>([]);
+    const [searchTerm, setSearchTerm] = useState("");
     const [fetchingDialogs, setFetchingDialogs] = useState(false);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
     
@@ -21,7 +23,6 @@ export default function CampaignsPage() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
 
-    const [campaigns, setCampaigns] = useState<any[]>([]);
     const [loadingTasks, setLoadingTasks] = useState(true);
 
     const fetchCampaigns = async () => {
@@ -290,13 +291,27 @@ export default function CampaignsPage() {
                                         </div>
 
                                         {/* Right Column: Groups Selector */}
-                                        <div className="space-y-2 flex flex-col h-full">
-                                            <div className="flex justify-between items-end">
+                                        <div className="space-y-3 flex flex-col h-full">
+                                            <div className="flex justify-between items-end mb-1">
                                                 <label className="text-xs font-bold text-white/30 uppercase tracking-[0.15em]">Target Audiences</label>
-                                                <span className="text-[10px] font-bold text-[#7c7fff] uppercase">{selectedGroups.length} selected</span>
+                                                <span className="text-[10px] font-bold text-[#7c7fff] uppercase tracking-wider">{selectedGroups.length} Selected targets</span>
                                             </div>
                                             
-                                            <div className="flex-1 bg-[#1c2231] border border-white/[0.05] rounded-2xl overflow-hidden flex flex-col min-h-[300px]">
+                                            <div className="relative mb-3">
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20">
+                                                    <Search size={14} />
+                                                </div>
+                                                <input 
+                                                    type="text"
+                                                    placeholder="Search groups or channels..."
+                                                    className="w-full bg-[#1c2231] border border-white/10 rounded-xl py-2 pl-9 pr-4 text-xs text-white focus:outline-none focus:border-[#7c7fff]/50 transition-all font-medium"
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    suppressHydrationWarning={true}
+                                                />
+                                            </div>
+
+                                            <div className="flex-1 bg-[#1c2231] border border-white/[0.05] rounded-2xl overflow-hidden flex flex-col min-h-[320px]">
                                                 {fetchingDialogs ? (
                                                     <div className="flex-1 flex flex-col items-center justify-center gap-3">
                                                         <Loader2 className="animate-spin text-[#7c7fff]/40" size={24} />
@@ -304,12 +319,17 @@ export default function CampaignsPage() {
                                                     </div>
                                                 ) : dialogs.length > 0 ? (
                                                     <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                                                        {dialogs.map((d) => (
-                                                            <div 
-                                                                key={d.id}
-                                                                onClick={() => toggleGroup(d.id)}
-                                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group/item ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff]/10 border-[#7c7fff]/30' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]'}`}
-                                                            >
+                                                        {dialogs
+                                                            .filter(d => 
+                                                                d.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                                                (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))
+                                                            )
+                                                            .map((d) => (
+                                                                <div 
+                                                                    key={d.id}
+                                                                    onClick={() => toggleGroup(d.id)}
+                                                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group/item ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff]/10 border-[#7c7fff]/30' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]'}`}
+                                                                >
                                                                 <div className="flex items-center gap-3 overflow-hidden">
                                                                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.is_channel ? 'bg-indigo-500/10 text-indigo-400' : 'bg-blue-500/10 text-blue-400'}`}>
                                                                         {d.is_channel ? <Send size={14} /> : <Users size={14} />}
