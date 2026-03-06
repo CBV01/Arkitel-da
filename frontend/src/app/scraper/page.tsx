@@ -260,7 +260,7 @@ export default function ScraperPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-black/5 dark:divide-white/5 whitespace-nowrap">
-                            {results.map((result) => {
+                            {filteredResults.map((result) => {
                                 const isSelected = selectedGroups.has(result.id);
                                 return (
                                     <tr key={result.id} className={`transition-colors group ${isSelected ? 'bg-indigo-500/5' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'}`}>
@@ -279,38 +279,41 @@ export default function ScraperPage() {
                                                 </div>
                                                 <div>
                                                     <div className="font-semibold text-sm text-foreground mb-0.5">{result.title}</div>
-                                                    {result.username ? (
-                                                        <a href={`https://t.me/${result.username}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1">
-                                                            @{result.username} <ExternalLink size={10} />
-                                                        </a>
-                                                    ) : (
-                                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/5 text-foreground/50 font-medium tracking-wider">PRIVATE</span>
-                                                    )}
+                                                    <div className="flex items-center gap-2">
+                                                       {result.username ? (
+                                                           <a href={`https://t.me/${result.username}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1 font-mono">
+                                                               @{result.username} <ExternalLink size={10} />
+                                                           </a>
+                                                       ) : (
+                                                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold tracking-wider uppercase">Private</span>
+                                                       )}
+                                                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold uppercase tracking-widest">{result.country}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="p-4">
-                                            <span className="text-xs font-medium text-foreground/60 capitalize bg-black/5 dark:bg-white/5 px-2 py-1 rounded-md">
-                                                {result.type.replace('mega', '')}
+                                            <span className="text-[10px] font-black text-foreground/40 uppercase tracking-widest bg-white/5 border border-white/5 px-2.5 py-1.5 rounded-lg">
+                                                {result.type}
                                             </span>
                                         </td>
                                         <td className="p-4 text-right">
-                                            <span className="text-sm font-semibold text-foreground/80">{result.participants_count.toLocaleString()}</span>
-                                            <span className="text-xs text-foreground/40 ml-1 block">subscribers</span>
+                                            <span className="text-sm font-bold text-foreground/80 tracking-tight">{result.participants_count.toLocaleString()}</span>
+                                            <span className="text-[10px] text-foreground/20 block font-bold uppercase mt-0.5 tracking-tighter">Net Reach</span>
                                         </td>
                                         <td className="p-4 pr-6">
-                                            <div className="flex items-center justify-center gap-2">
+                                            <div className="flex items-center justify-end gap-2">
                                                 <button
                                                     onClick={() => handleExtractMembers(result.username || result.id.toString())}
-                                                    className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/20 text-foreground transition-all flex items-center gap-1.5"
+                                                    className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all border border-white/5"
                                                 >
-                                                    <Users size={12} /> Extract
+                                                    Extract
                                                 </button>
                                                 <button
                                                     onClick={() => handleJoin(result.username || result.id.toString())}
-                                                    className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-500 transition-all flex items-center gap-1.5 border border-indigo-500/20"
+                                                    className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 transition-all border border-indigo-500/20"
                                                 >
-                                                    <Plus size={12} /> Join
+                                                    Join
                                                 </button>
                                             </div>
                                         </td>

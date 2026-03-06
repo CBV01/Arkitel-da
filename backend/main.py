@@ -12,7 +12,8 @@ from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_id
 import uuid
 import asyncio
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 
 app = FastAPI(title="Telegram Automation API")
 
