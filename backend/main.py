@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any
 import re
 import ast
 import traceback
+from contextlib import asynccontextmanager
 
 # Telethon Imports
 from telethon.sync import TelegramClient  # type: ignore
@@ -26,8 +27,6 @@ from config import TELEGRAM_API_ID, TELEGRAM_API_HASH  # type: ignore
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_id  # type: ignore
 import uvicorn  # type: ignore
 
-app = FastAPI(title="Telegram Automation API")
-
 # Simple in-memory log buffer
 LOG_BUFFER = collections.deque(maxlen=100)
 
@@ -37,6 +36,33 @@ def log_debug(msg: str):
     print(formatted)
     LOG_BUFFER.append(formatted)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    print("CORE: Initializing Database Schema...")
+    try:
+        from database import init_db # type: ignore
+        init_db()
+        print("CORE: Database Schema Initialized.")
+    except Exception as e:
+        print(f"CORE: Database Initialization ERROR: {e}")
+
+    print("CORE: Starting Task Automation Poller...")
+    poller_task = asyncio.create_task(task_poller())
+    print("CORE: System Ready and Poller Started.")
+    
+    yield
+    
+    # Shutdown logic
+    print("CORE: Shutting down...")
+    poller_task.cancel()
+    try:
+        await poller_task
+    except asyncio.CancelledError:
+        print("CORE: Poller task cancelled.")
+
+app = FastAPI(title="Telegram Automation API", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # In production, set this to process.env.FRONTEND_URL
@@ -44,8 +70,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from database import init_db  # type: ignore
 
 @app.get("/api/debug/db")
 async def debug_db():
@@ -74,7 +98,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    now = datetime.now()
+    return {
+        "status": "healthy", 
+        "server_time": now.isoformat(),
+        "poller_format": now.strftime('%Y-%m-%dT%H:%M'),
+        "timezone": str(datetime.now().astimezone().tzinfo)
+    }
 
 # Temporary in-memory store for login sessions
 # phone -> { "client": TelegramClient, "phone_code_hash": str, "api_id": str, "api_hash": str }
@@ -761,13 +791,30 @@ async def task_poller():
             conn = get_db_connection()
             # Normalize comparison: Browser sends YYYY-MM-DDTHH:MM. 
             # now_str should match or be slightly ahead.
-            now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
+            now_dt = datetime.now()
+            now_str = now_dt.strftime('%Y-%m-%dT%H:%M')
+            
+            # Check for ANY pending tasks to see if the table is even working
+            # (Just for logging)
+            all_pending = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").fetchone()
+            count = all_pending[0] if all_pending else 0
+            if count > 0:
+                print(f"BKG_POLLER: Found {count} total pending tasks in DB.")
             
             # Only pick pending tasks that are due now or in the past
             tasks = conn.execute(
-                "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
+                "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours, scheduled_time FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
                 (now_str,)
             ).fetchall()
+            
+            if len(tasks) > 0:
+                print(f"BKG_POLLER: Found {len(tasks)} tasks READY to send (due at or before {now_str})")
+            elif count > 0:
+                # We have pending tasks, but none are due yet
+                next_task = conn.execute("SELECT scheduled_time FROM tasks WHERE status = 'pending' ORDER BY scheduled_time ASC LIMIT 1").fetchone()
+                if next_task:
+                    print(f"BKG_POLLER: No tasks ready. Next one due at: {next_task[0]} (Current server time: {now_str})")
+
             if hasattr(conn, "close"): conn.close()
 
             for task_id, message, groups_str, phone_num, u_id, interval in tasks:
@@ -852,12 +899,6 @@ async def task_poller():
         
         await asyncio.sleep(60) # Poll every minute
 
-@app.on_event("startup")
-async def startup_event():
-    print("CORE: Initializing Database Schema...")
-    init_db()
-    print("CORE: Starting Task Automation Poller...")
-    asyncio.create_task(task_poller())
     print("CORE: System Ready.")
 
 if __name__ == "__main__":
