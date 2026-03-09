@@ -135,9 +135,10 @@ export default function ScraperPage() {
         abortControllerRef.current = controller;
 
         try {
-            const token = localStorage.getItem('token') || '';
+            const token = localStorage.getItem('tg_auth_token') || '';
+            const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
             const cStr = country.trim() ? `&country=${encodeURIComponent(' ' + country.trim())}` : '';
-            const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/telegram/scrape_stream?query=${encodeURIComponent(keyword)}${cStr}&limit=500`, {
+            const res = await fetch(`${apiBase}/api/telegram/scrape_stream?query=${encodeURIComponent(keyword)}${cStr}&limit=500`, {
                 headers: { 'Authorization': `Bearer ${token}` },
                 signal: controller.signal
             });

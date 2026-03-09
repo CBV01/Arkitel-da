@@ -1220,7 +1220,7 @@ async def root():
 async def task_poller():
     active_tasks = set()
 
-    async def run_single_task(task_id, message, groups_str, phone_num, u_id, interval):
+    async def run_single_task(task_id, message, groups_str, phone_num, u_id, interval, scheduled_time):
         try:
             # Update status to 'processing'
             conn = get_db_connection()
