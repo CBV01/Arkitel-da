@@ -12,9 +12,13 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         const res = await apiFetch('/api/dashboard/stats');
-        const data = await res.json();
+        const text = await res.text();
         if (res.ok) {
-          setStats(data);
+          try {
+            setStats(JSON.parse(text));
+          } catch (e) {
+            console.error("Dashboard: Non-JSON response", text);
+          }
         }
       } catch (err) {
         console.error("Dashboard: Failed to fetch stats", err);

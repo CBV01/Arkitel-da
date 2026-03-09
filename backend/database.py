@@ -113,10 +113,12 @@ def get_db_connection():
     auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
 
     if db_url and (db_url.startswith("libsql://") or db_url.startswith("https://")):
+        # print("DB: Using Turso Cloud")
         return TursoConnection(db_url, auth_token)
 
     # Local SQLite fallback
     local_path = db_url.replace("file:", "") if db_url else "./telegram_app.db"
+    # print(f"DB: Using local SQLite ({local_path})")
     conn = sqlite3.connect(local_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -145,6 +147,7 @@ def init_db():
         """CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id TEXT NOT NULL,
+            name TEXT,
             phone_number TEXT,
             scheduled_time TEXT NOT NULL,
             message_text TEXT NOT NULL,

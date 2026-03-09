@@ -21,9 +21,14 @@ export default function AccountsPage() {
         setFetchingAccounts(true);
         try {
             const res = await apiFetch('/api/telegram/accounts');
-            const data = await res.json();
+            const text = await res.text();
             if (res.ok) {
-                setAccounts(data.accounts || []);
+                try {
+                    const data = JSON.parse(text);
+                    setAccounts(data.accounts || []);
+                } catch (e) {
+                    console.error("Accounts: Non-JSON response:", text);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch accounts:", err);

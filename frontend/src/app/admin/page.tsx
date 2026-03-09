@@ -12,7 +12,8 @@ import {
     Play,
     Trash2,
     Database,
-    Search
+    Search,
+    Lock as MasterLock
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -31,9 +32,20 @@ export default function AdminDashboard() {
                 ]);
 
                 if (statsRes.ok && usersRes.ok) {
-                    setStats(await statsRes.json());
-                    const usersData = await usersRes.json();
-                    setUsers(usersData.users || []);
+                    const statsText = await statsRes.text();
+                    const usersText = await usersRes.text();
+                    try {
+                        setStats(JSON.parse(statsText));
+                        const usersData = JSON.parse(usersText);
+                        setUsers(usersData.users || []);
+                    } catch (e) {
+                        console.error("Failed to parse admin data JSON:", e, { statsText, usersText });
+                    }
+                } else {
+                    console.error("Admin API returned error:", {
+                        statsStatus: statsRes.status,
+                        usersStatus: usersRes.status
+                    });
                 }
             } catch (err) {
                 console.error("Failed to fetch admin data", err);
@@ -251,7 +263,7 @@ export default function AdminDashboard() {
                     <div className="bg-red-500/5 border border-red-500/10 p-8 rounded-3xl space-y-6">
                         <div className="flex items-center gap-3">
                             <div className="p-3 rounded-2xl bg-red-500/10 text-red-500">
-                                <Lock size={24} />
+                                <MasterLock size={24} />
                             </div>
                             <div>
                                 <h2 className="text-xl font-bold">Admin Password</h2>

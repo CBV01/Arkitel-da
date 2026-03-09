@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2 } from 'lucide-react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 
 export default function CampaignsPage() {
@@ -65,8 +65,15 @@ export default function CampaignsPage() {
         const fetchAccounts = async () => {
             try {
                 const res = await apiFetch('/api/telegram/accounts');
-                const data = await res.json();
-                if (res.ok) setAccounts(data.accounts || []);
+                const text = await res.text();
+                if (res.ok) {
+                    try {
+                        const data = JSON.parse(text);
+                        setAccounts(data.accounts || []);
+                    } catch (e) {
+                        console.error("Campaigns: Non-JSON response for accounts", text);
+                    }
+                }
             } catch (err) {
                 console.error("Failed to fetch accounts", err);
             }

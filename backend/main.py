@@ -11,11 +11,19 @@ from telethon.sessions import StringSession
 from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_id
 import uuid
-import asyncio
-import random
 from datetime import datetime, timedelta
+import collections
 
 app = FastAPI(title="Telegram Automation API")
+
+# Simple in-memory log buffer
+LOG_BUFFER = collections.deque(maxlen=100)
+
+def log_debug(msg: str):
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    formatted = f"[{timestamp}] {msg}"
+    print(formatted)
+    LOG_BUFFER.append(formatted)
 
 app.add_middleware(
     CORSMiddleware,
@@ -489,8 +497,8 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
     conn = get_db_connection()
     try:
         conn.execute(
-            "INSERT INTO tasks (user_id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (user_id, req.phone_number, req.schedule_time, req.message, str(req.groups), "pending", req.interval_hours)
+            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, req.name, req.phone_number, req.schedule_time, req.message, str(req.groups), "pending", req.interval_hours)
         )
         if hasattr(conn, "commit"): conn.commit()
         return {"status": "success", "message": "Campaign scheduled successfully."}
@@ -605,6 +613,10 @@ async def admin_get_users(admin_id: str = Depends(get_current_admin)):
     if hasattr(conn, "close"): conn.close()
     return {"users": [dict(id=u[0], username=u[1], role=u[2], is_active=u[3]) for u in users]}
 
+@app.get("/api/admin/debug-logs")
+async def get_debug_logs(admin_id: str = Depends(get_current_admin)):
+    return {"logs": list(LOG_BUFFER)}
+
 @app.get("/api/admin/stats")
 async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
@@ -691,10 +703,11 @@ import asyncio
 async def task_poller():
     while True:
         try:
-            from datetime import datetime, timedelta
-            now_str = datetime.now().isoformat()
-            
             conn = get_db_connection()
+            # Normalize comparison: Browser sends YYYY-MM-DDTHH:MM. 
+            # now_str should match or be slightly ahead.
+            now_str = datetime.now().strftime('%Y-%m-%dT%H:%M')
+            
             # Only pick pending tasks that are due now or in the past
             tasks = conn.execute(
                 "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 

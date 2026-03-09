@@ -25,8 +25,8 @@ export const getAuthHeaders = (): Record<string, string> => {
 export const apiFetch = async (endpoint: string, options: any = {}) => {
     const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
     const isAbsolute = /^https?:\/\//i.test(endpoint);
-    const useRelative = !isAbsolute && endpoint.startsWith('/api/');
-    const url = useRelative ? endpoint : (isAbsolute ? endpoint : (apiBase ? `${apiBase}${endpoint}` : endpoint));
+    // On production/when apiBase is set, we want ALL /api calls to go to the backend
+    const url = isAbsolute ? endpoint : (apiBase ? `${apiBase}${endpoint}` : endpoint);
 
     const method = (options.method || 'GET').toUpperCase();
     const defaultHeaders: Record<string, string> = {
