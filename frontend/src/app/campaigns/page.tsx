@@ -23,6 +23,7 @@ export default function CampaignsPage() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
 
+    const [loadingTasks, setLoadingTasks] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 50;
 
