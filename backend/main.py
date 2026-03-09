@@ -360,61 +360,75 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
     return {"accounts": accounts}
 
 @app.get("/api/telegram/scrape")
-async def scrape_keyword(query: str, limit: int = 500, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+async def scrape_keyword(query: str, limit: int = 1000, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     if phone_number:
-        row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
+        # Use specific account
+        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
     else:
-        row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE user_id = ? LIMIT 1", (user_id,)).fetchone()
-    if not row: raise HTTPException(status_code=404, detail="No active accounts found.")
+        # Use ALL accounts to maximize results
+        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchall()
     
-    session_str, api_id, api_hash = row[0], int(row[1]), row[2]
-    client = TelegramClient(StringSession(session_str), api_id, api_hash)
-    await client.connect()
+    if not rows: raise HTTPException(status_code=404, detail="No active accounts found.")
     
-    groups: List[Dict[str, Any]] = []
-    try:
-        # Requesting a very high limit. Telegram usually caps Global Search at ~200-300 results,
-        # but Telethon will try to paginate if possible or we can at least ensure we take everything we get.
-        search_result = await client(SearchRequest(q=query, limit=limit))
-        
-        conn2 = get_db_connection()
-        for chat in search_result.chats:
-            # Skip deleted or restricted chats
-            if not chat or getattr(chat, 'min', False): continue
-            is_private = getattr(chat, 'username', None) is None
+    unique_groups: Dict[str, Dict[str, Any]] = {}
+    
+    # Iterate through accounts to get as many results as possible
+    # Telegram results vary by account/region/trust
+    for row in rows:
+        session_str, api_id, api_hash, acc_phone = row[0], int(row[1]), row[2], row[3]
+        client = TelegramClient(StringSession(session_str), api_id, api_hash)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                continue
             
-            # Simple country detection based on language/keywords or just "Global"
-            country = "Global"
-            title_str = str(getattr(chat, 'title', '')).lower()
-            countries = {"nigeria": "NG", "usa": "US", "uk": "UK", "india": "IN", "crypto": "Global"}
-            for k, v in countries.items():
-                if k in title_str: country = v; break
+            # Requesting high limit. Merge with what we already have.
+            search_result = await client(SearchRequest(q=query, limit=limit))
             
-            chat_id_str = str(getattr(chat, 'id', '0'))
-            conn2.execute("INSERT INTO scrape_history (group_id, user_id) VALUES (?, ?)", (chat_id_str, user_id))
-            if hasattr(conn2, "commit"): conn2.commit()
+            for chat in search_result.chats:
+                # We skip deleted chats but take everything else (even min objects)
+                if not chat: continue
+                
+                chat_id_str = str(getattr(chat, 'id', '0'))
+                if chat_id_str in unique_groups: continue
+                
+                is_private = getattr(chat, 'username', None) is None
+                
+                title = getattr(chat, 'title', 'Unknown')
+                username = getattr(chat, 'username', None)
+                
+                # Metadata extraction
+                participants_count = getattr(chat, 'participants_count', 0) or getattr(chat, 'megagroup_participants', 0) or 0
+                chat_type = 'channel' if getattr(chat, 'broadcast', False) else 'group'
+                
+                # Check history
+                conn2 = get_db_connection()
+                # Isolation: Ensure we track this for the specific user
+                conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (chat_id_str, user_id))
+                if hasattr(conn2, "commit"): conn2.commit()
+                global_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ?", (chat_id_str,)).fetchone()[0]
+                user_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ? AND user_id = ?", (chat_id_str, user_id)).fetchone()[0]
+                if hasattr(conn2, "close"): conn2.close()
 
-            global_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ?", (chat_id_str,)).fetchone()[0]
-            user_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ? AND user_id = ?", (chat_id_str, user_id)).fetchone()[0]
+                unique_groups[chat_id_str] = {
+                    "id": chat_id_str,
+                    "title": title,
+                    "username": username,
+                    "participants_count": participants_count,
+                    "type": chat_type,
+                    "is_private": is_private,
+                    "country": "Global",
+                    "global_shows": global_count,
+                    "user_shows": user_count
+                }
+        except Exception as e:
+            print(f"SCRAPER: Account {acc_phone} error: {e}")
+        finally:
+            await client.disconnect()
 
-            groups.append({
-                "id": chat_id_str,
-                "title": getattr(chat, 'title', 'Unknown'),
-                "username": getattr(chat, 'username', None),
-                "participants_count": getattr(chat, 'participants_count', 0) or getattr(chat, 'megagroup_participants', 0),
-                "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
-                "is_private": is_private,
-                "country": country,
-                "global_shows": global_count,
-                "user_shows": user_count
-            })
-        if hasattr(conn2, "close"): conn2.close()
-        return {"groups": groups}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        await client.disconnect()
+    if hasattr(conn, "close"): conn.close()
+    return {"groups": list(unique_groups.values())}
 
 class BulkJoinRequest(BaseModel):
     group_ids: list[str]
