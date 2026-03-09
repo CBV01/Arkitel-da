@@ -23,7 +23,8 @@ export default function CampaignsPage() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
 
-    const [loadingTasks, setLoadingTasks] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 50;
 
     const fetchCampaigns = async () => {
         try {
@@ -44,6 +45,7 @@ export default function CampaignsPage() {
         if (!phone) return;
         setFetchingDialogs(true);
         setDialogs([]);
+        setCurrentPage(1); // Reset to first page
         try {
             const res = await apiFetch('/api/telegram/dialogs', {
                 method: 'POST',
@@ -94,12 +96,18 @@ export default function CampaignsPage() {
             alert("Please select at least one group/channel.");
             return;
         }
+
+        // SYNC TIME: Convert local time picking to UTC for the backend poller
+        // Date.toISOString() gives YYYY-MM-DDTHH:mm:ss.sssZ (always in UTC)
+        const utcScheduleTime = new Date(campaignData.schedule_time).toISOString().slice(0, 16);
+
         setLoading(true);
         try {
             const res = await apiFetch('/api/telegram/campaigns', {
                 method: 'POST',
                 body: JSON.stringify({
                     ...campaignData,
+                    schedule_time: utcScheduleTime,
                     groups: selectedGroups
                 })
             });
@@ -318,37 +326,62 @@ export default function CampaignsPage() {
                                                 />
                                             </div>
 
-                                            <div className="flex-1 bg-[#1c2231] border border-white/[0.05] rounded-2xl overflow-hidden flex flex-col min-h-[320px]">
+                                            <div className="flex-1 bg-[#1c2231] border border-white/[0.05] rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
                                                 {fetchingDialogs ? (
                                                     <div className="flex-1 flex flex-col items-center justify-center gap-3">
                                                         <Loader2 className="animate-spin text-[#7c7fff]/40" size={24} />
                                                         <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Fetching Groups...</p>
                                                     </div>
                                                 ) : dialogs.length > 0 ? (
-                                                    <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                                                        {dialogs
-                                                            .filter(d => 
-                                                                d.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                                                (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))
-                                                            )
-                                                            .map((d) => (
-                                                                <div 
-                                                                    key={d.id}
-                                                                    onClick={() => toggleGroup(d.id)}
-                                                                    className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group/item ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff]/10 border-[#7c7fff]/30' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]'}`}
-                                                                >
-                                                                <div className="flex items-center gap-3 overflow-hidden">
-                                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.is_channel ? 'bg-indigo-500/10 text-indigo-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                                                                        {d.is_channel ? <Send size={14} /> : <Users size={14} />}
+                                                    <>
+                                                        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                                                            {dialogs
+                                                                .filter(d => 
+                                                                    d.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                                                    (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))
+                                                                )
+                                                                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+                                                                .map((d) => (
+                                                                    <div 
+                                                                        key={d.id}
+                                                                        onClick={() => toggleGroup(d.id)}
+                                                                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group/item ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff]/10 border-[#7c7fff]/30' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]'}`}
+                                                                    >
+                                                                    <div className="flex items-center gap-3 overflow-hidden">
+                                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.is_channel ? 'bg-indigo-500/10 text-indigo-400' : 'bg-blue-500/10 text-blue-400'}`}>
+                                                                            {d.is_channel ? <Send size={14} /> : <Users size={14} />}
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-white/80 truncate">{d.name}</span>
                                                                     </div>
-                                                                    <span className="text-xs font-bold text-white/80 truncate">{d.name}</span>
+                                                                    <div className={`w-4 h-4 rounded-full border-2 transition-all flex items-center justify-center ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff] border-[#7c7fff]' : 'border-white/10'}`}>
+                                                                        {selectedGroups.includes(d.id) && <CheckCircle2 size={10} className="text-white" />}
+                                                                    </div>
                                                                 </div>
-                                                                <div className={`w-4 h-4 rounded-full border-2 transition-all flex items-center justify-center ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff] border-[#7c7fff]' : 'border-white/10'}`}>
-                                                                    {selectedGroups.includes(d.id) && <CheckCircle2 size={10} className="text-white" />}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
+                                                            ))}
+                                                        </div>
+                                                        {/* Pagination Controls */}
+                                                        <div className="p-4 border-t border-white/[0.05] flex items-center justify-between bg-white/[0.01]">
+                                                            <button 
+                                                                type="button"
+                                                                disabled={currentPage === 1}
+                                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                                                className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-[#7c7fff] disabled:opacity-20 transition-colors"
+                                                            >
+                                                                Prev
+                                                            </button>
+                                                            <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
+                                                                Page {currentPage} of {Math.ceil(dialogs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) || (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))).length / pageSize)}
+                                                            </span>
+                                                            <button 
+                                                                type="button"
+                                                                disabled={currentPage >= Math.ceil(dialogs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) || (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))).length / pageSize)}
+                                                                onClick={() => setCurrentPage(p => p + 1)}
+                                                                className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-[#7c7fff] disabled:opacity-20 transition-colors"
+                                                            >
+                                                                Next
+                                                            </button>
+                                                        </div>
+                                                    </>
                                                 ) : (
                                                     <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
                                                         <p className="text-xs text-white/20 font-bold uppercase tracking-widest">Select an account to load targets</p>

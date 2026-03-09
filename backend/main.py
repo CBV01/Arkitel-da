@@ -7,7 +7,7 @@ from pydantic import BaseModel  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from database import get_db_connection  # type: ignore
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import collections
 import asyncio
 import random
@@ -98,12 +98,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 async def health():
-    now = datetime.now()
+    # Use UTC for absolute consistency across platforms
+    now_utc = datetime.now(timezone.utc)
     return {
         "status": "healthy", 
-        "server_time": now.isoformat(),
-        "poller_format": now.strftime('%Y-%m-%dT%H:%M'),
-        "timezone": str(datetime.now().astimezone().tzinfo)
+        "server_time_utc": now_utc.isoformat(),
+        "poller_format_utc": now_utc.strftime('%Y-%m-%dT%H:%M'),
+        "note": "All campaigns are processed in UTC time to match browser standards."
     }
 
 # Temporary in-memory store for login sessions
@@ -353,7 +354,7 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
     return {"accounts": accounts}
 
 @app.get("/api/telegram/scrape")
-async def scrape_keyword(query: str, limit: int = 200, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+async def scrape_keyword(query: str, limit: int = 500, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     if phone_number:
         row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
@@ -367,11 +368,14 @@ async def scrape_keyword(query: str, limit: int = 200, phone_number: Optional[st
     
     groups: List[Dict[str, Any]] = []
     try:
-        # Telethon Search limit is typically capped at around 100-200 by Telegram itself for Global Search
+        # Requesting a very high limit. Telegram usually caps Global Search at ~200-300 results,
+        # but Telethon will try to paginate if possible or we can at least ensure we take everything we get.
         search_result = await client(SearchRequest(q=query, limit=limit))
         
         conn2 = get_db_connection()
         for chat in search_result.chats:
+            # Skip deleted or restricted chats
+            if not chat or getattr(chat, 'min', False): continue
             is_private = getattr(chat, 'username', None) is None
             
             # Simple country detection based on language/keywords or just "Global"
@@ -789,17 +793,13 @@ async def task_poller():
     while True:
         try:
             conn = get_db_connection()
-            # Normalize comparison: Browser sends YYYY-MM-DDTHH:MM. 
-            # now_str should match or be slightly ahead.
-            now_dt = datetime.now()
+            # USE UTC FOR EVERYTHING. This syncs backend (server) with frontend (browser).
+            now_dt = datetime.now(timezone.utc)
             now_str = now_dt.strftime('%Y-%m-%dT%H:%M')
             
-            # Check for ANY pending tasks to see if the table is even working
-            # (Just for logging)
+            # Check for ANY pending tasks
             all_pending = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").fetchone()
             count = all_pending[0] if all_pending else 0
-            if count > 0:
-                print(f"BKG_POLLER: Found {count} total pending tasks in DB.")
             
             # Only pick pending tasks that are due now or in the past
             tasks = conn.execute(
@@ -808,12 +808,12 @@ async def task_poller():
             ).fetchall()
             
             if len(tasks) > 0:
-                print(f"BKG_POLLER: Found {len(tasks)} tasks READY to send (due at or before {now_str})")
+                print(f"BKG_POLLER: Found {len(tasks)} tasks READY to send (Trigger: UTC {now_str})")
             elif count > 0:
-                # We have pending tasks, but none are due yet
+                # Log the next one coming up to help user verify sync
                 next_task = conn.execute("SELECT scheduled_time FROM tasks WHERE status = 'pending' ORDER BY scheduled_time ASC LIMIT 1").fetchone()
                 if next_task:
-                    print(f"BKG_POLLER: No tasks ready. Next one due at: {next_task[0]} (Current server time: {now_str})")
+                    print(f"BKG_POLLER: No tasks ready. Next up in DB: {next_task[0]} (Current Server UTC: {now_str})")
 
             if hasattr(conn, "close"): conn.close()
 
