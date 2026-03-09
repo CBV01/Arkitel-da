@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import collections
 import asyncio
 import random
+import json
 from typing import Optional, List, Dict, Any
 import re
 import ast
@@ -436,7 +437,7 @@ async def _scrape_lyzem(query: str, max_pages: int = 10, queue: Optional[asyncio
                         }
                         results.append(item)
                         if queue:
-                            await queue.put({"type": "result", "layer": 2, "data": item})
+                            await queue.put({"type": "result", "layer": 2, "data": item})  # pyre-ignore
                             
                         found_on_page += 1
                         
@@ -514,7 +515,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         }
                         unique_groups[chat_id_str] = item
                         if queue:
-                            await queue.put({"type": "result", "layer": 1, "data": item})
+                            await queue.put({"type": "result", "layer": 1, "data": item})  # pyre-ignore
                     await asyncio.sleep(0.4)
                 except Exception as q_err:
                     print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
@@ -585,7 +586,7 @@ async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seed
                                 }
                                 results.append(item)
                                 if queue:
-                                    await queue.put({"type": "result", "layer": 3, "data": item})
+                                    await queue.put({"type": "result", "layer": 3, "data": item})  # pyre-ignore
                                 found_in_seed = int(found_in_seed) + 1  # type: ignore
                     
                     # Look for t.me links or @mentions in text
@@ -613,7 +614,7 @@ async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seed
                                 }
                                 results.append(item2)
                                 if queue:
-                                    await queue.put({"type": "result", "layer": 3, "data": item2})
+                                    await queue.put({"type": "result", "layer": 3, "data": item2})  # pyre-ignore
                                 found_in_seed = int(found_in_seed) + 1  # type: ignore
                 
                 if int(found_in_seed) > 0:  # type: ignore
@@ -656,7 +657,7 @@ async def scrape_keyword_stream(
 
     async def scraper_task():
         try:
-            await queue.put({"type": "progress", "msg": f"Layer 1 & 2: Scanning Telegram API & Lyzem Engine for '{base_query}'..."})
+            await queue.put({"type": "progress", "msg": f"Layer 1 & 2: Scanning Telegram API & Lyzem Engine for '{base_query}'..."})  # pyre-ignore
             
             t_task = asyncio.create_task(_scrape_telegram_search(base_query, rows, queue))
             l_task = asyncio.create_task(_scrape_lyzem(base_query, max_pages=10, queue=queue))
@@ -668,7 +669,7 @@ async def scrape_keyword_stream(
                 k = f"@{item.get('username', '')}"
                 if k not in ug and item.get('username'): ug[k] = item
             
-            await queue.put({"type": "progress", "msg": f"Layer 3: Spidering {len(ug)} prominent groups..."})
+            await queue.put({"type": "progress", "msg": f"Layer 3: Spidering {len(ug)} prominent groups..."})  # pyre-ignore
             s_res = await _scrape_spider(list(ug.values()), rows, max_seeds=15, queue=queue)
             
             # DB insert
@@ -680,12 +681,12 @@ async def scrape_keyword_stream(
             if hasattr(conn2, "commit"): conn2.commit()
             if hasattr(conn2, "close"): conn2.close()
 
-            await queue.put({"type": "done", "msg": "Scrape completed"})
+            await queue.put({"type": "done", "msg": "Scrape completed"})  # pyre-ignore
         except asyncio.CancelledError:
             print("SCRAPER_STREAM canceled by client disconnect")
             raise
         except Exception as e:
-            await queue.put({"type": "error", "msg": str(e)})
+            await queue.put({"type": "error", "msg": str(e)})  # pyre-ignore
 
     # Start explicitly outside event_generator
     bg_task = asyncio.create_task(scraper_task())
@@ -693,7 +694,7 @@ async def scrape_keyword_stream(
     async def event_generator():
         try:
             while True:
-                msg = await queue.get()
+                msg = await queue.get()  # pyre-ignore
                 yield f"data: {json.dumps(msg)}\n\n"
                 if msg["type"] in ["done", "error"]:
                     break
