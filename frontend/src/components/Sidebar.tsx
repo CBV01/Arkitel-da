@@ -119,7 +119,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
     return (
         <div className="flex w-full min-h-screen">
             {/* Mobile Topbar */}
-            <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-3xl border-b border-white/5 flex items-center justify-between px-4 z-50">
+            <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-3xl border-b border-border flex items-center justify-between px-4 z-50">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
                         <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -144,7 +144,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
             {/* Main Sidebar */}
             <nav className={`
         fixed top-0 left-0 h-full bg-background/90 md:bg-background/80 backdrop-blur-3xl 
-        border-r border-white/5 flex flex-col pt-20 md:pt-5 z-50 transition-all duration-300
+        border-r border-border flex flex-col pt-20 md:pt-5 z-50 transition-all duration-300
         ${isMobileOpen ? "translate-x-0 w-64" : "-translate-x-full md:translate-x-0"}
         ${isCollapsed ? "md:w-20" : "md:w-64"}
       `}>
@@ -179,8 +179,8 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                   flex items-center gap-3 py-3 rounded-xl text-sm font-medium transition-all group
                   ${isCollapsed ? "justify-center px-0" : "px-4"}
                   ${isActive
-                                        ? "bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400"
-                                        : "text-foreground/60 hover:text-foreground hover:bg-white/5"}
+                                        ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+                                        : "text-foreground/60 hover:text-foreground hover:bg-foreground/5"}
                 `}
                                 title={isCollapsed ? item.name : ""}
                             >
@@ -192,11 +192,11 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                 </div>
 
                 {/* Theme Toggle & Logout */}
-                <div className="p-4 border-t border-white/5 space-y-1">
+                <div className="p-4 border-t border-border space-y-1">
                     <button
                         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                         className={`
-                flex items-center gap-3 py-3 w-full rounded-xl text-sm font-medium transition-all text-foreground/60 hover:text-foreground hover:bg-white/5
+                flex items-center gap-3 py-3 w-full rounded-xl text-sm font-medium transition-all text-foreground/60 hover:text-foreground hover:bg-foreground/5
                 ${isCollapsed ? "justify-center px-0" : "px-4"}
               `}
                         title={isCollapsed ? "Toggle Theme" : ""}

@@ -58,12 +58,12 @@ export default function LeadsPage() {
                             placeholder="Search leads..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                            className="w-full bg-foreground/5 border border-border rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-foreground"
                         />
                     </div>
                     <button 
                         onClick={downloadCSV}
-                        className="bg-white/10 hover:bg-white/15 border border-white/10 text-white px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-lg"
+                        className="bg-foreground/10 hover:bg-foreground/15 border border-border text-foreground px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all shadow-lg"
                     >
                         <Download size={16} /> Export CSV
                     </button>
@@ -75,7 +75,7 @@ export default function LeadsPage() {
                     <Loader2 className="animate-spin text-indigo-500/40" size={32} />
                 </div>
             ) : leads.length === 0 ? (
-                <div className="bg-background/50 border border-white/5 rounded-2xl p-20 flex flex-col items-center justify-center text-center shadow-xl">
+                <div className="bg-card border border-border rounded-2xl p-20 flex flex-col items-center justify-center text-center shadow-xl">
                     <div className="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-4">
                         <Users size={32} />
                     </div>
@@ -83,10 +83,10 @@ export default function LeadsPage() {
                     <p className="text-foreground/50 text-sm max-w-xs">Start scraping groups to collect potential leads for your campaigns.</p>
                 </div>
             ) : (
-                <div className="bg-background/80 backdrop-blur-3xl border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-2xl">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
-                            <thead className="bg-white/5 border-b border-white/5">
+                            <thead className="bg-foreground/[0.02] border-b border-border">
                                 <tr>
                                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-foreground/40">Name</th>
                                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-foreground/40">Username</th>
@@ -95,9 +95,9 @@ export default function LeadsPage() {
                                     <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-foreground/40 text-right">Action</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-white/5">
+                            <tbody className="divide-y divide-border">
                                 {filteredLeads.map((lead) => (
-                                    <tr key={lead.id} className="hover:bg-white/[0.02] transition-colors group">
+                                    <tr key={lead.id} className="hover:bg-foreground/[0.02] transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-indigo-400 text-xs font-bold border border-indigo-500/10">
@@ -110,7 +110,7 @@ export default function LeadsPage() {
                                         <td className="px-6 py-4 text-sm text-foreground/40">{lead.group_id}</td>
                                         <td className="px-6 py-4 text-xs text-foreground/30">
                                             <div className="flex items-center gap-2">
-                                                <Calendar size={12} /> {new Date(lead.created_at).toLocaleDateString()}
+                                                <Calendar size={12} /> {new Date(lead.created_at + (lead.created_at.includes('Z') ? '' : 'Z')).toLocaleDateString()}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-right">

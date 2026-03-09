@@ -222,12 +222,12 @@ export default function ScraperPage() {
                     </div>
                 </form>
 
-                <div className="bg-white/5 border border-white/5 p-1.5 rounded-2xl flex gap-1 h-fit mb-1">
+                <div className="bg-foreground/5 border border-border p-1.5 rounded-2xl flex gap-1 h-fit mb-1">
                     {(['all', 'group', 'channel'] as const).map((t) => (
                         <button
                             key={t}
                             onClick={() => setFilter(t)}
-                            className={`px-6 py-2 rounded-xl text-xs font-bold capitalize transition-all ${filter === t ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                            className={`px-6 py-2 rounded-xl text-xs font-bold capitalize transition-all ${filter === t ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-foreground/40 hover:text-foreground hover:bg-foreground/5'}`}
                         >
                             {t}s
                         </button>
@@ -296,7 +296,7 @@ export default function ScraperPage() {
                                             </div>
                                         </td>
                                         <td className="p-4">
-                                            <span className="text-[10px] font-black text-foreground/40 uppercase tracking-widest bg-white/5 border border-white/5 px-2.5 py-1.5 rounded-lg">
+                                            <span className="text-[10px] font-black text-foreground/40 uppercase tracking-widest bg-foreground/5 border border-border px-2.5 py-1.5 rounded-lg">
                                                 {result.type}
                                             </span>
                                         </td>
@@ -318,7 +318,7 @@ export default function ScraperPage() {
                                             <div className="flex items-center justify-end gap-2">
                                                 <button
                                                     onClick={() => handleExtractMembers(result.username || result.id.toString())}
-                                                    className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all border border-white/5"
+                                                    className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all border border-border"
                                                 >
                                                     Extract
                                                 </button>
@@ -371,7 +371,7 @@ export default function ScraperPage() {
                             ) : extractedMembers.length > 0 ? (
                                 <div className="space-y-3">
                                     {extractedMembers.map((member, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-foreground/5 border border-border">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-500 flex items-center justify-center text-xs font-bold">
                                                     {member.first_name?.[0] || 'U'}

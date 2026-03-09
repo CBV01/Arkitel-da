@@ -9,3 +9,5 @@ passlib[bcrypt]
 python-multipart
 python-jose[cryptography]
 httpx
+beautifulsoup4
+lxml

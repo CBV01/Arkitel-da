@@ -119,8 +119,8 @@ export default function AccountsPage() {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             <header className="flex justify-between items-center mb-10">
                 <div>
-                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-white font-sans">Telegram Fleet</h2>
-                    <p className="text-sm text-white/40 font-medium tracking-tight">Manage your autonomous identity cluster.</p>
+                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground font-sans">Telegram Fleet</h2>
+                    <p className="text-sm text-foreground/40 font-medium tracking-tight">Manage your autonomous identity cluster.</p>
                 </div>
                 <button
                     onClick={() => {
@@ -136,15 +136,15 @@ export default function AccountsPage() {
             {fetchingAccounts ? (
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
                     <Loader2 className="animate-spin text-indigo-500/40" size={40} />
-                    <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Accessing Fleet Data...</p>
+                    <p className="text-[10px] font-bold text-foreground/20 uppercase tracking-widest">Accessing Fleet Data...</p>
                 </div>
             ) : accounts.length === 0 ? (
-                <div className="bg-[#0b0c10] border border-dashed border-white/10 rounded-[32px] p-24 text-center shadow-2xl">
-                    <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6 text-white/10">
+                <div className="bg-card border border-dashed border-border rounded-[32px] p-24 text-center shadow-2xl">
+                    <div className="w-20 h-20 bg-foreground/5 rounded-full flex items-center justify-center mx-auto mb-6 text-foreground/10">
                         <Users size={40} />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">No Active Accounts</h3>
-                    <p className="text-sm text-white/30 max-w-xs mx-auto mb-8 font-medium italic">Your automation cluster is currently empty. Connect your first account to begin broadcasting.</p>
+                    <h3 className="text-xl font-bold text-foreground mb-2">No Active Accounts</h3>
+                    <p className="text-sm text-foreground/30 max-w-xs mx-auto mb-8 font-medium italic">Your automation cluster is currently empty. Connect your first account to begin broadcasting.</p>
                     <button
                         onClick={() => setIsConnecting(true)}
                         className="text-indigo-400 font-bold hover:text-indigo-300 transition-colors uppercase tracking-widest text-xs"
@@ -155,7 +155,7 @@ export default function AccountsPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
                     {accounts.map((acc, idx) => (
-                        <div key={idx} className="bg-[#0b0c10] border border-white/5 rounded-[28px] p-6 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden">
+                        <div key={idx} className="bg-card border border-border rounded-[28px] p-6 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10"></div>
                             
                             <div className="flex items-center gap-4 mb-6 relative z-10">
@@ -163,33 +163,33 @@ export default function AccountsPage() {
                                     {(acc.phone_number?.slice(-2) || 'N').toUpperCase()}
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <h4 className="font-bold text-white text-lg tracking-tight truncate">{acc.phone_number}</h4>
+                                    <h4 className="font-bold text-foreground text-lg tracking-tight truncate">{acc.phone_number}</h4>
                                     <div className="flex items-center gap-2">
                                         <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                                         <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/70">NODE ACTIVE</span>
                                     </div>
                                 </div>
-                                <button className="p-2.5 rounded-xl bg-white/5 text-white/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-white/5">
+                                <button className="p-2.5 rounded-xl bg-foreground/5 text-foreground/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-border">
                                     <X size={16} />
                                 </button>
                             </div>
 
                             <div className="space-y-4 relative z-10">
-                                <div className="flex justify-between items-center py-3 border-b border-white/5">
-                                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.1em]">Identity Lock</span>
-                                    <span className="text-xs font-mono text-white/60">API-{acc.api_id?.slice(0, 4) || '••••'}</span>
+                                <div className="flex justify-between items-center py-3 border-b border-border">
+                                    <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Identity Lock</span>
+                                    <span className="text-xs font-mono text-foreground/60">API-{acc.api_id?.slice(0, 4) || '••••'}</span>
                                 </div>
                                 <div className="flex justify-between items-center py-1">
-                                    <span className="text-[10px] font-bold text-white/30 uppercase tracking-[0.1em]">Payload Capacity</span>
-                                    <span className="text-xs font-bold text-white/80">Unlimited</span>
+                                    <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Payload Capacity</span>
+                                    <span className="text-xs font-bold text-foreground/80">Unlimited</span>
                                 </div>
                             </div>
 
-                            <div className="mt-6 pt-6 border-t border-white/5 flex gap-2 relative z-10">
-                                <button className="flex-1 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/5">
+                            <div className="mt-6 pt-6 border-t border-border flex gap-2 relative z-10">
+                                <button className="flex-1 bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-border">
                                     Session Dump
                                 </button>
-                                <button className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/10">
+                                <button className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/10">
                                     Auth Valid
                                 </button>
                             </div>
@@ -201,9 +201,9 @@ export default function AccountsPage() {
             {/* Connection Modal Overlay */}
             {isConnecting && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-background border border-white/10 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="bg-background border border-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                         {/* Modal Header */}
-                        <div className="flex justify-between items-center p-6 border-b border-white/5">
+                        <div className="flex justify-between items-center p-6 border-b border-border">
                             <h3 className="font-semibold text-lg text-foreground">Connect Telegram</h3>
                             <button
                                 onClick={() => { setIsConnecting(false); setStep('phone'); setError(''); }}

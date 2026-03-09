@@ -17,6 +17,13 @@ import re
 import ast
 import traceback
 from contextlib import asynccontextmanager
+import httpx  # pyre-ignore[21]
+try:
+    from bs4 import BeautifulSoup  # type: ignore
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
+    print("WARNING: beautifulsoup4 not installed. Directory scraping disabled. Run: pip install beautifulsoup4 lxml")
 
 # Telethon Imports
 from telethon.sync import TelegramClient  # type: ignore
@@ -42,7 +49,7 @@ async def lifespan(app: FastAPI):
     # Startup logic
     print("CORE: Initializing Database Schema...")
     try:
-        from database import init_db # type: ignore
+        from database import init_db  # type: ignore
         init_db()
         print("CORE: Database Schema Initialized.")
     except Exception as e:
@@ -359,22 +366,110 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
     print(f"AUTH_ISOLATION: User {user_id} fetched {len(accounts)} accounts.")
     return {"accounts": accounts}
 
-@app.get("/api/telegram/scrape")
-async def scrape_keyword(query: str, limit: int = 1000, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
-    conn = get_db_connection()
-    if phone_number:
-        # Use specific account
-        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
-    else:
-        # Use ALL accounts to maximize results
-        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchall()
-    
-    if not rows: raise HTTPException(status_code=404, detail="No active accounts found.")
-    
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HYBRID SCRAPER HELPERS  (Layer 2 & 3: web directories)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SCRAPER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+async def _scrape_lyzem(query: str, max_pages: int = 10) -> List[Dict[str, Any]]:
+    """Scrape lyzem.com custom search engine for Telegram. Verified working."""
+    if not BS4_AVAILABLE:
+        return []
+    results: List[Dict[str, Any]] = []
+    seen: set = set()
+    try:
+        async with httpx.AsyncClient(headers=SCRAPER_HEADERS, timeout=15, follow_redirects=True) as client:
+            for page in range(1, max_pages + 1):
+                url = f"https://lyzem.com/search?q={query}&p={page}"
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        break
+                    
+                    soup = BeautifulSoup(resp.text, "lxml")
+                    # Lyzem typically has <a> tags linking to telegram
+                    links = soup.select("a[href*='t.me/']")
+                    
+                    found_on_page = 0
+                    for link in links:
+                        href = link.get("href", "")
+                        m = re.search(r'(?:t\.me|telegram\.me)/([^/?#\s]+)', href)
+                        if not m:
+                            continue
+                        
+                        username = m.group(1).lower()
+                        if username in seen or username.lower() in ('joinchat', 'share', 'addstickers', 'iv'):
+                            continue
+                            
+                        seen.add(username)
+                        
+                        # Find the parent container to extract title and members if possible
+                        parent = link.find_parent("div", class_=re.compile(r'result|card|item'))
+                        title = link.get_text(strip=True) or username
+                        
+                        members = 0
+                        if parent:
+                            members_text = parent.get_text()
+                            m_match = re.search(r'([\d,]+)\s*(?:subscribers|members)', members_text, re.IGNORECASE)
+                            if m_match:
+                                members = int(re.sub(r'\D', '', m_match.group(1)))
+                                
+                        results.append({
+                            "id": f"@{username}",
+                            "title": title,
+                            "username": username,
+                            "participants_count": members,
+                            "type": "channel", # Lyzem mostly indexes channels
+                            "is_private": False,
+                            "country": "Global",
+                            "global_shows": 1,
+                            "user_shows": 1,
+                            "source": "lyzem"
+                        })
+                        found_on_page += 1
+                        
+                    print(f"SCRAPER[lyzem] page {page}: +{found_on_page} results")
+                    if found_on_page == 0:
+                        break
+                    await asyncio.sleep(1.0) # Polite delay
+                except Exception as page_err:
+                    print(f"SCRAPER[lyzem] page {page} error: {page_err}")
+                    break
+    except Exception as e:
+        print(f"SCRAPER[lyzem] fatal error: {e}")
+    return results
+
+
+async def _scrape_telegram_search(base_query: str, rows: list) -> Dict[str, Dict[str, Any]]:
+    """Layer 1: Use Telegram API contacts.search with many keyword variations."""
     unique_groups: Dict[str, Dict[str, Any]] = {}
     
-    # Iterate through accounts to get as many results as possible
-    # Telegram results vary by account/region/trust
+    # Build maximally broad variation list
+    search_queries = [base_query]
+    suffixes = [
+        "official", "group", "channel", "community", "chat", "hub",
+        "network", "team", "zone", "world", "global", "vip", "pro",
+        "2", "3", "online", "free", "live", "top", "best", "new",
+        "real", "original", "main", "updates", "news", "info"
+    ]
+    for suffix in suffixes:
+        search_queries.append(f"{base_query} {suffix}")
+    
+    # Numeric variants for short single-word keywords
+    if " " not in base_query and len(base_query) < 15:
+        for n in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
+            search_queries.append(f"{base_query}{n}")
+
+    print(f"SCRAPER[telegram] {len(search_queries)} variations × {len(rows)} accounts = "
+          f"up to {len(search_queries) * len(rows) * 100} raw results")
+
     for row in rows:
         session_str, api_id, api_hash, acc_phone = row[0], int(row[1]), row[2], row[3]
         client = TelegramClient(StringSession(session_str), api_id, api_hash)
@@ -382,53 +477,235 @@ async def scrape_keyword(query: str, limit: int = 1000, phone_number: Optional[s
             await client.connect()
             if not await client.is_user_authorized():
                 continue
-            
-            # Requesting high limit. Merge with what we already have.
-            search_result = await client(SearchRequest(q=query, limit=limit))
-            
-            for chat in search_result.chats:
-                # We skip deleted chats but take everything else (even min objects)
-                if not chat: continue
-                
-                chat_id_str = str(getattr(chat, 'id', '0'))
-                if chat_id_str in unique_groups: continue
-                
-                is_private = getattr(chat, 'username', None) is None
-                
-                title = getattr(chat, 'title', 'Unknown')
-                username = getattr(chat, 'username', None)
-                
-                # Metadata extraction
-                participants_count = getattr(chat, 'participants_count', 0) or getattr(chat, 'megagroup_participants', 0) or 0
-                chat_type = 'channel' if getattr(chat, 'broadcast', False) else 'group'
-                
-                # Check history
-                conn2 = get_db_connection()
-                # Isolation: Ensure we track this for the specific user
-                conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (chat_id_str, user_id))
-                if hasattr(conn2, "commit"): conn2.commit()
-                global_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ?", (chat_id_str,)).fetchone()[0]
-                user_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ? AND user_id = ?", (chat_id_str, user_id)).fetchone()[0]
-                if hasattr(conn2, "close"): conn2.close()
-
-                unique_groups[chat_id_str] = {
-                    "id": chat_id_str,
-                    "title": title,
-                    "username": username,
-                    "participants_count": participants_count,
-                    "type": chat_type,
-                    "is_private": is_private,
-                    "country": "Global",
-                    "global_shows": global_count,
-                    "user_shows": user_count
-                }
+            for q in search_queries:
+                try:
+                    search_result = await client(SearchRequest(q=q, limit=100))
+                    for chat in search_result.chats:
+                        if not chat:
+                            continue
+                        chat_id_str = str(getattr(chat, 'id', '0'))
+                        if chat_id_str in unique_groups:
+                            continue
+                        is_private = getattr(chat, 'username', None) is None
+                        title = getattr(chat, 'title', 'Unknown')
+                        username = getattr(chat, 'username', None)
+                        participants_count = (
+                            getattr(chat, 'participants_count', 0)
+                            or getattr(chat, 'megagroup_participants', 0)
+                            or 0
+                        )
+                        chat_type = 'channel' if getattr(chat, 'broadcast', False) else 'group'
+                        unique_groups[chat_id_str] = {
+                            "id": chat_id_str,
+                            "title": title,
+                            "username": username,
+                            "participants_count": participants_count,
+                            "type": chat_type,
+                            "is_private": is_private,
+                            "country": "Global",
+                            "global_shows": 1,
+                            "user_shows": 1,
+                            "source": "telegram"
+                        }
+                    await asyncio.sleep(0.4)
+                except Exception as q_err:
+                    print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
+                    continue
         except Exception as e:
-            print(f"SCRAPER: Account {acc_phone} error: {e}")
+            print(f"SCRAPER[telegram] account {acc_phone} connection error: {e}")
         finally:
             await client.disconnect()
+    
+    return unique_groups
 
-    if hasattr(conn, "close"): conn.close()
-    return {"groups": list(unique_groups.values())}
+
+async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seeds: int = 15) -> List[Dict[str, Any]]:
+    """Layer 3: Spider Crawler. Reads recent messages of deep channels to find forwarded links and mentions."""
+    results = []
+    seen = set()
+    
+    # Extract public channels from the seed groups
+    public_seeds = [g for g in seed_groups if g.get('username') and not g.get('is_private')]
+    
+    # Sort by participants count to spider the largest groups (more likely to have ads/forwards)
+    public_seeds.sort(key=lambda x: int(x.get('participants_count', 0)), reverse=True)
+    targets = list(public_seeds)[:max_seeds]  # type: ignore
+    
+    if not targets or not rows:
+        return []
+        
+    print(f"SCRAPER[spider] Starting deep crawl on {len(targets)} prominent channels...")
+    
+    # Connect with the first available active account for spidering
+    session_str, api_id, api_hash, acc_phone = rows[0][0], int(rows[0][1]), rows[0][2], rows[0][3]
+    client = TelegramClient(StringSession(session_str), api_id, api_hash)
+    
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return []
+            
+        for seed in targets:
+            try:
+                username = seed['username']
+                entity = await client.get_entity(username)
+                
+                # Get last 50 messages
+                messages = await client.get_messages(entity, limit=50)  # type: ignore
+                
+                found_in_seed: int = 0
+                for msg in messages:  # type: ignore
+                    # Look for forwards
+                    if hasattr(msg, 'forward') and msg.forward and getattr(msg.forward, 'chat', None):  # type: ignore
+                        f_chat = msg.forward.chat  # type: ignore
+                        f_username = getattr(f_chat, 'username', None)
+                        if f_username:
+                            l_lower = f_username.lower()
+                            if l_lower not in seen:
+                                seen.add(l_lower)
+                                results.append({
+                                    "id": f"@{f_username}",
+                                    "title": getattr(f_chat, 'title', f_username),
+                                    "username": f_username,
+                                    "participants_count": getattr(f_chat, 'participants_count', 0) or getattr(f_chat, 'megagroup_participants', 0) or 0,
+                                    "type": 'channel' if getattr(f_chat, 'broadcast', False) else 'group',
+                                    "is_private": False,
+                                    "country": "Global",
+                                    "global_shows": 1,
+                                    "user_shows": 1,
+                                    "source": "spider"
+                                })
+                                found_in_seed = int(found_in_seed) + 1  # type: ignore
+                    
+                    # Look for t.me links or @mentions in text
+                    if msg.text:
+                        # Find t.me/xxxxx
+                        links = re.findall(r'(?:t\.me|telegram\.me)/([^/?#\s\'\"]+)', msg.text)
+                        # Find @xxxxx
+                        mentions = re.findall(r'@([a-zA-Z0-9_]{5,32})', msg.text)
+                        
+                        for l in links + mentions:
+                            l_lower = l.lower()
+                            if l_lower not in seen and l_lower not in ('joinchat', 'share', 'addstickers', 'iv'):
+                                seen.add(l_lower)
+                                results.append({
+                                    "id": f"@{l_lower}",
+                                    "title": l,
+                                    "username": l_lower,
+                                    "participants_count": 0,
+                                    "type": "channel", # guess
+                                    "is_private": False,
+                                    "country": "Global",
+                                    "global_shows": 1,
+                                    "user_shows": 1,
+                                    "source": "spider"
+                                })
+                                found_in_seed = int(found_in_seed) + 1  # type: ignore
+                
+                if int(found_in_seed) > 0:  # type: ignore
+                    print(f"SCRAPER[spider] Crawled @{username} -> found {found_in_seed} new links")
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                # Expected if channel is private or deleted
+                continue
+                
+    except Exception as e:
+        print(f"SCRAPER[spider] Fatal error: {e}")
+    finally:
+        await client.disconnect()
+
+    return results
+
+
+@app.get("/api/telegram/scrape")
+async def scrape_keyword(
+    query: str,
+    limit: int = 100,
+    phone_number: Optional[str] = None,
+    user_id: str = Depends(get_current_user_id)
+):
+    conn = get_db_connection()
+    if phone_number:
+        rows = conn.execute(
+            "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?",
+            (phone_number, user_id)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'",
+            (user_id,)
+        ).fetchall()
+    if hasattr(conn, "close"):
+        conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No active accounts found.")
+
+    base_query = query.strip()
+
+    # Run layers concurrently
+    print(f"SCRAPER: Starting hybrid search for '{base_query}' (Telegram API + Lyzem Crawler)")
+    telegram_task = asyncio.create_task(_scrape_telegram_search(base_query, rows))
+    lyzem_task    = asyncio.create_task(_scrape_lyzem(base_query, max_pages=10))
+
+    telegram_results, lyzem_results = await asyncio.gather(
+        telegram_task, lyzem_task, return_exceptions=True
+    )
+
+    # Merge — Telegram results keyed by numeric ID, directory results keyed by @username
+    unique_groups: Dict[str, Dict[str, Any]] = {}
+
+    if isinstance(telegram_results, dict):
+        unique_groups.update(telegram_results)
+
+    for item in (lyzem_results if isinstance(lyzem_results, list) else []):
+        key = f"@{item.get('username', '')}"
+        if key not in unique_groups and item.get('username'):
+            unique_groups[key] = item
+
+    # Record all discovered channels into scrape_history
+    conn2 = get_db_connection()
+    for gid in unique_groups:
+        conn2.execute(
+            "INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)",
+            (gid, user_id)
+        )
+    if hasattr(conn2, "commit"):
+        conn2.commit()
+    if hasattr(conn2, "close"):
+        conn2.close()
+
+    # LAYER 3: Spider Crawler
+    # Now that we have the base unique_groups from Layer 1 & 2, run Spider crawler to find deeper connections
+    print(f"SCRAPER: Starting Layer 3 (Spider Crawler) based on top results...")
+    spider_results = await _scrape_spider(list(unique_groups.values()), rows)
+    for item in spider_results:
+        key = f"@{item.get('username', '')}"
+        if key not in unique_groups and item.get('username'):
+            unique_groups[key] = item
+            
+    # Record spider discoveries to scrape_history
+    conn3 = get_db_connection()
+    for item in spider_results:
+        gid = item.get('id')
+        if gid:
+            conn3.execute(
+                "INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)",
+                (gid, user_id)
+            )
+    if hasattr(conn3, "commit"):
+        conn3.commit()
+    if hasattr(conn3, "close"):
+        conn3.close()
+
+    final_list = list(unique_groups.values())
+    print(f"SCRAPER: Done — {len(final_list)} unique results for '{base_query}' "
+          f"(TG:{len(telegram_results) if isinstance(telegram_results, dict) else 0} "
+          f"Lyzem:{len(lyzem_results) if isinstance(lyzem_results, list) else 0} "
+          f"Spider:{len(spider_results)})")
+
+    return {"groups": final_list}
 
 class BulkJoinRequest(BaseModel):
     group_ids: list[str]
@@ -563,7 +840,7 @@ async def get_campaigns(user_id: str = Depends(get_current_user_id)):
     
     return {
         "campaigns": [
-            dict(id=t[0], phone_number=t[1], schedule_time=t[2], message=t[3], groups=t[4], status=t[5]) 
+            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5]) 
             for t in tasks
         ]
     }
@@ -572,12 +849,17 @@ async def get_campaigns(user_id: str = Depends(get_current_user_id)):
 async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     try:
+        # The schedule_time sent by the frontend must already be in UTC.
+        # Frontend converts datetime-local (local time) -> UTC before sending.
+        # We store it as-is and the poller compares against datetime.now(timezone.utc).
+        now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M')
+        print(f"CAMPAIGN: New campaign '{req.name}' | Scheduled(UTC): {req.schedule_time} | Server UTC now: {now_utc}")
         conn.execute(
             "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (user_id, req.name, req.phone_number, req.schedule_time, req.message, str(req.groups), "pending", req.interval_hours)
         )
         if hasattr(conn, "commit"): conn.commit()
-        return {"status": "success", "message": "Campaign scheduled successfully."}
+        return {"status": "success", "message": f"Campaign scheduled for {req.schedule_time} UTC."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
@@ -810,118 +1092,101 @@ async def root():
     return {"status": "ok", "message": "Telegram Automation API is running"}
 
 async def task_poller():
+    active_tasks = set()
+
+    async def run_single_task(task_id, message, groups_str, phone_num, u_id, interval):
+        try:
+            # Update status to 'processing'
+            conn = get_db_connection()
+            conn.execute("UPDATE tasks SET status = 'processing' WHERE id = ?", (task_id,))
+            if hasattr(conn, "commit"): conn.commit()
+            
+            acc = conn.execute(
+                "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", 
+                (phone_num, u_id)
+            ).fetchone()
+            if hasattr(conn, "close"): conn.close()
+
+            if not acc:
+                print(f"BKG: No account for task {task_id}")
+                return
+
+            session_str, api_id, api_hash = acc[0], int(acc[1]), acc[2]
+            client = TelegramClient(StringSession(session_str), api_id, api_hash)
+            await client.connect()
+            
+            import ast
+            try:
+                target_groups = ast.literal_eval(groups_str)
+            except:
+                target_groups = [groups_str] if groups_str else []
+
+            for group in target_groups:
+                try:
+                    await asyncio.sleep(random.uniform(2.0, 5.0))
+                    
+                    def spin(match):
+                        options = match.group(1).split('|')
+                        return random.choice(options)
+                    spinned_message = re.sub(r'\{([^{}]*)\}', spin, message)
+                    
+                    await client.send_message(group, spinned_message)
+                    await asyncio.sleep(random.randint(45, 120))
+                except Exception as group_err:
+                    print(f"BKG: Task {task_id} Group Error ({group}): {group_err}")
+                    if "FloodWaitError" in str(group_err): break
+            
+            await client.disconnect()
+
+            # Mark completed OR Re-schedule
+            conn = get_db_connection()
+            if interval > 0:
+                new_time = (datetime.now(timezone.utc) + timedelta(hours=interval)).isoformat()
+                conn.execute("UPDATE tasks SET status = 'pending', scheduled_time = ? WHERE id = ?", (new_time, task_id))
+                print(f"BKG: Task {task_id} rescheduled for {new_time}")
+            else:
+                conn.execute("UPDATE tasks SET status = 'completed' WHERE id = ?", (task_id,))
+                print(f"BKG: Task {task_id} marked COMPLETED")
+            
+            if hasattr(conn, "commit"): conn.commit()
+            if hasattr(conn, "close"): conn.close()
+
+        except Exception as e:
+            print(f"BKG: Task {task_id} FATAL error: {e}")
+            conn = get_db_connection()
+            conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
+            if hasattr(conn, "commit"): conn.commit()
+            if hasattr(conn, "close"): conn.close()
+        finally:
+            active_tasks.remove(task_id)
+
     while True:
         try:
             conn = get_db_connection()
-            # USE UTC FOR EVERYTHING. This syncs backend (server) with frontend (browser).
             now_dt = datetime.now(timezone.utc)
             now_str = now_dt.strftime('%Y-%m-%dT%H:%M')
             
-            # Check for ANY pending tasks
-            all_pending = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").fetchone()
-            count = all_pending[0] if all_pending else 0
-            
-            # Only pick pending tasks that are due now or in the past
             tasks = conn.execute(
                 "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours, scheduled_time FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
                 (now_str,)
             ).fetchall()
-            
-            if len(tasks) > 0:
-                print(f"BKG_POLLER: Found {len(tasks)} tasks READY to send (Trigger: UTC {now_str})")
-            elif count > 0:
-                # Log the next one coming up to help user verify sync
-                next_task = conn.execute("SELECT scheduled_time FROM tasks WHERE status = 'pending' ORDER BY scheduled_time ASC LIMIT 1").fetchone()
-                if next_task:
-                    print(f"BKG_POLLER: No tasks ready. Next up in DB: {next_task[0]} (Current Server UTC: {now_str})")
-
             if hasattr(conn, "close"): conn.close()
-
-            for task_id, message, groups_str, phone_num, u_id, interval in tasks:
-                print(f"BKG: Processing task {task_id} for user {u_id}")
-                
-                # Update status to 'processing'
-                conn = get_db_connection()
-                conn.execute("UPDATE tasks SET status = 'processing' WHERE id = ?", (task_id,))
-                if hasattr(conn, "commit"): conn.commit()
-                
-                # Fetch account for this task
-                acc = conn.execute(
-                    "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", 
-                    (phone_num, u_id)
-                ).fetchone()
-                if hasattr(conn, "close"): conn.close()
-
-                if not acc:
-                    print(f"BKG: No account for {task_id}")
-                    continue
-
-                session_str, api_id, api_hash = acc[0], int(acc[1]), acc[2]
-                
-                try:
-                    # Session string session client
-                    client = TelegramClient(StringSession(session_str), api_id, api_hash)
-                    await client.connect()
-                    
-                    import ast
-                    try:
-                        target_groups = ast.literal_eval(groups_str)
-                    except:
-                        target_groups = [groups_str] if groups_str else []
-
-                    for group in target_groups:
-                        try:
-                            # 1. Human-like "Typing" delay
-                            typing_delay = random.uniform(2.0, 5.0)
-                            print(f"BKG: {u_id} simulating typing for {typing_delay:.1f}s...")
-                            await asyncio.sleep(typing_delay)
-
-                            # 2. Spintax support {hi|hello}
-                            def spin(match):
-                                options = match.group(1).split('|')
-                                return random.choice(options)
-                            spinned_message = re.sub(r'\{([^{}]*)\}', spin, message)
-                            
-                            await client.send_message(group, spinned_message)
-                            
-                            # 3. Inter-message randomized delay (Human interval)
-                            delay = random.randint(45, 150) # Increased delay for safety
-                            print(f"BKG: {u_id} sent to {group}. Next in {delay}s...")
-                            await asyncio.sleep(delay)
-                        except Exception as group_err:
-                            print(f"BKG: Group Error ({group}): {group_err}")
-                            if "FloodWaitError" in str(group_err):
-                                # If we hit flood wait, stop this task for now
-                                break
-                    
-                    await client.disconnect()
-
-                    # Mark completed OR Re-schedule
-                    conn = get_db_connection()
-                    if interval > 0:
-                        new_time = (datetime.now() + timedelta(hours=interval)).isoformat()
-                        conn.execute("UPDATE tasks SET status = 'pending', scheduled_time = ? WHERE id = ?", (new_time, task_id))
-                        print(f"BKG: Task {task_id} rescheduled for {new_time}")
-                    else:
-                        conn.execute("UPDATE tasks SET status = 'completed' WHERE id = ?", (task_id,))
-                    
-                    if hasattr(conn, "commit"): conn.commit()
-                    if hasattr(conn, "close"): conn.close()
-                except Exception as task_err:
-                    print(f"BKG: Task {task_id} failed: {task_err}")
-                    conn = get_db_connection()
-                    conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
-                    if hasattr(conn, "commit"): conn.commit()
-                    if hasattr(conn, "close"): conn.close()
-
+            
+            for t in tasks:
+                task_id = t[0]
+                if task_id not in active_tasks:
+                    active_tasks.add(task_id)
+                    # Start task in background
+                    asyncio.create_task(run_single_task(*t))
+                    print(f"BKG: Launched task {task_id}")
+            
         except Exception as e:
             print(f"BKG: Poller major error: {e}")
         
-        await asyncio.sleep(60) # Poll every minute
+        await asyncio.sleep(30) # Poll every 30 seconds
 
     print("CORE: System Ready.")
 
 if __name__ == "__main__":
     import uvicorn  # type: ignore
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 

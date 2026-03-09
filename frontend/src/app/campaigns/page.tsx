@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 
 export default function CampaignsPage() {
@@ -64,7 +64,7 @@ export default function CampaignsPage() {
         }
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         const fetchAccounts = async () => {
             try {
                 const res = await apiFetch('/api/telegram/accounts');
@@ -98,17 +98,30 @@ export default function CampaignsPage() {
             return;
         }
 
-        // SYNC TIME: Convert local time picking to UTC for the backend poller
-        // Date.toISOString() gives YYYY-MM-DDTHH:mm:ss.sssZ (always in UTC)
-        const utcScheduleTime = new Date(campaignData.schedule_time).toISOString().slice(0, 16);
+        // ROBUST UTC CONVERSION
+        // The datetime-local input gives "YYYY-MM-DDTHH:mm" in the user's LOCAL timezone.
+        // We must convert this to UTC before sending to the backend poller (which runs in UTC).
+        // We do explicit arithmetic using getTimezoneOffset() to avoid browser inconsistencies.
+        const localDate = new Date(campaignData.schedule_time);
+        // getTimezoneOffset() returns (UTC - local) in minutes.
+        // e.g. for UTC+1: offset = -60. UTC = local + (-60 min), which is local - 1h.
+        const utcMs = localDate.getTime() + (localDate.getTimezoneOffset() * 60 * 1000);
+        const utcDate = new Date(utcMs);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const utcScheduleTime = `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth()+1)}-${pad(utcDate.getUTCDate())}T${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}`;
+
+        console.log(`[Campaign] Local: ${campaignData.schedule_time} → UTC: ${utcScheduleTime}`);
 
         setLoading(true);
         try {
             const res = await apiFetch('/api/telegram/campaigns', {
                 method: 'POST',
                 body: JSON.stringify({
-                    ...campaignData,
-                    schedule_time: utcScheduleTime,
+                    name: campaignData.name,
+                    phone_number: campaignData.phone_number,
+                    schedule_time: utcScheduleTime, // Backend expects 'schedule_time' (no 'd')
+                    message: campaignData.message,
+                    interval_hours: parseInt(campaignData.interval_hours),
                     groups: selectedGroups
                 })
             });
@@ -138,16 +151,21 @@ export default function CampaignsPage() {
         }
     };
 
+    const filteredDialogs = dialogs.filter(d => 
+        d.title?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        d.id?.toString().includes(searchTerm)
+    );
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             <header className="flex justify-between items-center mb-10">
                 <div>
-                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-white">Campaigns</h2>
-                    <p className="text-sm text-white/40 font-medium">Underground scheduling for autonomous broadcasts.</p>
+                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground">Campaigns</h2>
+                    <p className="text-sm text-foreground/40 font-medium">Underground scheduling for autonomous broadcasts.</p>
                 </div>
                 <button
                     onClick={() => setIsCreating(true)}
-                    className="bg-[#7c7fff] hover:bg-[#6c6fef] transition-all text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-[#7c7fff]/20 active:scale-95 flex items-center gap-2"
+                    className="bg-indigo-500 hover:bg-indigo-600 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2"
                 >
                     <Plus size={16} /> New Campaign
                 </button>
@@ -155,19 +173,19 @@ export default function CampaignsPage() {
 
             {loadingTasks ? (
                 <div className="flex flex-col items-center justify-center py-24 gap-4">
-                    <Loader2 className="animate-spin text-[#7c7fff]" size={40} />
-                    <p className="text-sm font-bold text-white/20 uppercase tracking-widest">Reading Archive...</p>
+                    <Loader2 className="animate-spin text-indigo-500" size={40} />
+                    <p className="text-sm font-bold text-foreground/20 uppercase tracking-widest">Reading Archive...</p>
                 </div>
             ) : campaigns.length === 0 ? (
-                <div className="bg-[#0b0c10] border border-white/[0.05] rounded-[24px] p-20 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden">
-                    <div className="w-20 h-20 rounded-2xl bg-white/[0.03] flex items-center justify-center text-[#7c7fff] mb-6 border border-white/[0.05] ring-8 ring-white/[0.01]">
+                <div className="bg-card border border-border rounded-[24px] p-20 flex flex-col items-center justify-center text-center shadow-2xl relative overflow-hidden">
+                    <div className="w-20 h-20 rounded-2xl bg-foreground/[0.03] flex items-center justify-center text-indigo-500 mb-6 border border-border ring-8 ring-foreground/[0.01]">
                         <Megaphone className="w-10 h-10" />
                     </div>
-                    <h3 className="text-2xl font-bold text-white mb-3">No active campaigns</h3>
-                    <p className="text-sm text-white/40 max-w-sm mb-10 leading-relaxed font-medium">Deploy your first broadcast campaign to start reaching groups autonomously.</p>
+                    <h3 className="text-2xl font-bold text-foreground mb-3">No active campaigns</h3>
+                    <p className="text-sm text-foreground/40 max-w-sm mb-10 leading-relaxed font-medium">Deploy your first broadcast campaign to start reaching groups autonomously.</p>
                     <button
                         onClick={() => setIsCreating(true)}
-                        className="bg-white/5 hover:bg-white/10 transition-all text-white px-8 py-3.5 rounded-xl text-sm font-bold border border-white/[0.05]"
+                        className="bg-card hover:bg-foreground/[0.05] transition-all text-foreground px-8 py-3.5 rounded-xl text-sm font-bold border border-border"
                     >
                         Create My First Campaign
                     </button>
@@ -175,31 +193,29 @@ export default function CampaignsPage() {
             ) : (
                 <div className="grid grid-cols-1 gap-5">
                     {campaigns.map((camp) => (
-                        <div key={camp.id} className="bg-[#0b0c10] border border-white/[0.05] rounded-[20px] p-7 flex items-center justify-between group hover:border-[#7c7fff]/30 transition-all shadow-xl">
-                            <div className="flex items-center gap-6">
-                                <div className="w-14 h-14 rounded-xl bg-[#7c7fff]/5 border border-[#7c7fff]/10 flex items-center justify-center text-[#7c7fff] group-hover:scale-105 transition-transform duration-500">
-                                    <Megaphone size={28} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <h4 className="font-bold text-white text-lg tracking-tight">{camp.phone_number}</h4>
-                                    <div className="flex items-center gap-4">
-                                        <p className="text-xs text-white/30 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                                            <Calendar size={13} className="text-[#7c7fff]" /> {new Date(camp.schedule_time).toLocaleDateString()}
-                                        </p>
-                                        <div className="h-1 w-1 rounded-full bg-white/10"></div>
-                                        <p className="text-xs text-white/30 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                                            <Clock size={13} className="text-[#7c7fff]" /> {new Date(camp.schedule_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </p>
+                        <div key={camp.id} className="bg-card border border-border rounded-[24px] p-6 hover:border-indigo-500/30 transition-all shadow-xl group">
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-6">
+                                    <div className="w-14 h-14 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-500 group-hover:scale-105 transition-transform duration-500">
+                                        <Megaphone size={28} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <h4 className="font-bold text-foreground text-lg tracking-tight">{camp.phone_number}</h4>
+                                        <div className="flex items-center gap-4">
+                                            <p className="text-xs text-foreground/40 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                                                <Calendar size={13} className="text-indigo-500" /> {new Date(camp.scheduled_time + (camp.scheduled_time.includes('Z') ? '' : 'Z')).toLocaleString()}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="flex items-center gap-12">
-                                <div className="hidden lg:block text-right">
-                                    <p className="text-[10px] uppercase tracking-[0.2em] text-white/20 font-black mb-1.5">Payload Preview</p>
-                                    <p className="text-xs text-white/40 max-w-[220px] truncate italic font-medium">"{camp.message}"</p>
-                                </div>
-                                <div className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider border shadow-sm ${getStatusColor(camp.status)}`}>
-                                    {camp.status}
+                                <div className="flex items-center gap-12">
+                                    <div className="hidden lg:block text-right">
+                                        <p className="text-[10px] uppercase tracking-[0.2em] text-foreground/20 font-black mb-1.5">Payload Preview</p>
+                                        <p className="text-xs text-foreground/40 max-w-[220px] truncate italic font-medium">"{camp.message_text || camp.message || 'No text'}"</p>
+                                    </div>
+                                    <div className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider border shadow-sm ${getStatusColor(camp.status)}`}>
+                                        {camp.status}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -210,45 +226,35 @@ export default function CampaignsPage() {
             {/* Campaign Modal Overlay */}
             {isCreating && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 overflow-y-auto">
-                    <div className="bg-[#0b0c10] border border-white/[0.08] rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 my-auto">
-                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-[#7c7fff] to-transparent"></div>
+                    <div className="bg-card border border-border rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 my-auto">
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
                         
-                        {/* Modal Header */}
-                        <div className="flex justify-between items-center p-8 border-b border-white/[0.05]">
+                        <div className="flex justify-between items-center p-8 border-b border-border">
                             <div className="flex items-center gap-4">
-                                <div className="p-3 bg-[#7c7fff]/10 rounded-2xl text-[#7c7fff]">
+                                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
                                     <Megaphone size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-xl text-white tracking-tight">Create Underground Campaign</h3>
-                                    <p className="text-xs text-white/30 font-medium">Configure autonomous broadcasting parameters.</p>
+                                    <h3 className="font-bold text-xl text-foreground tracking-tight">Create Underground Campaign</h3>
+                                    <p className="text-xs text-foreground/30 font-medium">Configure autonomous broadcasting parameters.</p>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setIsCreating(false)}
-                                className="text-white/20 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-full"
-                            >
-                                <X size={24} />
-                            </button>
+                            <button onClick={() => setIsCreating(false)} className="text-foreground/20 hover:text-foreground p-2 hover:bg-foreground/5 rounded-full"><X size={24} /></button>
                         </div>
 
-                        {/* Modal Body */}
                         <div className="p-8">
                             {success ? (
-                                <div className="text-center py-20 animate-in zoom-in-95 duration-500">
-                                    <div className="w-20 h-20 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 ring-[12px] ring-emerald-500/5">
-                                        <CheckCircle2 size={40} />
-                                    </div>
-                                    <h4 className="text-2xl font-bold text-white mb-3 tracking-tight">Transmission Scheduled</h4>
-                                    <p className="text-sm text-white/40 font-medium">Your campaign has been successfully queued for the poller.</p>
+                                <div className="text-center py-20">
+                                    <div className="w-20 h-20 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={40} /></div>
+                                    <h4 className="text-2xl font-bold text-foreground mb-3">Transmission Scheduled</h4>
+                                    <p className="text-sm text-foreground/40">Your campaign has been successfully queued.</p>
                                 </div>
                             ) : (
                                 <form onSubmit={handleSubmit} className="space-y-8">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        {/* Left Column: Account & Time */}
                                         <div className="space-y-6">
                                             <div className="space-y-2">
-                                                <label className="text-xs font-bold text-white/30 uppercase tracking-[0.15em]">Sending Account</label>
+                                                <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Sending Account</label>
                                                 <select
                                                     required
                                                     value={campaignData.phone_number}
@@ -257,32 +263,30 @@ export default function CampaignsPage() {
                                                         setCampaignData({ ...campaignData, phone_number: val });
                                                         fetchDialogs(val);
                                                     }}
-                                                    className="w-full bg-[#1c2231] border border-white/[0.05] rounded-xl py-3.5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#7c7fff]/50 appearance-none font-medium"
+                                                    className="w-full bg-input border border-border rounded-xl py-3.5 px-4 text-sm text-foreground focus:ring-2 focus:ring-indigo-500/50 outline-none"
                                                 >
                                                     <option value="">Select an account...</option>
-                                                    {accounts.map((acc, idx) => (
-                                                        <option key={idx} value={acc.phone_number}>{acc.phone_number}</option>
-                                                    ))}
+                                                    {accounts.map((acc, idx) => (<option key={idx} value={acc.phone_number}>{acc.phone_number}</option>))}
                                                 </select>
                                             </div>
 
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-white/30 uppercase tracking-[0.15em]">First Run</label>
+                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">First Run (Local)</label>
                                                     <input
                                                         type="datetime-local"
                                                         required
                                                         value={campaignData.schedule_time}
                                                         onChange={(e) => setCampaignData({ ...campaignData, schedule_time: e.target.value })}
-                                                        className="w-full bg-[#1c2231] border border-white/[0.05] rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#7c7fff]/50 appearance-none [color-scheme:dark] font-medium"
+                                                        className="w-full bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground"
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-white/30 uppercase tracking-[0.15em]">Repeat (Hrs)</label>
+                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Repeat (Hrs)</label>
                                                     <select
                                                         value={campaignData.interval_hours}
                                                         onChange={(e) => setCampaignData({ ...campaignData, interval_hours: e.target.value })}
-                                                        className="w-full bg-[#1c2231] border border-white/[0.05] rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#7c7fff]/50 appearance-none font-medium text-center"
+                                                        className="w-full bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground"
                                                     >
                                                         <option value="0">No Repeat</option>
                                                         <option value="1">1 Hour</option>
@@ -294,117 +298,78 @@ export default function CampaignsPage() {
                                             </div>
 
                                             <div className="space-y-2">
-                                                <label className="text-xs font-bold text-white/30 uppercase tracking-[0.15em]">Message Payload</label>
+                                                <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Message Payload</label>
                                                 <textarea
                                                     rows={6}
                                                     required
                                                     value={campaignData.message}
                                                     onChange={(e) => setCampaignData({ ...campaignData, message: e.target.value })}
-                                                    placeholder="Enter broadcast message text..."
-                                                    className="w-full bg-[#1c2231] border border-white/[0.05] rounded-2xl p-5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#7c7fff]/50 resize-none font-medium leading-relaxed"
+                                                    placeholder="Enter message..."
+                                                    className="w-full bg-input border border-border rounded-2xl p-5 text-sm text-foreground resize-none"
                                                 />
                                             </div>
                                         </div>
 
-                                        {/* Right Column: Groups Selector */}
                                         <div className="space-y-3 flex flex-col h-full">
-                                            <div className="flex justify-between items-end mb-1">
-                                                <label className="text-xs font-bold text-white/30 uppercase tracking-[0.15em]">Target Audiences</label>
-                                                <span className="text-[10px] font-bold text-[#7c7fff] uppercase tracking-wider">{selectedGroups.length} Selected targets</span>
+                                            <div className="flex justify-between items-end">
+                                                <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
+                                                <span className="text-[10px] font-bold text-indigo-500">{selectedGroups.length} Selected</span>
                                             </div>
                                             
-                                            <div className="relative mb-3">
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20">
-                                                    <Search size={14} />
-                                                </div>
+                                            <div className="relative">
+                                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/20"><Search size={14} /></div>
                                                 <input 
                                                     type="text"
-                                                    placeholder="Search groups or channels..."
-                                                    className="w-full bg-[#1c2231] border border-white/10 rounded-xl py-2 pl-9 pr-4 text-xs text-white focus:outline-none focus:border-[#7c7fff]/50 transition-all font-medium"
+                                                    placeholder="Search targets..."
+                                                    className="w-full bg-input border border-border rounded-xl py-2 pl-9 pr-4 text-xs text-foreground"
                                                     value={searchTerm}
                                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                                    suppressHydrationWarning={true}
                                                 />
                                             </div>
 
-                                            <div className="flex-1 bg-[#1c2231] border border-white/[0.05] rounded-2xl overflow-hidden flex flex-col min-h-[400px]">
-                                                {fetchingDialogs ? (
-                                                    <div className="flex-1 flex flex-col items-center justify-center gap-3">
-                                                        <Loader2 className="animate-spin text-[#7c7fff]/40" size={24} />
-                                                        <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Fetching Groups...</p>
+                                            <div className="flex flex-col flex-1 bg-input border border-border rounded-2xl overflow-hidden min-h-[400px]">
+                                                <div className="p-3 border-b border-border bg-foreground/[0.02] flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        <button type="button" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-1 hover:bg-foreground/5 rounded-lg disabled:opacity-20"><ChevronLeft size={16} /></button>
+                                                        <span className="text-[10px] font-bold text-foreground/40">Page {currentPage} / {Math.max(1, Math.ceil(filteredDialogs.length / pageSize))}</span>
+                                                        <button type="button" disabled={currentPage * pageSize >= filteredDialogs.length} onClick={() => setCurrentPage(p => p + 1)} className="p-1 hover:bg-foreground/5 rounded-lg disabled:opacity-20"><ChevronRight size={16} /></button>
                                                     </div>
-                                                ) : dialogs.length > 0 ? (
-                                                    <>
-                                                        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                                                            {dialogs
-                                                                .filter(d => 
-                                                                    d.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                                                    (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))
-                                                                )
-                                                                .slice((currentPage - 1) * pageSize, currentPage * pageSize)
-                                                                .map((d) => (
-                                                                    <div 
-                                                                        key={d.id}
-                                                                        onClick={() => toggleGroup(d.id)}
-                                                                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between group/item ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff]/10 border-[#7c7fff]/30' : 'bg-white/[0.02] border-white/[0.05] hover:bg-white/[0.04]'}`}
-                                                                    >
-                                                                    <div className="flex items-center gap-3 overflow-hidden">
-                                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${d.is_channel ? 'bg-indigo-500/10 text-indigo-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                                                                            {d.is_channel ? <Send size={14} /> : <Users size={14} />}
-                                                                        </div>
-                                                                        <span className="text-xs font-bold text-white/80 truncate">{d.name}</span>
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+                                                    {fetchingDialogs ? (
+                                                        <div className="flex flex-col items-center justify-center h-full opacity-20"><Loader2 className="animate-spin" /></div>
+                                                    ) : filteredDialogs.length === 0 ? (
+                                                        <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-black">No results</div>
+                                                    ) : (
+                                                        filteredDialogs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((d: any) => (
+                                                            <div 
+                                                                key={d.id} 
+                                                                onClick={() => toggleGroup(d.id)}
+                                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${selectedGroups.includes(d.id) ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-background border-border hover:bg-foreground/[0.02]'}`}
+                                                            >
+                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 text-white' : 'bg-foreground/5 text-foreground/40'}`}>
+                                                                        {d.title?.charAt(0) || '?'}
                                                                     </div>
-                                                                    <div className={`w-4 h-4 rounded-full border-2 transition-all flex items-center justify-center ${selectedGroups.includes(d.id) ? 'bg-[#7c7fff] border-[#7c7fff]' : 'border-white/10'}`}>
-                                                                        {selectedGroups.includes(d.id) && <CheckCircle2 size={10} className="text-white" />}
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-xs font-bold text-foreground truncate">{d.title}</p>
+                                                                        <p className="text-[10px] text-foreground/30">ID: {d.id}</p>
                                                                     </div>
                                                                 </div>
-                                                            ))}
-                                                        </div>
-                                                        {/* Pagination Controls */}
-                                                        <div className="p-4 border-t border-white/[0.05] flex items-center justify-between bg-white/[0.01]">
-                                                            <button 
-                                                                type="button"
-                                                                disabled={currentPage === 1}
-                                                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                                                className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-[#7c7fff] disabled:opacity-20 transition-colors"
-                                                            >
-                                                                Prev
-                                                            </button>
-                                                            <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
-                                                                Page {currentPage} of {Math.ceil(dialogs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) || (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))).length / pageSize)}
-                                                            </span>
-                                                            <button 
-                                                                type="button"
-                                                                disabled={currentPage >= Math.ceil(dialogs.filter(d => d.name.toLowerCase().includes(searchTerm.toLowerCase()) || (d.username && d.username.toLowerCase().includes(searchTerm.toLowerCase()))).length / pageSize)}
-                                                                onClick={() => setCurrentPage(p => p + 1)}
-                                                                className="text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-[#7c7fff] disabled:opacity-20 transition-colors"
-                                                            >
-                                                                Next
-                                                            </button>
-                                                        </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
-                                                        <p className="text-xs text-white/20 font-bold uppercase tracking-widest">Select an account to load targets</p>
-                                                    </div>
-                                                )}
+                                                                <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 border-indigo-500' : 'border-border'}`}>
+                                                                    {selectedGroups.includes(d.id) && <Check size={10} className="text-white mx-auto mt-0.5" />}
+                                                                </div>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-end gap-4 pt-8 border-t border-white/[0.05]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsCreating(false)}
-                                            className="px-8 py-3.5 rounded-2xl text-sm font-bold text-white/40 hover:text-white hover:bg-white/5 transition-all"
-                                        >
-                                            Abort
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            disabled={loading || selectedGroups.length === 0}
-                                            className="bg-[#7c7fff] hover:bg-[#6c6fef] text-white px-10 py-3.5 rounded-2xl text-sm font-black transition-all flex items-center gap-3 shadow-xl shadow-[#7c7fff]/20 disabled:opacity-30 disabled:scale-100 active:scale-95"
-                                        >
+                                    <div className="flex justify-end gap-4 pt-8 border-t border-border">
+                                        <button type="button" onClick={() => setIsCreating(false)} className="px-8 py-3.5 rounded-2xl text-sm font-bold text-foreground/40 hover:text-foreground">Abort</button>
+                                        <button type="submit" disabled={loading || selectedGroups.length === 0} className="bg-indigo-500 hover:bg-indigo-600 text-white px-10 py-3.5 rounded-2xl text-sm font-black shadow-xl shadow-indigo-500/20 disabled:opacity-30">
                                             {loading ? <Loader2 size={18} className="animate-spin" /> : 'Launch Underground'}
                                         </button>
                                     </div>
