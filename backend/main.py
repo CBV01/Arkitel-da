@@ -1,11 +1,11 @@
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # type: ignore
 load_dotenv()  # Load .env file before anything else
 
 from fastapi import FastAPI, HTTPException, Depends, status  # type: ignore
 from pydantic import BaseModel  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
-from database import get_db_connection
+from database import get_db_connection  # type: ignore
 import uuid
 from datetime import datetime, timedelta
 import collections
@@ -22,9 +22,9 @@ from telethon.sessions import StringSession  # type: ignore
 from telethon.tl.functions.channels import JoinChannelRequest, GetParticipantsRequest  # type: ignore
 from telethon.tl.types import ChannelParticipantsSearch  # type: ignore
 
-from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
-from auth import get_password_hash, verify_password, create_access_token, get_current_user_id
-import uvicorn
+from config import TELEGRAM_API_ID, TELEGRAM_API_HASH  # type: ignore
+from auth import get_password_hash, verify_password, create_access_token, get_current_user_id  # type: ignore
+import uvicorn  # type: ignore
 
 app = FastAPI(title="Telegram Automation API")
 
@@ -45,22 +45,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from database import init_db
+from database import init_db  # type: ignore
 
 @app.get("/api/debug/db")
 async def debug_db():
     url = os.getenv("TURSO_DATABASE_URL", "NOT_SET")
     token = os.getenv("TURSO_AUTH_TOKEN", "NOT_SET")
     u_str = str(url) if url else "NOT_SET"
-    display_url = u_str[:20] + "..." if u_str != "NOT_SET" else "NOT_SET"
+    display_url = str(u_str)[0:20] + "..." if u_str != "NOT_SET" else "NOT_SET" # type: ignore
     return {
         "url": display_url,
         "token_set": bool(token and token != "NOT_SET"),
         "env_file_exists": os.path.exists(".env")
     }
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi import Request  # type: ignore
+from fastapi.responses import JSONResponse  # type: ignore
 import traceback
 
 @app.exception_handler(Exception)
@@ -263,9 +263,9 @@ async def verify_code(req: VerifyCodeRequest, user_id: str = Depends(get_current
     finally:
         pass
 
-from telethon.tl.functions.contacts import SearchRequest
-from telethon.tl.functions.channels import GetParticipantsRequest
-from telethon.tl.types import ChannelParticipantsSearch
+from telethon.tl.functions.contacts import SearchRequest  # type: ignore
+from telethon.tl.functions.channels import GetParticipantsRequest  # type: ignore
+from telethon.tl.types import ChannelParticipantsSearch  # type: ignore
 
 class FetchDialogsRequest(BaseModel):
     phone_number: str
@@ -392,7 +392,7 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
     
     results = {'joined': 0, 'failed': 0}
     try:
-        from telethon.tl.functions.channels import JoinChannelRequest
+        from telethon.tl.functions.channels import JoinChannelRequest  # type: ignore
         for g_id in req.group_ids:
             try:
                 # Human delay between joins
@@ -446,7 +446,7 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
                         "first_name": str(u.first_name or ''),
                         "last_name": str(u.last_name or '')
                     })
-            offset += len(batch.users)
+            offset += len(batch.users)  # type: ignore
             if len(batch.users) < limit: break
             
         # Save to Leads table
@@ -861,6 +861,6 @@ async def startup_event():
     print("CORE: System Ready.")
 
 if __name__ == "__main__":
-    import uvicorn
+    import uvicorn  # type: ignore
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
