@@ -12,6 +12,8 @@ interface ScrapeResult {
     type: string;
     is_private: boolean;
     country: string;
+    user_shows: number;
+    global_shows: number;
 }
 
 export default function ScraperPage() {
@@ -255,6 +257,7 @@ export default function ScraperPage() {
                                 <th className="font-semibold p-4 pl-6 w-10">Select</th>
                                 <th className="font-semibold p-4">Group / Channel Name</th>
                                 <th className="font-semibold p-4">Type</th>
+                                <th className="font-semibold p-4 text-center">Appearances</th>
                                 <th className="font-semibold p-4 text-right">Members</th>
                                 <th className="font-semibold p-4 text-center pr-6">Action</th>
                             </tr>
@@ -296,6 +299,16 @@ export default function ScraperPage() {
                                             <span className="text-[10px] font-black text-foreground/40 uppercase tracking-widest bg-white/5 border border-white/5 px-2.5 py-1.5 rounded-lg">
                                                 {result.type}
                                             </span>
+                                        </td>
+                                        <td className="p-4 text-center">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <div className="text-[10px] font-bold text-foreground/60 uppercase tracking-wider">
+                                                    You: <span className="text-indigo-400">{result.user_shows || 1}</span>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-foreground/40 uppercase tracking-wider">
+                                                    Global: <span className="text-emerald-400">{result.global_shows || 1}</span>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td className="p-4 text-right">
                                             <span className="text-sm font-bold text-foreground/80 tracking-tight">{result.participants_count.toLocaleString()}</span>

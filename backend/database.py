@@ -7,8 +7,11 @@ Falls back to local SQLite if TURSO_DATABASE_URL is not set.
 
 import os
 import sqlite3
-import requests
-from typing import Any, List, Optional
+import json
+import urllib.request
+import urllib.parse
+import urllib.error
+from typing import Any, List, Optional, Dict
 
 
 # ---------------------------------------------------------------------------
@@ -18,8 +21,9 @@ from typing import Any, List, Optional
 class TursoRow:
     """Mimics sqlite3.Row for Turso results so app code stays the same."""
     def __init__(self, columns: List[str], values: List[Any]):
-        self._data = dict(zip(columns, values))
+        self._columns = columns
         self._values = values
+        self._data = dict(zip(columns, values))
 
     def __getitem__(self, key):
         if isinstance(key, int):
@@ -30,7 +34,7 @@ class TursoRow:
         return iter(self._values)
 
     def keys(self):
-        return list(self._data.keys())
+        return self._columns
 
 
 class TursoCursor:
@@ -46,10 +50,9 @@ class TursoCursor:
 
 
 class TursoConnection:
-    """Thin wrapper around the Turso HTTP API (pipeline endpoint)."""
+    """Thin wrapper around the Turso HTTP API (pipeline endpoint) using standard urllib."""
 
     def __init__(self, db_url: str, auth_token: str):
-        # Convert libsql:// URL → https://
         if db_url.startswith("libsql://"):
             db_url = db_url.replace("libsql://", "https://", 1)
         self._url = db_url.rstrip("/") + "/v2/pipeline"
@@ -59,15 +62,18 @@ class TursoConnection:
         }
 
     def execute(self, sql: str, params: tuple = ()) -> TursoCursor:
-        """Execute a single SQL statement and return a cursor-like object."""
+        # Build args list for Turso
         args = []
         for p in params:
             if p is None:
-                args.append({"type": "null"})
+                args.append({"type": "null", "value": "null"})
+            elif isinstance(p, bool):
+                # SQLite usually treats bool as integer 0/1, but let's be explicit
+                args.append({"type": "integer", "value": "1" if p else "0"})
             elif isinstance(p, int):
                 args.append({"type": "integer", "value": str(p)})
             elif isinstance(p, float):
-                args.append({"type": "float", "value": p})
+                args.append({"type": "float", "value": str(p)})
             else:
                 args.append({"type": "text", "value": str(p)})
 
@@ -83,25 +89,70 @@ class TursoConnection:
                 {"type": "close"}
             ]
         }
-        resp = requests.post(self._url, json=payload, headers=self._headers, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(self._url, data=data, headers=self._headers, method='POST')
+        
+        try:
+            with urllib.request.urlopen(req, timeout=10) as response:
+                resp_body = response.read().decode('utf-8')
+                resp_json = json.loads(resp_body)
+                
+                # Turso v2 pipeline response structure:
+                # { "results": [ { "type": "ok", "response": { "result": { "cols": [...], "rows": [...] } } }, ... ] }
+                
+                results = resp_json.get("results", [])
+                if not results:
+                    return TursoCursor([], [])
 
-        result = data["results"][0]
-        if result.get("type") == "error":
-            raise Exception(result["error"]["message"])
+                # The first result corresponds to our 'execute' statement
+                exec_res = results[0]
+                
+                if exec_res.get("type") == "error":
+                    raise Exception(exec_res.get("error", {}).get("message", "Unknown Turso Error"))
 
-        resp_data = result.get("response", {})
-        result_set = resp_data.get("result", {})
-        cols = [c["name"] for c in result_set.get("cols", [])]
-        rows = [[cell.get("value") for cell in row] for row in result_set.get("rows", [])]
-        return TursoCursor(cols, rows)
+                # Extract 'result' object from inside 'response'
+                inner_res = exec_res.get("response", {}).get("result", {})
+                
+                # Columns
+                cols = [c["name"] for c in inner_res.get("cols", [])]
+                
+                # Rows
+                # Turso returns rows as arrays of { "type": "...", "value": "..." }
+                # We need to extract the raw values.
+                final_rows = []
+                raw_rows = inner_res.get("rows", [])
+                
+                for r in raw_rows:
+                    # r is a list of cells
+                    row_vals = []
+                    for cell in r:
+                        # cell is {"type": "text", "value": "foo"}
+                        # or {"type": "null", "value": None}
+                        # or {"type": "integer", "value": "123"}
+                        val = cell.get("value")
+                        if cell.get("type") == "integer" and val is not None:
+                            val = int(val)
+                        elif cell.get("type") == "float" and val is not None:
+                            val = float(val)
+                        row_vals.append(val)
+                    final_rows.append(row_vals)
+                        
+                return TursoCursor(cols, final_rows)
+
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode('utf-8')
+            print(f"Turso HTTP Error {e.code}: {err_body}")
+            raise Exception(f"Turso API Error: {err_body}")
+        except Exception as e:
+            print(f"Turso Connection Error: {str(e)}")
+            raise
 
     def commit(self):
-        pass  # Turso auto-commits
+        pass
 
     def close(self):
-        pass  # HTTP connections are stateless
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +230,12 @@ def init_db():
     conn = get_db_connection()
     for q in table_queries:
         conn.execute(q)
+    
+    # Migration: Ensure accounts table has user_id
+    try:
+        conn.execute("ALTER TABLE accounts ADD COLUMN user_id TEXT")
+    except:
+        pass # Column likely exists
     
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")

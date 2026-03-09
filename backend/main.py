@@ -2,7 +2,9 @@ import os
 from dotenv import load_dotenv  # type: ignore
 load_dotenv()  # Load .env file before anything else
 
-from fastapi import FastAPI, HTTPException, Depends, status  # type: ignore
+from fastapi import FastAPI, HTTPException, Depends, status, Request  # type: ignore
+from fastapi.responses import JSONResponse, FileResponse  # type: ignore
+from fastapi.staticfiles import StaticFiles  # type: ignore
 from pydantic import BaseModel  # type: ignore
 from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from database import get_db_connection  # type: ignore
@@ -159,6 +161,7 @@ async def register(user: UserRegister):
     )
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
+    print(f"AUTH: Registered new user {user.username} with ID {user_id}")
     return {"status": "success", "message": "Registered successfully"}
 
 @app.post("/api/auth/login")
@@ -342,15 +345,19 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
 @app.get("/api/telegram/accounts")
 async def get_accounts(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    rows = conn.execute("SELECT phone_number, status FROM accounts WHERE user_id = ?", (user_id,)).fetchall()
+    # explicitly fetch api_id and api_hash to avoid 'empty' looking accounts in frontend
+    rows = conn.execute("SELECT phone_number, status, api_id, api_hash FROM accounts WHERE user_id = ?", (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     
     accounts = []
     for row in rows:
         accounts.append({
             "phone_number": row[0],
-            "status": row[1]
+            "status": row[1],
+            "api_id": row[2],
+            "api_hash": row[3]
         })
+    print(f"AUTH_ISOLATION: User {user_id} fetched {len(accounts)} accounts.")
     return {"accounts": accounts}
 
 @app.get("/api/telegram/scrape")
@@ -785,9 +792,34 @@ async def admin_update_settings(key: str, value: str, admin_id: str = Depends(ge
     if hasattr(conn, "close"): conn.close()
     return {"status": "success"}
 
-@app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Telegram Automation API is running"}
+# Serving Frontend Static Files
+# We assume the frontend is built into the 'frontend/out' directory
+frontend_path = os.path.join(os.path.dirname(__file__), "frontend/out")
+
+if os.path.exists(frontend_path):
+    app.mount("/_next", StaticFiles(directory=os.path.join(frontend_path, "_next")), name="next-static")
+    
+    @app.get("/{rest_of_path:path}")
+    async def serve_frontend(request: Request, rest_of_path: str):
+        # API requests stay as they are (FastAPI prioritizes specific routes over this catch-all)
+        if rest_of_path.startswith("api/") or rest_of_path.startswith("health"):
+            raise HTTPException(status_code=404)
+        
+        # Check if the file exists (e.g., logo.png, styles.css)
+        file_path = os.path.join(frontend_path, rest_of_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        # Default to index.html for SPA routing
+        index_path = os.path.join(frontend_path, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+            
+        return {"status": "ok", "message": "Telegram Automation API is running (Frontend not found)"}
+else:
+    @app.get("/")
+    async def root():
+        return {"status": "ok", "message": "Telegram Automation API is running (No Frontend Build found)"}
 
 async def task_poller():
     while True:
