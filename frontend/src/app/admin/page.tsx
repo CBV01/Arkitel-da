@@ -42,10 +42,12 @@ export default function AdminDashboard() {
                         console.error("Failed to parse admin data JSON:", e, { statsText, usersText });
                     }
                 } else {
-                    console.error("Admin API returned error:", {
-                        statsStatus: statsRes.status,
-                        usersStatus: usersRes.status
-                    });
+                    let errObj = {};
+                    try {
+                        const errText = await statsRes.text();
+                        errObj = JSON.parse(errText);
+                    } catch (e) {}
+                    console.error("Admin API returned error:", errObj);
                 }
             } catch (err) {
                 console.error("Failed to fetch admin data", err);

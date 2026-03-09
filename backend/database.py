@@ -164,6 +164,12 @@ def init_db():
             last_name TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS scrape_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
         """CREATE TABLE IF NOT EXISTS system_settings (
             key TEXT PRIMARY KEY,
             value TEXT

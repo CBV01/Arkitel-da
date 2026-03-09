@@ -22,7 +22,14 @@ def run_migration():
     db_url = env.get("TURSO_DATABASE_URL", "")
     auth_token = env.get("TURSO_AUTH_TOKEN", "")
     
-    sql = "ALTER TABLE tasks ADD COLUMN name TEXT;"
+    sql = """
+    CREATE TABLE IF NOT EXISTS scrape_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    """
     
     if db_url and (db_url.startswith("libsql://") or db_url.startswith("https://")):
         print(f"DEBUG: Connecting to Turso: {db_url}")
