@@ -24,15 +24,23 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, stored_password: str) -> bool:
     """Verify a stored password against one provided by user."""
-    salt = stored_password[:64].encode('ascii')
-    stored_hash = stored_password[64:].encode('ascii')
-    pwdhash = hashlib.pbkdf2_hmac('sha512', 
-                                plain_password.encode('utf-8'), 
-                                salt, 100000)
-    pwdhash = binascii.hexlify(pwdhash)
-    return pwdhash == stored_hash
+    pwd_str = str(stored_password)
+    if len(pwd_str) < 66:  # Minimal length for salt + hash
+        return False
+    try:
+        salt_str = pwd_str[0:64]
+        hash_str = pwd_str[64:]
+        salt_bytes = salt_str.encode('ascii')
+        stored_hash_bytes = hash_str.encode('ascii')
+        pwdhash = hashlib.pbkdf2_hmac('sha512', 
+                                    plain_password.encode('utf-8'), 
+                                    salt_bytes, 100000)
+        pwdhash = binascii.hexlify(pwdhash)
+        return pwdhash == stored_hash_bytes
+    except Exception:
+        return False
 
-def get_password_hash(password):
+def get_password_hash(password: str) -> str:
     return hash_password(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -53,10 +61,10 @@ async def get_current_user_id(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+        user_id = payload.get("sub")
         if user_id is None:
             raise credentials_exception
-        return user_id
+        return str(user_id)
     except JWTError as e:
         print(f"DEBUG_AUTH: JWTError - {str(e)}")
         raise credentials_exception
