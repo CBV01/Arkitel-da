@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Search, Loader2, Users, UsersRound, Megaphone, CheckCircle2, X, ExternalLink, Plus, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 
@@ -18,6 +18,9 @@ interface ScrapeResult {
 
 export default function ScraperPage() {
     const [keyword, setKeyword] = useState('');
+    const [country, setCountry] = useState('');
+    const [scrapeStatus, setScrapeStatus] = useState('');
+    const abortControllerRef = useRef<AbortController | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [results, setResults] = useState<ScrapeResult[]>([]);
@@ -117,25 +120,84 @@ export default function ScraperPage() {
         }
     };
 
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
         if (!keyword.trim()) return;
 
         setLoading(true);
         setError('');
         setSearched(true);
+        setResults([]);
+        setScrapeStatus('Connecting to Scrape Engine...');
+
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         try {
-            const res = await apiFetch(`/api/telegram/scrape?query=${encodeURIComponent(keyword)}&limit=200`);
-            const data = await res.json();
-            if (res.ok) {
-                setResults(data.groups || []);
-            } else {
-                setError(data.detail || 'Failed to scrape results');
+            const token = localStorage.getItem('token') || '';
+            const cStr = country.trim() ? `&country=${encodeURIComponent(' ' + country.trim())}` : '';
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || ''}/api/telegram/scrape_stream?query=${encodeURIComponent(keyword)}${cStr}&limit=500`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+                signal: controller.signal
+            });
+
+            if (!res.body) throw new Error("No readable stream available");
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let done = false;
+
+            while (!done) {
+                const { value, done: readerDone } = await reader.read();
+                done = readerDone;
+                if (value) {
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n');
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.replace('data: ', '').trim();
+                            if (dataStr) {
+                                try {
+                                    const parsed = JSON.parse(dataStr);
+                                    if (parsed.type === 'progress') {
+                                        setScrapeStatus(parsed.msg);
+                                    } else if (parsed.type === 'result') {
+                                        setResults(prev => {
+                                            if (prev.find(p => p.id === parsed.data.id)) return prev;
+                                            return [...prev, parsed.data];
+                                        });
+                                    } else if (parsed.type === 'done') {
+                                        setScrapeStatus('Scrape Complete!');
+                                    } else if (parsed.type === 'error') {
+                                        setError(parsed.msg);
+                                    }
+                                } catch (e) {
+                                    console.error("Parse err", e);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         } catch (err: any) {
-            setError(err.message);
+            if (err.name === 'AbortError') {
+                setScrapeStatus('Stopped by user');
+            } else {
+                setError(err.message);
+            }
         } finally {
             setLoading(false);
+            abortControllerRef.current = null;
+        }
+    };
+
+    const handleStop = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+            setLoading(false);
+            setScrapeStatus('Stopped manually.');
         }
     };
 
@@ -204,8 +266,17 @@ export default function ScraperPage() {
                                 value={keyword}
                                 onChange={(e) => setKeyword(e.target.value)}
                                 className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-foreground rounded-xl py-3 pl-12 pr-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-foreground/30"
-                                placeholder="e.g. Crypto, Marketing, Real Estate..."
+                                placeholder="Main Search Keyword (e.g. Marketing)"
                                 required
+                            />
+                        </div>
+                        <div className="relative md:w-48 shrink-0">
+                            <input
+                                type="text"
+                                value={country}
+                                onChange={(e) => setCountry(e.target.value)}
+                                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-foreground rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-foreground/30"
+                                placeholder="Suffix (e.g. Europe)"
                             />
                         </div>
                         <button
@@ -236,12 +307,18 @@ export default function ScraperPage() {
             </div>
 
             {/* Results Area */}
-            {loading ? (
-                <div className="border border-dashed border-black/10 dark:border-white/10 rounded-2xl p-16 flex flex-col items-center justify-center text-center">
-                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mb-4" />
-                    <p className="text-sm text-foreground/60 font-medium">Scraping Telegram directories...</p>
+            {loading && results.length === 0 ? (
+                <div className="border border-dashed border-border rounded-2xl p-16 flex flex-col items-center justify-center text-center relative overflow-hidden bg-card shadow-2xl">
+                    <div className="absolute inset-0 bg-indigo-500/[0.02] animate-pulse"></div>
+                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4 relative z-10" />
+                    <p className="text-lg text-foreground font-bold mb-2 relative z-10">{scrapeStatus}</p>
+                    <p className="text-sm text-foreground/50 font-medium mb-6 relative z-10">Starting connection...</p>
+                    
+                    <button onClick={handleStop} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold rounded-xl text-sm transition-all border border-red-500/20 relative z-10 shadow-lg shadow-red-500/10 active:scale-95">
+                        Cancel Search
+                    </button>
                 </div>
-            ) : searched && results.length === 0 ? (
+            ) : searched && results.length === 0 && !loading ? (
                 <div className="border border-dashed border-black/10 dark:border-white/10 rounded-2xl p-16 flex flex-col items-center justify-center text-center">
                     <div className="w-16 h-16 bg-black/5 dark:bg-white/5 rounded-full flex items-center justify-center mb-4 text-foreground/40">
                         <Search size={24} />
@@ -250,7 +327,22 @@ export default function ScraperPage() {
                     <p className="text-xs text-foreground/50">Try a different keyword to find Telegram groups.</p>
                 </div>
             ) : results.length > 0 ? (
-                <div className="bg-background border border-white/5 dark:border-white/5 border-black/5 rounded-2xl overflow-hidden shadow-xl shadow-black/5 dark:shadow-black/20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {loading && (
+                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-6 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl">
+                            <div className="flex items-center gap-4">
+                                <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                                <div>
+                                    <h4 className="text-foreground font-bold tracking-tight mb-1">{scrapeStatus}</h4>
+                                    <p className="text-sm text-foreground/60 font-medium">Auto-populating table in real-time... Found <strong className="text-indigo-400">{results.length}</strong> targets.</p>
+                                </div>
+                            </div>
+                            <button onClick={handleStop} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold rounded-xl text-sm transition-all border border-red-500/20 active:scale-95 whitespace-nowrap">
+                                Stop Engine & Keep Variables
+                            </button>
+                        </div>
+                    )}
+                    <div className="bg-background border border-white/5 dark:border-white/5 border-black/5 rounded-2xl overflow-x-auto shadow-xl shadow-black/5 dark:shadow-black/20">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-black/5 dark:border-white/5 text-foreground/50 text-[11px] uppercase tracking-wider bg-black/[0.02] dark:bg-white/[0.02]">
@@ -335,6 +427,7 @@ export default function ScraperPage() {
                             })}
                         </tbody>
                     </table>
+                </div>
                 </div>
             ) : (
                 /* Initial state */

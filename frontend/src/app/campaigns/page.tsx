@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 
 export default function CampaignsPage() {
@@ -142,6 +142,20 @@ export default function CampaignsPage() {
         }
     };
 
+    const handleDelete = async (id: number) => {
+        if (!confirm("Are you sure you want to delete this campaign?")) return;
+        try {
+            const res = await apiFetch(`/api/telegram/campaigns/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                setCampaigns(prev => prev.filter(c => c.id !== id));
+            } else {
+                alert('Failed to delete campaign.');
+            }
+        } catch (e: any) {
+            alert(e.message);
+        }
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'completed': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
@@ -216,6 +230,13 @@ export default function CampaignsPage() {
                                     <div className={`px-4 py-2 rounded-lg text-[11px] font-black uppercase tracking-wider border shadow-sm ${getStatusColor(camp.status)}`}>
                                         {camp.status}
                                     </div>
+                                    <button 
+                                        onClick={() => handleDelete(camp.id)} 
+                                        className="p-2 ml-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                        title="Delete Campaign"
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
                             </div>
                         </div>
