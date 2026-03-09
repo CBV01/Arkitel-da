@@ -3,9 +3,9 @@ import hashlib
 import binascii
 from datetime import datetime, timedelta
 from typing import Optional
-from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt  # type: ignore
+from fastapi import Depends, HTTPException, status  # type: ignore
+from fastapi.security import OAuth2PasswordBearer  # type: ignore
 
 # Configuration
 SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-key-change-this-in-production")
@@ -28,10 +28,10 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
     if len(pwd_str) < 66:  # Minimal length for salt + hash
         return False
     try:
-        salt_str = pwd_str[0:64]
-        hash_str = pwd_str[64:]
-        salt_bytes = salt_str.encode('ascii')
-        stored_hash_bytes = hash_str.encode('ascii')
+        # Encode to bytes first, then slice. This is safer for some IDE type checkers.
+        full_bytes = pwd_str.encode('ascii')
+        salt_bytes = full_bytes[0:64]  # type: ignore
+        stored_hash_bytes = full_bytes[64:]  # type: ignore
         pwdhash = hashlib.pbkdf2_hmac('sha512', 
                                     plain_password.encode('utf-8'), 
                                     salt_bytes, 100000)

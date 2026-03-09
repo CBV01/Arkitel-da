@@ -2,17 +2,29 @@ import os
 from dotenv import load_dotenv
 load_dotenv()  # Load .env file before anything else
 
-from fastapi import FastAPI, HTTPException, Depends, status
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Depends, status  # type: ignore
+from pydantic import BaseModel  # type: ignore
+from fastapi.middleware.cors import CORSMiddleware  # type: ignore
 from database import get_db_connection
-from telethon.sync import TelegramClient
-from telethon.sessions import StringSession
-from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
-from auth import get_password_hash, verify_password, create_access_token, get_current_user_id
 import uuid
 from datetime import datetime, timedelta
 import collections
+import asyncio
+import random
+from typing import Optional, List, Dict, Any
+import re
+import ast
+import traceback
+
+# Telethon Imports
+from telethon.sync import TelegramClient  # type: ignore
+from telethon.sessions import StringSession  # type: ignore
+from telethon.tl.functions.channels import JoinChannelRequest, GetParticipantsRequest  # type: ignore
+from telethon.tl.types import ChannelParticipantsSearch  # type: ignore
+
+from config import TELEGRAM_API_ID, TELEGRAM_API_HASH
+from auth import get_password_hash, verify_password, create_access_token, get_current_user_id
+import uvicorn
 
 app = FastAPI(title="Telegram Automation API")
 
@@ -39,9 +51,11 @@ from database import init_db
 async def debug_db():
     url = os.getenv("TURSO_DATABASE_URL", "NOT_SET")
     token = os.getenv("TURSO_AUTH_TOKEN", "NOT_SET")
+    u_str = str(url) if url else "NOT_SET"
+    display_url = u_str[:20] + "..." if u_str != "NOT_SET" else "NOT_SET"
     return {
-        "url": url[:20] + "..." if url != "NOT_SET" else "NOT_SET",
-        "token_set": token != "NOT_SET",
+        "url": display_url,
+        "token_set": bool(token and token != "NOT_SET"),
         "env_file_exists": os.path.exists(".env")
     }
 
@@ -64,7 +78,7 @@ async def health():
 
 # Temporary in-memory store for login sessions
 # phone -> { "client": TelegramClient, "phone_code_hash": str, "api_id": str, "api_hash": str }
-auth_sessions = {}
+auth_sessions: Dict[str, Dict[str, Any]] = {}
 
 class UserRegister(BaseModel):
     username: str
@@ -205,7 +219,7 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
         auth_key = f"{user_id}:{req.phone_number}"
         if auth_key in auth_sessions:
             await auth_sessions[auth_key]["client"].disconnect()
-            del auth_sessions[auth_key]
+            auth_sessions.pop(auth_key, None)
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/telegram/verify-code")
@@ -241,7 +255,7 @@ async def verify_code(req: VerifyCodeRequest, user_id: str = Depends(get_current
         
         # Success cleanup
         await client.disconnect()
-        del auth_sessions[auth_key]
+        auth_sessions.pop(auth_key, None)
         
         return {"status": "success", "message": "Account connected successfully."}
     except Exception as e:
@@ -309,7 +323,7 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
     return {"accounts": accounts}
 
 @app.get("/api/telegram/scrape")
-async def scrape_keyword(query: str, limit: int = 200, phone_number: str = None, user_id: str = Depends(get_current_user_id)):
+async def scrape_keyword(query: str, limit: int = 200, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     if phone_number:
         row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
@@ -321,30 +335,41 @@ async def scrape_keyword(query: str, limit: int = 200, phone_number: str = None,
     client = TelegramClient(StringSession(session_str), api_id, api_hash)
     await client.connect()
     
-    groups = []
+    groups: List[Dict[str, Any]] = []
     try:
-        from telethon.tl.functions.contacts import SearchRequest
         # Telethon Search limit is typically capped at around 100-200 by Telegram itself for Global Search
         search_result = await client(SearchRequest(q=query, limit=limit))
+        
+        conn2 = get_db_connection()
         for chat in search_result.chats:
             is_private = getattr(chat, 'username', None) is None
             
             # Simple country detection based on language/keywords or just "Global"
             country = "Global"
-            title = getattr(chat, 'title', '').lower()
+            title_str = str(getattr(chat, 'title', '')).lower()
             countries = {"nigeria": "NG", "usa": "US", "uk": "UK", "india": "IN", "crypto": "Global"}
             for k, v in countries.items():
-                if k in title: country = v; break
+                if k in title_str: country = v; break
+            
+            chat_id_str = str(getattr(chat, 'id', '0'))
+            conn2.execute("INSERT INTO scrape_history (group_id, user_id) VALUES (?, ?)", (chat_id_str, user_id))
+            if hasattr(conn2, "commit"): conn2.commit()
+
+            global_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ?", (chat_id_str,)).fetchone()[0]
+            user_count = conn2.execute("SELECT COUNT(*) FROM scrape_history WHERE group_id = ? AND user_id = ?", (chat_id_str, user_id)).fetchone()[0]
 
             groups.append({
-                "id": str(chat.id),
+                "id": chat_id_str,
                 "title": getattr(chat, 'title', 'Unknown'),
                 "username": getattr(chat, 'username', None),
                 "participants_count": getattr(chat, 'participants_count', 0) or getattr(chat, 'megagroup_participants', 0),
                 "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
                 "is_private": is_private,
-                "country": country
+                "country": country,
+                "global_shows": global_count,
+                "user_shows": user_count
             })
+        if hasattr(conn2, "close"): conn2.close()
         return {"groups": groups}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -365,7 +390,7 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
     client = TelegramClient(StringSession(session_str), api_id, api_hash)
     await client.connect()
     
-    success_count = 0
+    results = {'joined': 0, 'failed': 0}
     try:
         from telethon.tl.functions.channels import JoinChannelRequest
         for g_id in req.group_ids:
@@ -373,11 +398,12 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
                 # Human delay between joins
                 await asyncio.sleep(random.randint(15, 45))
                 await client(JoinChannelRequest(g_id))
-                success_count += 1
-            except Exception as join_err:
-                print(f"Join Error {g_id}: {join_err}")
-                if "FloodWaitError" in str(join_err): break
-        return {"status": "success", "joined": success_count}
+                results['joined'] += 1
+            except Exception as e:
+                results['failed'] += 1
+                print(f"Join Error {g_id}: {e}")
+                if "FloodWaitError" in str(e): break
+        return {"status": "success", **results}
     finally:
         await client.disconnect()
 
@@ -400,12 +426,9 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
         # Get entity (can be a username or ID)
         entity = await client.get_entity(req.group_id if not req.group_id.lstrip('-').isdigit() else int(req.group_id))
         
-        from telethon.tl.functions.channels import GetParticipantsRequest
-        from telethon.tl.types import ChannelParticipantsSearch
-        
-        participants = []
-        offset = 0
-        limit = 100
+        participants: List[Dict[str, Any]] = []
+        offset: int = 0
+        limit: int = 100
         while len(participants) < 500: # Practical limit for one go
             batch = await client(GetParticipantsRequest(
                 channel=entity,
@@ -416,12 +439,12 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
             ))
             if not batch.users: break
             for u in batch.users:
-                if u.username or u.phone:
+                if u.username or getattr(u, 'phone', None):
                     participants.append({
                         "id": str(u.id),
-                        "username": u.username,
-                        "first_name": u.first_name,
-                        "last_name": u.last_name
+                        "username": str(u.username or ''),
+                        "first_name": str(u.first_name or ''),
+                        "last_name": str(u.last_name or '')
                     })
             offset += len(batch.users)
             if len(batch.users) < limit: break
@@ -443,7 +466,7 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
         await client.disconnect()
 
 @app.post("/api/telegram/join")
-async def join_group(group_id: str, phone_number: str = None, user_id: str = Depends(get_current_user_id)):
+async def join_group(group_id: str, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     if phone_number:
         row = conn.execute(
@@ -466,7 +489,6 @@ async def join_group(group_id: str, phone_number: str = None, user_id: str = Dep
     await client.connect()
     
     try:
-        from telethon.tl.functions.channels import JoinChannelRequest
         await client(JoinChannelRequest(group_id))
         return {"status": "success", "message": f"Successfully joined {group_id}"}
     except Exception as e:
@@ -508,7 +530,7 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         if hasattr(conn, "close"): conn.close()
 
 @app.get("/api/telegram/members")
-async def get_members(group_id: str, phone_number: str = None, user_id: str = Depends(get_current_user_id)):
+async def get_members(group_id: str, phone_number: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     if phone_number:
         row = conn.execute(
@@ -576,13 +598,21 @@ async def get_leads(user_id: str = Depends(get_current_user_id)):
 # --- Admin Endpoints ---
 
 async def get_current_admin(user_id: str = Depends(get_current_user_id)):
+    print(f"AUTH_DEBUG: Checking admin rights for {user_id}")
     if user_id == "admin_virtual_id":
         return user_id
     conn = get_db_connection()
-    row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
-    if hasattr(conn, "close"): conn.close()
-    if not row or row[0] != 'admin':
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    try:
+        row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            print(f"AUTH_DEBUG: User {user_id} not found in DB")
+            raise HTTPException(status_code=403, detail="Admin access required: User not found")
+        if row[0] != 'admin':
+            print(f"AUTH_DEBUG: User {user_id} has role {row[0]}, expected admin")
+            raise HTTPException(status_code=403, detail=f"Admin access required: role is {row[0]}")
+        return user_id
+    finally:
+        if hasattr(conn, "close"): conn.close()
     return user_id
 
 @app.post("/api/admin/maintenance/clear-leads")
@@ -600,6 +630,38 @@ async def clear_tasks(admin_id: str = Depends(get_current_admin)):
     conn.execute("DELETE FROM tasks WHERE status IN ('completed', 'failed')")
     if hasattr(conn, "commit"): conn.commit()
     return {"status": "success", "message": "Task history purged"}
+
+@app.post("/api/admin/users/{user_id}/toggle-status")
+async def admin_toggle_user_status(user_id: str, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    user = conn.execute("SELECT is_active FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        if hasattr(conn, "close"): conn.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    new_status = 0 if user[0] == 1 else 1
+    conn.execute("UPDATE users SET is_active = ? WHERE id = ?", (new_status, user_id))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success", "is_active": bool(new_status)}
+
+@app.get("/api/admin/users/{user_id}/details")
+async def admin_get_user_details(user_id: str, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    # Accounts
+    accounts = conn.execute("SELECT phone_number, status FROM accounts WHERE user_id = ?", (user_id,)).fetchall()
+    # Scrape history (counts only)
+    scrape_count = conn.execute("SELECT COUNT(*) FROM scrape_history WHERE user_id = ?", (user_id,)).fetchone()[0]
+    # Campaign stats
+    tasks = conn.execute("SELECT status, COUNT(*) FROM tasks WHERE user_id = ? GROUP BY status", (user_id,)).fetchall()
+    
+    if hasattr(conn, "close"): conn.close()
+    
+    return {
+        "accounts": [dict(phone_number=a[0], status=a[1]) for a in accounts],
+        "total_scrapes": scrape_count,
+        "campaign_summary": dict(tasks)
+    }
 
 @app.get("/api/admin/users")
 async def admin_get_users(admin_id: str = Depends(get_current_admin)):
@@ -622,7 +684,7 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
     
     # Per user stats
     user_stats = conn.execute('''
-        SELECT u.username, 
+        SELECT u.id, u.username, u.is_active,
                (SELECT COUNT(*) FROM accounts WHERE user_id = u.id) as accounts,
                (SELECT COUNT(*) FROM tasks WHERE user_id = u.id) as tasks,
                (SELECT COUNT(*) FROM leads WHERE user_id = u.id) as leads
@@ -638,7 +700,7 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
             "tasks": total_tasks,
             "leads": total_leads
         },
-        "per_user": [dict(username=s[0], accounts=s[1], tasks=s[2], leads=s[3]) for s in user_stats]
+        "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), accounts=s[3], tasks=s[4], leads=s[5]) for s in user_stats]
     }
 
 @app.get("/api/dashboard/stats")
@@ -693,8 +755,6 @@ async def admin_update_settings(key: str, value: str, admin_id: str = Depends(ge
 def read_root():
     return {"status": "ok", "message": "Telegram Automation API is running"}
 
-import asyncio
-
 async def task_poller():
     while True:
         try:
@@ -732,8 +792,7 @@ async def task_poller():
                 session_str, api_id, api_hash = acc[0], int(acc[1]), acc[2]
                 
                 try:
-                    from telethon import TelegramClient
-                    from telethon.sessions import StringSession
+                    # Session string session client
                     client = TelegramClient(StringSession(session_str), api_id, api_hash)
                     await client.connect()
                     
@@ -751,7 +810,6 @@ async def task_poller():
                             await asyncio.sleep(typing_delay)
 
                             # 2. Spintax support {hi|hello}
-                            import re
                             def spin(match):
                                 options = match.group(1).split('|')
                                 return random.choice(options)
