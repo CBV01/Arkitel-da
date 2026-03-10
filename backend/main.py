@@ -1416,8 +1416,12 @@ async def task_poller():
             
             # Identity Verification
             me = await client.get_me()
-            sender_name = f"{getattr(me, 'first_name', '')} {getattr(me, 'last_name', '')}".strip() or me.username or "Unknown"
-            print(f"BKG_TASK[{task_id}]: Authenticated as '{sender_name}' (ID: {me.id})")
+            me_fn = getattr(me, 'first_name', '') or ''
+            me_ln = getattr(me, 'last_name', '') or ''
+            me_un = getattr(me, 'username', '') or ''
+            me_id = getattr(me, 'id', '0')
+            sender_name = f"{me_fn} {me_ln}".strip() or me_un or "Unknown"
+            print(f"BKG_TASK[{task_id}]: Authenticated as '{sender_name}' (ID: {me_id})")
             
             import ast
             try:
@@ -1454,14 +1458,22 @@ async def task_poller():
                         final_msg = final_msg.replace('{{First Name}}', '').replace('{{Username}}', '')
 
                     # Final Spintax processing
-                    final_msg = recursive_spin(final_msg)
+                    final_msg = recursive_spin(str(final_msg))
                     
                     if not await client.is_user_authorized():
                         print(f"BKG_TASK[{task_id}]: CRITICAL - Account not authorized for {phone_num}")
-                        break
+                        # Mark failed and exit since we can't send anything
+                        conn = get_db_connection()
+                        conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
+                        if hasattr(conn, "commit"): conn.commit()
+                        if hasattr(conn, "close"): conn.close()
+                        await client.disconnect()
+                        active_tasks.remove(task_id)
+                        return
 
                     print(f"BKG_TASK[{task_id}]: Delivering payload to {group}...")
-                    print(f"BKG_TASK[{task_id}]: Content Snapshot: {final_msg[:50]}...")
+                    msg_preview = str(final_msg)[:50]
+                    print(f"BKG_TASK[{task_id}]: Content Snapshot: {msg_preview}...")
                     await client.send_message(entity, final_msg)
                     print(f"BKG_TASK[{task_id}]: Status -> TRANSMITTED as {sender_name}")
                     
