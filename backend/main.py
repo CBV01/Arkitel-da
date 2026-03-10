@@ -1414,26 +1414,64 @@ async def task_poller():
             client = TelegramClient(StringSession(session_str), api_id, api_hash)
             await client.connect()
             
+            # Identity Verification
+            me = await client.get_me()
+            sender_name = f"{getattr(me, 'first_name', '')} {getattr(me, 'last_name', '')}".strip() or me.username or "Unknown"
+            print(f"BKG_TASK[{task_id}]: Authenticated as '{sender_name}' (ID: {me.id})")
+            
             import ast
             try:
                 target_groups = ast.literal_eval(groups_str)
             except:
                 target_groups = [groups_str] if groups_str else []
 
+            def recursive_spin(text):
+                while '{' in text and '}' in text:
+                    # Simple regex for leaf-level spintax: {a|b|c}
+                    text = re.sub(r'\{([^{}]*)\}', lambda m: random.choice(m.group(1).split('|')), text)
+                return text
+
+            # High Fidelity Extraction Loop
             for group in target_groups:
                 try:
-                    await asyncio.sleep(random.uniform(2.0, 5.0))
+                    await asyncio.sleep(random.uniform(5.0, 10.0)) # Safety delay
                     
-                    def spin(match):
-                        options = match.group(1).split('|')
-                        return random.choice(options)
-                    spinned_message = re.sub(r'\{([^{}]*)\}', spin, message)
+                    # Resolve Target Entity
+                    try:
+                        entity = await client.get_entity(group)
+                        print(f"BKG_TASK[{task_id}]: Target resolved -> {getattr(entity, 'title', group)}")
+                    except Exception as e:
+                        print(f"BKG_TASK[{task_id}]: Could not resolve entity {group}: {e}")
+                        continue
+
+                    # Personalization Merging (if applicable)
+                    final_msg = message
+                    if '{{First Name}}' in final_msg or '{{Username}}' in final_msg:
+                        # Attempt to get own or target info if relevant (simplified for now to global placeholders or entity info)
+                        # For real group merge, you usually need participant context, but here we can merge target's group title
+                        final_msg = final_msg.replace('{{Group Name}}', getattr(entity, 'title', 'Our Group'))
+                        # Default placeholders for ChatGPT-style prompts
+                        final_msg = final_msg.replace('{{First Name}}', '').replace('{{Username}}', '')
+
+                    # Final Spintax processing
+                    final_msg = recursive_spin(final_msg)
                     
-                    await client.send_message(group, spinned_message)
-                    await asyncio.sleep(random.randint(45, 120))
+                    if not await client.is_user_authorized():
+                        print(f"BKG_TASK[{task_id}]: CRITICAL - Account not authorized for {phone_num}")
+                        break
+
+                    print(f"BKG_TASK[{task_id}]: Delivering payload to {group}...")
+                    print(f"BKG_TASK[{task_id}]: Content Snapshot: {final_msg[:50]}...")
+                    await client.send_message(entity, final_msg)
+                    print(f"BKG_TASK[{task_id}]: Status -> TRANSMITTED as {sender_name}")
+                    
+                    # Anti-Spam Interval
+                    await asyncio.sleep(random.randint(60, 180))
                 except Exception as group_err:
-                    print(f"BKG: Task {task_id} Group Error ({group}): {group_err}")
-                    if "FloodWaitError" in str(group_err): break
+                    print(f"BKG_TASK[{task_id}]: Group Error ({group}): {group_err}")
+                    if "FloodWaitError" in str(group_err): 
+                        print(f"BKG_TASK[{task_id}]: Flood detected. Aborting sequence.")
+                        break
             
             await client.disconnect()
 
