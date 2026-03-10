@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TeleFlow Automation",
+  title: "ArkiTel Automation",
   description: "Advanced Telegram automation platform",
 };
 

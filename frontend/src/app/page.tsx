@@ -103,12 +103,12 @@ export default function Dashboard() {
           </div>
           <div className="flex justify-between items-center mb-10 relative z-10">
             <div>
-              <h3 className="text-xl font-black text-foreground tracking-tight">Engagement Dynamics</h3>
+              <h3 className="text-xl font-bold text-foreground tracking-tight">Engagement Dynamics</h3>
               <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest mt-1">Real-time throughput analysis</p>
             </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 rounded-full border border-indigo-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-wider">Engine Active</span>
+              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Engine Active</span>
             </div>
           </div>
           <div className="h-56 flex items-end justify-between gap-2.5 pb-2 relative z-10">
@@ -119,7 +119,7 @@ export default function Dashboard() {
                     className="w-full bg-gradient-to-t from-indigo-600/10 via-indigo-600/40 to-indigo-500 rounded-2xl transition-all duration-700 hover:scale-x-110 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] cursor-pointer" 
                     style={{ height: `${h}%` }}
                   >
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all shadow-xl shadow-indigo-500/20">
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all shadow-xl shadow-indigo-500/20">
                       {h}%
                     </div>
                   </div>
@@ -128,7 +128,7 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-foreground/20 text-[9px] font-black uppercase tracking-[0.3em] mt-6 border-t border-border/50 pt-4">
+          <div className="flex justify-between text-foreground/20 text-[9px] font-bold uppercase tracking-[0.3em] mt-6 border-t border-border/50 pt-4">
             <span>Historical Cycle Start</span>
             <span>Current Transmission Window</span>
           </div>
@@ -138,10 +138,10 @@ export default function Dashboard() {
           <div className="absolute -bottom-10 -right-10 opacity-[0.02] group-hover:scale-110 transition-transform duration-1000">
             <Shield size={200} />
           </div>
-          <h3 className="text-xl font-black text-foreground mb-8 tracking-tight relative z-10">System Vitals</h3>
+          <h3 className="text-xl font-bold text-foreground mb-8 tracking-tight relative z-10">System Vitals</h3>
           <div className="space-y-8 flex-1 relative z-10">
             <div className="space-y-3">
-              <div className="flex justify-between text-[11px] font-black text-foreground/30 uppercase tracking-widest">
+              <div className="flex justify-between text-[11px] font-bold text-foreground/30 uppercase tracking-widest">
                 <span>Network Integrity</span>
                 <span className="text-emerald-500 tracking-tighter shadow-emerald-500/20 drop-shadow-sm">{stats?.service_health?.database || 'Stable'}</span>
               </div>
@@ -150,7 +150,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="space-y-3">
-              <div className="flex justify-between text-[11px] font-black text-foreground/30 uppercase tracking-widest">
+              <div className="flex justify-between text-[11px] font-bold text-foreground/30 uppercase tracking-widest">
                 <span>Task Automator</span>
                 <span className="text-indigo-500 tracking-tighter">{stats?.service_health?.poller || 'Active'}</span>
               </div>
@@ -159,7 +159,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="space-y-3">
-              <div className="flex justify-between text-[11px] font-black text-foreground/30 uppercase tracking-widest">
+              <div className="flex justify-between text-[11px] font-bold text-foreground/30 uppercase tracking-widest">
                 <span>TG API Handshake</span>
                 <span className="text-foreground/20 tracking-tighter italic">{stats?.service_health?.api || 'Idle'}</span>
               </div>
@@ -168,7 +168,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-          <button className="w-full mt-10 py-4 bg-foreground/[0.03] hover:bg-foreground/[0.06] border border-border rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-foreground/30 hover:text-foreground transition-all relative z-10 group/btn overflow-hidden">
+          <button className="w-full mt-10 py-4 bg-foreground/[0.03] hover:bg-foreground/[0.06] border border-border rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 hover:text-foreground transition-all relative z-10 group/btn overflow-hidden">
             <span className="relative z-10">Run System Diagnostics</span>
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/5 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000"></div>
           </button>

@@ -267,7 +267,7 @@ export default function LeadsPage() {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-[calc(100vh-100px)] flex flex-col pt-2">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
-                    <h2 className="text-3xl font-black mb-2 tracking-tight text-foreground flex items-center gap-3">
+                    <h2 className="text-3xl font-bold mb-2 tracking-tight text-foreground flex items-center gap-3">
                         <Bookmark className="text-indigo-500 w-8 h-8" /> Target Leads
                     </h2>
                     <p className="text-sm text-foreground/50 font-medium">Manage discovered communities and extracted target members.</p>
@@ -342,10 +342,10 @@ export default function LeadsPage() {
                     <p className="text-foreground/20 text-xs">Try adjusting your filters or search query.</p>
                 </div>
             ) : (
-                <div className="bg-card border border-border rounded-[32px] overflow-hidden shadow-2xl overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
+                <div className="bg-card border border-border rounded-[32px] overflow-hidden shadow-2xl overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[1000px]">
                         <thead>
-                            <tr className="border-b border-border text-[10px] font-black uppercase tracking-[0.2em] text-foreground/30 bg-foreground/[0.01]">
+                            <tr className="border-b border-border text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 bg-foreground/[0.01]">
                                 <th className="p-6 w-12 text-center">
                                     <button 
                                         onClick={() => toggleSelectAll(isAllVisibleSelected)}
@@ -453,12 +453,12 @@ export default function LeadsPage() {
             {/* Member Extraction Modal */}
             {extractingGroup && (
                 <div className="fixed inset-0 bg-background/80 backdrop-blur-3xl z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-                    <div className="bg-card border border-border rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-500">
-                        <div className="p-8 border-b border-border flex justify-between items-center">
-                            <h3 className="font-black text-2xl text-foreground tracking-tighter">Extracting Targets</h3>
+                    <div className="bg-card border border-border rounded-[32px] w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-500 max-h-[90vh] flex flex-col overflow-hidden">
+                        <div className="p-8 border-b border-border flex justify-between items-center shrink-0">
+                            <h3 className="font-bold text-2xl text-foreground tracking-tighter">Extracting Targets</h3>
                             <button onClick={() => setExtractingGroup(null)} className="p-2 bg-foreground/5 rounded-full text-foreground/20 hover:text-foreground transition-all focus:rotate-90"><X size={20} /></button>
                         </div>
-                        <div className="p-8 space-y-6">
+                        <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-foreground/30 uppercase tracking-[0.2em] ml-1">Account Proxy</label>
                                 <select 

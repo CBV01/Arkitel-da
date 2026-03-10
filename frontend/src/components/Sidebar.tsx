@@ -112,7 +112,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
             <div className="flex items-center justify-center min-h-screen w-full bg-background font-sans">
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
-                    <p className="text-foreground/40 text-sm font-medium animate-pulse">Initializing TeleFlow...</p>
+                    <p className="text-foreground/40 text-sm font-medium animate-pulse">Initializing ArkiTel...</p>
                 </div>
             </div>
         );
@@ -128,7 +128,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                         </svg>
                     </div>
-                    <h1 className="text-sm font-semibold tracking-wider text-foreground">TELEFLOW</h1>
+                    <h1 className="text-sm font-semibold tracking-wider text-foreground">ARKITEL</h1>
                 </div>
                 <button onClick={toggleSidebar} className="p-2 text-foreground/70 hover:text-foreground">
                     {isMobileOpen ? <X size={24} /> : <Menu size={24} />}
@@ -157,7 +157,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                         </svg>
                     </div>
-                    {!isCollapsed && <h1 className="text-sm font-semibold tracking-wider text-foreground animate-in fade-in duration-300">TELEFLOW</h1>}
+                    {!isCollapsed && <h1 className="text-sm font-semibold tracking-wider text-foreground animate-in fade-in duration-300">ARKITEL</h1>}
                 </div>
 
                 {/* Collapse Button */}

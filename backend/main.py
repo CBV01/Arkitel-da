@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         print("CORE: Poller task cancelled.")
 
-app = FastAPI(title="Telegram Automation API", lifespan=lifespan)
+app = FastAPI(title="ArkiTel Automation API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -417,6 +417,7 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
             for page in range(1, max_pages + 1):
                 url = f"https://lyzem.com/search?q={base_query}&p={page}"
                 try:
+                    if queue: await queue.put({"type": "progress", "msg": f"Lyzem: Scanning Page {page}/{max_pages}..."}) # type: ignore
                     resp = await client.get(url)
                     if resp.status_code != 200:
                         break
@@ -463,9 +464,10 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                             "source": "lyzem"
                         }
                         results.append(item)
-                        if user_id: save_scraped_group(user_id, item)
+                        # Fire and forget save to not block the stream
+                        if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
                         if queue:
-                            await queue.put({"type": "result", "layer": 2, "data": item})  # pyre-ignore
+                            await queue.put({"type": "result", "layer": 2, "data": item})  # type: ignore
                             
                         found_on_page += 1
                         
@@ -513,6 +515,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                 continue
             for q in search_queries:
                 try:
+                    if queue: await queue.put({"type": "progress", "msg": f"TG Search: Testing '{q}'..."}) # type: ignore
                     search_result = await client(SearchRequest(q=q, limit=100))
                     for chat in search_result.chats:
                         if not chat:
@@ -542,9 +545,10 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             "source": "telegram"
                         }
                         unique_groups[chat_id_str] = item
-                        if user_id: save_scraped_group(user_id, item)
+                        # Fire and forget save
+                        if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
                         if queue:
-                            await queue.put({"type": "result", "layer": 1, "data": item})  # pyre-ignore
+                            await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     await asyncio.sleep(0.4)
                 except Exception as q_err:
                     print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
@@ -643,7 +647,8 @@ async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seed
                                     "source": "spider"
                                 }
                                 results.append(item2)
-                                if user_id: save_scraped_group(user_id, item2)
+                                # Fire and forget save
+                                if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item2))) # type: ignore
                                 if queue:
                                     await queue.put({"type": "result", "layer": 3, "data": item2})  # pyre-ignore
                                 found_in_seed = int(found_in_seed) + 1  # type: ignore

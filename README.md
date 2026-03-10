@@ -1,5 +1,5 @@
 ---
-title: Arkitel API
+title: ArkiTel API
 emoji: 🚀
 colorFrom: indigo
 colorTo: blue
@@ -8,6 +8,6 @@ app_port: 7860
 pinned: false
 ---
 
-# Telegram Automation API
-Backend for the Arkitel Telegram Automation Platform.
+# ArkiTel Automation API
+Backend for the ArkiTel Telegram Automation Platform.
 Run on Hugging Face Spaces.

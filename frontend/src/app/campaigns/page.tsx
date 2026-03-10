@@ -271,11 +271,11 @@ export default function CampaignsPage() {
                             
                             <div className="flex items-center gap-8">
                                 <div className="hidden lg:block">
-                                    <p className="text-[9px] uppercase tracking-widest text-foreground/20 font-black mb-1">Preview</p>
+                                    <p className="text-[9px] uppercase tracking-widest text-foreground/20 font-bold mb-1">Preview</p>
                                     <p className="text-[11px] text-foreground/40 max-w-[150px] truncate font-medium">"{camp.message_text || camp.message || '...'}"</p>
                                 </div>
                                 
-                                <div className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
+                                <div className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
                                     {camp.status}
                                 </div>
 
@@ -303,11 +303,11 @@ export default function CampaignsPage() {
 
             {/* Campaign Modal Overlay */}
             {isCreating && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 overflow-y-auto">
-                    <div className="bg-card border border-border rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 my-auto">
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                    <div className="bg-card border border-border rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
                         
-                        <div className="flex justify-between items-center p-8 border-b border-border">
+                        <div className="flex justify-between items-center p-8 border-b border-border shrink-0">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
                                     <Megaphone size={24} />
@@ -320,7 +320,7 @@ export default function CampaignsPage() {
                             <button onClick={() => { setIsCreating(false); setEditingId(null); }} className="text-foreground/20 hover:text-foreground p-2 hover:bg-foreground/5 rounded-full"><X size={24} /></button>
                         </div>
 
-                        <div className="p-8">
+                        <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
                             {success ? (
                                 <div className="text-center py-20">
                                     <div className="w-20 h-20 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={40} /></div>
@@ -377,7 +377,7 @@ export default function CampaignsPage() {
 
                                             <div className="space-y-4">
                                                 <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
-                                                    <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                    <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                                                         <MessageCircle size={14} /> Optimization Guide (ChatGPT Prompt)
                                                     </h4>
                                                     <div className="text-[10px] text-foreground/50 leading-relaxed font-medium space-y-2">
@@ -405,7 +405,7 @@ export default function CampaignsPage() {
                                                     <div className="flex justify-between items-center px-1">
                                                         <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Message Payload</label>
                                                         {!isSpintaxValid(campaignData.message) && campaignData.message.length > 0 && (
-                                                            <span className="text-[9px] font-black text-amber-500 uppercase">Non-Spintax detected</span>
+                                                            <span className="text-[9px] font-bold text-amber-500 uppercase">Non-Spintax detected</span>
                                                         )}
                                                     </div>
                                                     <textarea
@@ -449,7 +449,7 @@ export default function CampaignsPage() {
                                                     {fetchingDialogs ? (
                                                         <div className="flex flex-col items-center justify-center h-full opacity-20"><Loader2 className="animate-spin" /></div>
                                                     ) : filteredDialogs.length === 0 ? (
-                                                        <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-black">No results</div>
+                                                        <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-bold">No results</div>
                                                     ) : (
                                                         filteredDialogs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((d: any) => (
                                                             <div 
@@ -479,7 +479,7 @@ export default function CampaignsPage() {
 
                                     <div className="flex justify-end gap-4 pt-8 border-t border-border">
                                         <button type="button" onClick={() => { setIsCreating(false); setEditingId(null); }} className="px-8 py-3.5 rounded-2xl text-sm font-bold text-foreground/40 hover:text-foreground">Abort</button>
-                                        <button type="submit" disabled={loading || selectedGroups.length === 0} className="bg-indigo-500 hover:bg-indigo-600 text-white px-10 py-3.5 rounded-2xl text-sm font-black shadow-xl shadow-indigo-500/20 disabled:opacity-30">
+                                        <button type="submit" disabled={loading || selectedGroups.length === 0} className="bg-indigo-500 hover:bg-indigo-600 text-white px-10 py-3.5 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 disabled:opacity-30">
                                             {loading ? <Loader2 size={18} className="animate-spin" /> : (editingId ? 'Update & Deploy' : 'Launch Underground')}
                                         </button>
                                     </div>
