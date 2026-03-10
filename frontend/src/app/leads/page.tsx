@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bookmark, Loader2, UsersRound, Megaphone, CheckCircle2, X, ExternalLink, Plus, Trash2, Search, Filter, Shield, UserPlus, Users, MessageCircle, ChevronRight, Check } from 'lucide-react';
-import { apiFetch } from '@/lib/auth';
+import { Bookmark, Loader2, Megaphone, X, Trash2, Search, UserPlus, Users, Check, CheckCircle2, XCircle, AlertTriangle, UsersRound, Shield, ChevronRight } from 'lucide-react';
+import { apiFetch, getToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 
 interface SavedGroup {
@@ -39,7 +39,7 @@ export default function LeadsPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<TabType>('all');
     const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
-    
+
     // Actions state
     const [joining, setJoining] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -47,6 +47,19 @@ export default function LeadsPage() {
     const [extractingGroup, setExtractingGroup] = useState<string | null>(null);
     const [extractingPhone, setExtractingPhone] = useState('');
     const [accounts, setAccounts] = useState<any[]>([]);
+
+    // Bulk join progress tracker
+    const [joinProgress, setJoinProgress] = useState<{
+        open: boolean;
+        total: number;
+        joined: number;
+        failed: number;
+        done: boolean;
+        log: { type: 'joined' | 'failed' | 'flood'; name: string; reason?: string }[];
+        failedGroups: { name: string; reason: string }[];
+    }>({
+        open: false, total: 0, joined: 0, failed: 0, done: false, log: [], failedGroups: []
+    });
 
     useEffect(() => {
         fetchAllLeads();
@@ -60,13 +73,13 @@ export default function LeadsPage() {
                 apiFetch('/api/telegram/leads/groups'),
                 apiFetch('/api/telegram/leads/members')
             ]);
-            
+
             const groupsData = await groupsRes.json();
             const membersData = await membersRes.json();
-            
+
             if (groupsRes.ok) setGroups(groupsData.groups || []);
             if (membersRes.ok) setMembers(membersData.members || []);
-            
+
             if (!groupsRes.ok || !membersRes.ok) {
                 setError('Some data failed to load.');
             }
@@ -86,33 +99,70 @@ export default function LeadsPage() {
                 setAccounts(accs);
                 if (accs.length > 0) setExtractingPhone(accs[0].phone_number);
             }
-        } catch (e) {}
+        } catch (e) { }
     };
 
     const handleBulkJoin = async () => {
-        const groupIds = Array.from(selectedIds).filter(id => typeof id === 'string');
+        const groupIds = Array.from(selectedIds).filter(id => typeof id === 'string') as string[];
         if (groupIds.length === 0) return;
-        
-        setJoining(true);
-        setError('');
-        try {
-            const phoneNumber = accounts[0]?.phone_number;
-            if (!phoneNumber) throw new Error("No connected account found.");
+        const phoneNumber = accounts[0]?.phone_number;
+        if (!phoneNumber) { setError('No connected account found.'); return; }
 
-            const res = await apiFetch('/api/telegram/bulk-join', {
-                method: 'POST',
-                body: JSON.stringify({ group_ids: groupIds, phone_number: phoneNumber })
+        // Reset and open the progress modal
+        setJoinProgress({ open: true, total: groupIds.length, joined: 0, failed: 0, done: false, log: [], failedGroups: [] });
+        setJoining(true);
+
+        try {
+            const token = getToken();
+            const params = new URLSearchParams({
+                group_ids: JSON.stringify(groupIds),
+                phone_number: phoneNumber,
+                token: token || ''
             });
-            const data = await res.json();
-            if (res.ok) {
-                alert(`Bulk Join started! Joined: ${data.joined}, Failed: ${data.failed}. Check your Telegram account.`);
-                setSelectedIds(new Set());
-            } else {
-                setError(data.detail || 'Bulk join failed');
-            }
+            const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://arkitel.onrender.com';
+            const evtSource = new EventSource(`${apiBase}/api/telegram/bulk-join/stream?${params.toString()}`);
+
+            evtSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'start') {
+                        setJoinProgress(p => ({ ...p, total: data.total }));
+                    } else if (data.type === 'joined') {
+                        setJoinProgress(p => ({
+                            ...p, joined: data.joined, failed: data.failed,
+                            log: [{ type: 'joined', name: data.name }, ...p.log.slice(0, 49)]
+                        }));
+                    } else if (data.type === 'failed') {
+                        setJoinProgress(p => ({
+                            ...p, joined: data.joined, failed: data.failed,
+                            log: [{ type: 'failed', name: data.name, reason: data.reason }, ...p.log.slice(0, 49)]
+                        }));
+                    } else if (data.type === 'flood') {
+                        setJoinProgress(p => ({
+                            ...p, log: [{ type: 'flood', name: '⚠️ Flood Wait Detected – Stopped.' }, ...p.log]
+                        }));
+                    } else if (data.type === 'done') {
+                        setJoinProgress(p => ({
+                            ...p, done: true, joined: data.joined, failed: data.failed,
+                            failedGroups: data.failed_groups || []
+                        }));
+                        setJoining(false);
+                        setSelectedIds(new Set());
+                        evtSource.close();
+                    } else if (data.type === 'error') {
+                        setError(data.msg);
+                        evtSource.close();
+                        setJoining(false);
+                    }
+                } catch { }
+            };
+            evtSource.onerror = () => {
+                setJoinProgress(p => ({ ...p, done: true }));
+                setJoining(false);
+                evtSource.close();
+            };
         } catch (err: any) {
             setError(err.message);
-        } finally {
             setJoining(false);
         }
     };
@@ -120,12 +170,12 @@ export default function LeadsPage() {
     const handleBulkDelete = async () => {
         if (selectedIds.size === 0) return;
         if (!confirm(`Are you sure you want to delete ${selectedIds.size} selected leads?`)) return;
-        
+
         setIsDeleting(true);
         try {
             const groupIds = Array.from(selectedIds).filter(id => typeof id === 'string');
             const memberIds = Array.from(selectedIds).filter(id => typeof id === 'number');
-            
+
             const promises = [];
             if (groupIds.length > 0) {
                 promises.push(apiFetch('/api/telegram/leads/groups/bulk-delete', {
@@ -139,7 +189,7 @@ export default function LeadsPage() {
                     body: JSON.stringify({ ids: memberIds })
                 }));
             }
-            
+
             await Promise.all(promises);
             setSelectedIds(new Set());
             fetchAllLeads();
@@ -189,7 +239,7 @@ export default function LeadsPage() {
             if (res.ok) {
                 fetchAllLeads();
             }
-        } catch (e) {}
+        } catch (e) { }
     };
 
     const handleExtract = async () => {
@@ -243,15 +293,15 @@ export default function LeadsPage() {
             });
             combined = [...combined, ...filteredGroups.map(g => ({ ...g, itemType: 'community' }))];
         }
-        
+
         if (activeTab === 'all' || activeTab === 'members') {
             combined = [...combined, ...members.map(m => ({ ...m, title: `${m.first_name || ''} ${m.last_name || ''}`.trim() || m.username || m.id, itemType: 'member', type: 'member' }))];
         }
 
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
-            combined = combined.filter(l => 
-                (l.title?.toLowerCase() || '').includes(q) || 
+            combined = combined.filter(l =>
+                (l.title?.toLowerCase() || '').includes(q) ||
                 (l.username?.toLowerCase() || '').includes(q) ||
                 (l.id?.toString().toLowerCase() || '').includes(q)
             );
@@ -265,6 +315,101 @@ export default function LeadsPage() {
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-[calc(100vh-100px)] flex flex-col pt-2">
+
+            {/* ---- Bulk Join Progress Modal ---- */}
+            {joinProgress.open && (
+                <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="bg-card border border-border rounded-[28px] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-6 border-b border-border">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-500">
+                                    <UserPlus size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-base text-foreground">Bulk Join Progress</h3>
+                                    <p className="text-xs text-foreground/40">Live tracking — {joinProgress.total} groups queued</p>
+                                </div>
+                            </div>
+                            {joinProgress.done && (
+                                <button onClick={() => setJoinProgress(p => ({ ...p, open: false }))} className="text-foreground/30 hover:text-foreground p-1 rounded-lg">
+                                    <X size={18} />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="px-6 pt-5 pb-3">
+                            <div className="flex justify-between items-end mb-2">
+                                <span className="text-sm font-bold text-foreground">
+                                    {joinProgress.joined + joinProgress.failed} of {joinProgress.total} processed
+                                </span>
+                                <span className="text-xs font-bold text-foreground/40 uppercase tracking-widest">
+                                    {joinProgress.done ? 'Done' : 'In Progress...'}
+                                </span>
+                            </div>
+                            <div className="w-full h-3 bg-foreground/[0.05] rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-indigo-500 to-violet-500 rounded-full transition-all duration-500"
+                                    style={{ width: `${joinProgress.total > 0 ? ((joinProgress.joined + joinProgress.failed) / joinProgress.total) * 100 : 0}%` }}
+                                />
+                            </div>
+                            {/* Stats row */}
+                            <div className="flex gap-4 mt-3">
+                                <div className="flex items-center gap-2 text-sm font-bold text-emerald-500">
+                                    <CheckCircle2 size={14} /> {joinProgress.joined} Joined
+                                </div>
+                                <div className="flex items-center gap-2 text-sm font-bold text-red-400">
+                                    <XCircle size={14} /> {joinProgress.failed} Failed
+                                </div>
+                                {!joinProgress.done && (
+                                    <div className="flex items-center gap-2 text-sm font-bold text-foreground/30 ml-auto">
+                                        <Loader2 size={14} className="animate-spin" /> Working...
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Live Log */}
+                        <div className="px-6 pb-3">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-foreground/30 mb-2">Live Log</p>
+                            <div className="h-40 overflow-y-auto space-y-1 custom-scrollbar pr-1">
+                                {joinProgress.log.map((entry, i) => (
+                                    <div key={i} className={`flex items-start gap-2 text-xs rounded-lg px-2 py-1 ${entry.type === 'joined' ? 'bg-emerald-500/5 text-emerald-400' : entry.type === 'flood' ? 'bg-amber-500/5 text-amber-400' : 'bg-red-500/5 text-red-400'}`}>
+                                        {entry.type === 'joined' ? <CheckCircle2 size={12} className="mt-0.5 shrink-0" /> : entry.type === 'flood' ? <AlertTriangle size={12} className="mt-0.5 shrink-0" /> : <XCircle size={12} className="mt-0.5 shrink-0" />}
+                                        <span className="font-medium">{entry.name}{entry.reason && <span className="opacity-60"> — {entry.reason}</span>}</span>
+                                    </div>
+                                ))}
+                                {joinProgress.log.length === 0 && <p className="text-foreground/20 text-xs">Waiting for first response...</p>}
+                            </div>
+                        </div>
+
+                        {/* Final Summary (only on done) */}
+                        {joinProgress.done && joinProgress.failedGroups.length > 0 && (
+                            <div className="mx-6 mb-5 p-4 bg-red-500/5 border border-red-500/10 rounded-2xl">
+                                <p className="text-xs font-bold text-red-400 uppercase tracking-widest mb-2">Failed Groups Breakdown</p>
+                                <div className="space-y-1 max-h-28 overflow-y-auto custom-scrollbar">
+                                    {joinProgress.failedGroups.map((g, i) => (
+                                        <div key={i} className="text-xs text-foreground/60">
+                                            <span className="font-bold text-foreground/80">{g.name}</span>
+                                            <span className="ml-2 text-red-400/70">{g.reason}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Close button on done */}
+                        {joinProgress.done && (
+                            <div className="px-6 pb-6">
+                                <button onClick={() => setJoinProgress(p => ({ ...p, open: false }))} className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 text-white font-bold rounded-2xl text-sm transition-all">
+                                    Close
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
                     <h2 className="text-3xl font-semibold mb-2 tracking-tight text-foreground flex items-center gap-3">
@@ -276,25 +421,25 @@ export default function LeadsPage() {
                 <div className="flex flex-wrap gap-3">
                     {selectedIds.size > 0 && (
                         <>
-                            <button 
+                            <button
                                 onClick={handleBulkDelete}
                                 disabled={isDeleting}
                                 className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                             >
                                 <Trash2 size={16} /> Delete Selected ({selectedIds.size})
                             </button>
-                            <button 
+                            <button
                                 onClick={handleAddToCampaign}
                                 className="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
                             >
                                 <Megaphone size={16} /> Add to Campaign
                             </button>
-                            <button 
+                            <button
                                 onClick={handleBulkJoin}
                                 disabled={joining}
                                 className="bg-foreground text-background px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                             >
-                                {joining ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />} 
+                                {joining ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
                                 Bulk Join
                             </button>
                         </>
@@ -318,8 +463,8 @@ export default function LeadsPage() {
 
                 <div className="relative w-full md:w-80 group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         placeholder="Search leads, usernames..."
                         className="w-full bg-foreground/[0.03] border border-border rounded-2xl py-3 pl-12 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-foreground/20"
                         value={searchQuery}
@@ -347,7 +492,7 @@ export default function LeadsPage() {
                         <thead>
                             <tr className="border-b border-border text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 bg-foreground/[0.01]">
                                 <th className="p-6 w-12 text-center">
-                                    <button 
+                                    <button
                                         onClick={() => toggleSelectAll(isAllVisibleSelected)}
                                         className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isAllVisibleSelected ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-border bg-foreground/5 hover:border-foreground/30'}`}
                                     >
@@ -365,13 +510,13 @@ export default function LeadsPage() {
                             {visibleLeads.map((l) => {
                                 const isSelected = selectedIds.has(l.id);
                                 return (
-                                    <tr 
-                                        key={l.id} 
+                                    <tr
+                                        key={l.id}
                                         className={`group hover:bg-foreground/[0.01] transition-all cursor-pointer ${isSelected ? 'bg-indigo-500/[0.03]' : ''}`}
                                         onClick={() => toggleSelection(l.id)}
                                     >
                                         <td className="p-6 text-center" onClick={(e) => e.stopPropagation()}>
-                                            <button 
+                                            <button
                                                 onClick={() => toggleSelection(l.id)}
                                                 className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'border-border bg-foreground/[0.02] hover:border-foreground/20'}`}
                                             >
@@ -417,14 +562,14 @@ export default function LeadsPage() {
                                             <div className="flex items-center justify-end gap-1 font-bold">
                                                 {l.itemType === 'community' && (
                                                     <>
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleSingleJoin(l.id, l.username)}
                                                             className="p-2 text-foreground/30 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-all"
                                                             title="Join Community"
                                                         >
                                                             <UserPlus size={18} />
                                                         </button>
-                                                        <button 
+                                                        <button
                                                             onClick={() => setExtractingGroup(l.username || l.id)}
                                                             className="p-2 text-foreground/30 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-xl transition-all"
                                                             title="Extract Members"
@@ -433,7 +578,7 @@ export default function LeadsPage() {
                                                         </button>
                                                     </>
                                                 )}
-                                                <button 
+                                                <button
                                                     onClick={() => handleDeleteSingle(l.id, l.itemType === 'member' ? 'member' : 'group')}
                                                     className="p-2 text-foreground/30 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
                                                     title="Remove Lead"
@@ -461,7 +606,7 @@ export default function LeadsPage() {
                         <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
                             <div className="space-y-3">
                                 <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] ml-1">Select Account Proxy</label>
-                                <select 
+                                <select
                                     className="w-full bg-foreground/[0.03] border border-border rounded-2xl py-4 px-5 text-sm font-bold text-foreground focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
                                     value={extractingPhone}
                                     onChange={(e) => setExtractingPhone(e.target.value)}
@@ -487,7 +632,7 @@ export default function LeadsPage() {
                                     Member extraction uses your account for scanning. High-speed protocol active (limit: 1000 targets).
                                 </p>
                             </div>
-                            <button 
+                            <button
                                 onClick={handleExtract}
                                 disabled={isExtracting}
                                 className="w-full bg-indigo-500 hover:bg-indigo-600 text-white h-16 rounded-[20px] text-sm font-bold shadow-xl shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"

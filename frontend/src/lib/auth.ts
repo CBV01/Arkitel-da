@@ -40,8 +40,10 @@ export const apiFetch = async (endpoint: string, options: any = {}) => {
     const response = await fetch(url, { ...options, method, headers });
 
     if (response.status === 401) {
-        // Unauthorized, maybe redirect to login
-        // removeToken();
+        removeToken();
+        if (typeof window !== 'undefined') {
+            window.location.href = '/login';
+        }
     }
 
     return response;

@@ -1,9 +1,15 @@
 import os
-import dotenv
-from database import get_db_connection
+import sys
+# Ensure we can import from the current directory
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+try:
+    from dotenv import load_dotenv  # type: ignore
+    from database import get_db_connection  # type: ignore
+except ImportError:
+    pass
 
 def fix_user():
-    dotenv.load_dotenv()
+    load_dotenv()
     conn = get_db_connection()
     try:
         # Check if webyzoid exists

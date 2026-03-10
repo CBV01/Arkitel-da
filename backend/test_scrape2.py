@@ -1,6 +1,6 @@
 import asyncio
-import httpx
-from bs4 import BeautifulSoup
+import httpx # type: ignore
+from bs4 import BeautifulSoup # type: ignore
 import re
 
 SCRAPER_HEADERS = {

@@ -12,7 +12,7 @@ export default function CampaignsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [fetchingDialogs, setFetchingDialogs] = useState(false);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
-    
+
     const [campaignData, setCampaignData] = useState({
         name: '',
         phone_number: '',
@@ -40,7 +40,7 @@ export default function CampaignsPage() {
                     setSelectedGroups(JSON.parse(preselected));
                     sessionStorage.removeItem('selected_lead_groups');
                     setIsCreating(true);
-                } catch (e) {}
+                } catch (e) { }
             }
         }
     }, []);
@@ -82,29 +82,48 @@ export default function CampaignsPage() {
         }
     };
 
-    useEffect(() => {
-        const fetchAccounts = async () => {
-            try {
-                const res = await apiFetch('/api/telegram/accounts');
-                const text = await res.text();
-                if (res.ok) {
-                    try {
-                        const data = JSON.parse(text);
-                        setAccounts(data.accounts || []);
-                    } catch (e) {
-                        console.error("Campaigns: Non-JSON response for accounts", text);
-                    }
-                }
-            } catch (err) {
-                console.error("Failed to fetch accounts", err);
+    const fetchAccounts = async () => {
+        try {
+            const res = await apiFetch('/api/telegram/accounts');
+            if (res.ok) {
+                const data = await res.json();
+                setAccounts(data.accounts || []);
             }
+        } catch (err) {
+            console.error("Failed to fetch accounts", err);
+        }
+    };
+
+    useEffect(() => {
+        let isMounted = true;
+        let isPolling = false;
+
+        const loadInitial = async () => {
+            await Promise.all([fetchAccounts(), fetchCampaigns()]);
+            isPolling = true;
         };
-        fetchAccounts();
-        fetchCampaigns();
+        loadInitial();
+
+        const interval = setInterval(() => {
+            if (isPolling && isMounted) {
+                // Background poll without resetting loading state
+                apiFetch('/api/telegram/campaigns')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (isMounted) setCampaigns(data.campaigns || []);
+                    })
+                    .catch(() => { });
+            }
+        }, 15000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
     }, []);
 
     const toggleGroup = (id: string) => {
-        setSelectedGroups(prev => 
+        setSelectedGroups(prev =>
             prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]
         );
     };
@@ -166,11 +185,14 @@ export default function CampaignsPage() {
             message: camp.message_text || camp.message || '',
             interval_hours: (camp.interval_hours || 0).toString()
         });
-        
-        let groups = [];
+
+        let groups: string[] = [];
         try {
-            groups = JSON.parse(camp.target_groups);
-        } catch(e) {
+            // target_groups might be stored as a raw python string like "['-100123']" instead of strict JSON '["-100123"]'.
+            const sanitized = camp.target_groups.replace(/'/g, '"');
+            groups = JSON.parse(sanitized);
+            if (!Array.isArray(groups)) groups = [groups];
+        } catch (e) {
             groups = [camp.target_groups].filter(Boolean);
         }
         setSelectedGroups(groups);
@@ -206,8 +228,8 @@ export default function CampaignsPage() {
         }
     };
 
-    const filteredDialogs = dialogs.filter(d => 
-        d.title?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const filteredDialogs = dialogs.filter(d =>
+        d.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         d.id?.toString().includes(searchTerm)
     );
 
@@ -267,27 +289,27 @@ export default function CampaignsPage() {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-8">
                                 <div className="hidden lg:block">
                                     <p className="text-[9px] uppercase tracking-widest text-foreground/20 font-bold mb-1">Preview</p>
                                     <p className="text-[11px] text-foreground/40 max-w-[150px] truncate font-medium">"{camp.message_text || camp.message || '...'}"</p>
                                 </div>
-                                
+
                                 <div className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
                                     {camp.status}
                                 </div>
 
                                 <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                    <button 
+                                    <button
                                         onClick={() => handleEdit(camp)}
                                         className="p-2 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-lg transition-all"
                                         title="Edit Campaign"
                                     >
                                         <Search size={16} />
                                     </button>
-                                    <button 
-                                        onClick={() => handleDelete(camp.id)} 
+                                    <button
+                                        onClick={() => handleDelete(camp.id)}
                                         className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                                         title="Delete Campaign"
                                     >
@@ -305,7 +327,7 @@ export default function CampaignsPage() {
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
                     <div className="bg-card border border-border rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
-                        
+
                         <div className="flex justify-between items-center p-8 border-b border-border shrink-0">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
@@ -383,11 +405,11 @@ export default function CampaignsPage() {
                                                         <p>1. Copy your raw message content.</p>
                                                         <p>2. Paste this prompt into ChatGPT:</p>
                                                         <div className="bg-background/50 p-2 rounded-lg border border-border mt-2 font-mono text-[9px] relative group">
-                                                            I need you to change the provided content below in to a SPINTAX format following the sample below <br/>
-                                                            ____ Sample _____ <br/>
-                                                            {'{Hello|Hi|Hey} {{First Name}}, ...'} <br/>
+                                                            I need you to change the provided content below in to a SPINTAX format following the sample below <br />
+                                                            ____ Sample _____ <br />
+                                                            {'{Hello|Hi|Hey} {{First Name}}, ...'} <br />
                                                             Now here is my content to convert: {'{ PASTE YOUR CONTENT HERE }'}
-                                                            <button 
+                                                            <button
                                                                 type="button"
                                                                 onClick={() => {
                                                                     navigator.clipboard.writeText("I need you to change the provided content below in to a SPINTAX format following the sample below \n____ Sample _____\n\n{Hello|Hi|Hey} {{First Name}},\n\n{I was checking out {{Company}} online and couldn’t find a website for your services|I looked for {{Company}} online but couldn’t spot a website for your services|I tried to find a website for {{Company}} but didn’t see one} {just wanted to make sure I wasn’t missing it—are you still active with clients?|wanted to confirm—are you still taking clients?|thought I’d check—are you still serving clients?}\n\nNow here is my content you have to convert to SPINTAX based on provided instructions { PASTE YOUR CONTENT HERE }");
@@ -424,10 +446,10 @@ export default function CampaignsPage() {
                                                 <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
                                                 <span className="text-[10px] font-bold text-indigo-500">{selectedGroups.length} Selected</span>
                                             </div>
-                                            
+
                                             <div className="relative">
                                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/20"><Search size={14} /></div>
-                                                <input 
+                                                <input
                                                     type="text"
                                                     placeholder="Search targets..."
                                                     className="w-full bg-input border border-border rounded-xl py-2 pl-9 pr-4 text-xs text-foreground"
@@ -451,8 +473,8 @@ export default function CampaignsPage() {
                                                         <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-bold">No results</div>
                                                     ) : (
                                                         filteredDialogs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((d: any) => (
-                                                            <div 
-                                                                key={d.id} 
+                                                            <div
+                                                                key={d.id}
                                                                 onClick={() => toggleGroup(d.id)}
                                                                 className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${selectedGroups.includes(d.id) ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-background border-border hover:bg-foreground/[0.02]'}`}
                                                             >

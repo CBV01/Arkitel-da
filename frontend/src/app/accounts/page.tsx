@@ -16,6 +16,8 @@ export default function AccountsPage() {
     const [error, setError] = useState('');
     const [accounts, setAccounts] = useState<any[]>([]);
     const [fetchingAccounts, setFetchingAccounts] = useState(true);
+    const [successMsg, setSuccessMsg] = useState('');
+    const [actionLoading, setActionLoading] = useState<string | null>(null);
 
     const fetchAccounts = async () => {
         setFetchingAccounts(true);
@@ -115,8 +117,66 @@ export default function AccountsPage() {
         }
     };
 
+    const handleDeleteAccount = async (phone: string) => {
+        if (!confirm(`Are you sure you want to delete ${phone}? This will permanently remove the authentication session.`)) return;
+        setActionLoading(phone);
+        try {
+            const res = await apiFetch(`/api/telegram/accounts/${phone}`, { method: 'DELETE' });
+            if (res.ok) {
+                setAccounts(prev => prev.filter(a => a.phone_number !== phone));
+                setSuccessMsg(`Account ${phone} removed.`);
+                setTimeout(() => setSuccessMsg(''), 5000);
+            }
+        } catch (err) {
+            console.error("Delete account error:", err);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleValidateSession = async (phone: string) => {
+        setActionLoading(phone + '_valid');
+        try {
+            const res = await apiFetch(`/api/telegram/accounts/${phone}/validate`, { method: 'POST' });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.authorized) {
+                    setSuccessMsg(`Session for ${phone} is VALID.`);
+                } else {
+                    setError(`Session for ${phone} EXPIRED or INVALID.`);
+                }
+                setTimeout(() => setSuccessMsg(''), 5000);
+            }
+        } catch (err) {
+            setError(`Validation failed for ${phone}.`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleSessionDump = async (phone: string) => {
+        try {
+            const res = await apiFetch(`/api/telegram/accounts/${phone}/session`);
+            if (res.ok) {
+                const data = await res.json();
+                navigator.clipboard.writeText(data.session_string);
+                setSuccessMsg(`Session string for ${phone} copied to clipboard.`);
+                setTimeout(() => setSuccessMsg(''), 5000);
+            }
+        } catch (err) {
+            setError(`Failed to dump session for ${phone}.`);
+        }
+    };
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {successMsg && (
+                <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <CheckCircle2 size={20} />
+                    <span className="font-bold text-sm tracking-tight">{successMsg}</span>
+                </div>
+            )}
+
             <header className="flex justify-between items-center mb-10">
                 <div>
                     <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground font-sans">Telegram Fleet</h2>
@@ -157,7 +217,7 @@ export default function AccountsPage() {
                     {accounts.map((acc, idx) => (
                         <div key={idx} className="bg-card border border-border rounded-[28px] p-6 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10"></div>
-                            
+
                             <div className="flex items-center gap-4 mb-6 relative z-10">
                                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-black shadow-lg shadow-indigo-500/10 transition-transform group-hover:scale-105 duration-500">
                                     {(acc.phone_number?.slice(-2) || 'N').toUpperCase()}
@@ -169,8 +229,11 @@ export default function AccountsPage() {
                                         <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/70">NODE ACTIVE</span>
                                     </div>
                                 </div>
-                                <button className="p-2.5 rounded-xl bg-foreground/5 text-foreground/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-border">
-                                    <X size={16} />
+                                <button
+                                    onClick={() => handleDeleteAccount(acc.phone_number)}
+                                    disabled={actionLoading === acc.phone_number}
+                                    className="p-2.5 rounded-xl bg-foreground/5 text-foreground/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-border disabled:opacity-50">
+                                    {actionLoading === acc.phone_number ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
                                 </button>
                             </div>
 
@@ -186,11 +249,16 @@ export default function AccountsPage() {
                             </div>
 
                             <div className="mt-6 pt-6 border-t border-border flex gap-2 relative z-10">
-                                <button className="flex-1 bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-border">
+                                <button
+                                    onClick={() => handleSessionDump(acc.phone_number)}
+                                    className="flex-1 bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-border">
                                     Session Dump
                                 </button>
-                                <button className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/10">
-                                    Auth Valid
+                                <button
+                                    onClick={() => handleValidateSession(acc.phone_number)}
+                                    disabled={actionLoading === acc.phone_number + '_valid'}
+                                    className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/10 disabled:opacity-50">
+                                    {actionLoading === acc.phone_number + '_valid' ? 'Validating...' : 'Auth Valid'}
                                 </button>
                             </div>
                         </div>

@@ -1,5 +1,7 @@
 import os
+import sys
 from dotenv import load_dotenv  # type: ignore
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()  # Load .env file before anything else
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request  # type: ignore
@@ -102,7 +104,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     traceback.print_exc()
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error", "error": str(exc), "traceback": traceback.format_exc()},
+        # NOTE: Traceback intentionally NOT returned to client for security
+        content={"detail": "Internal Server Error. Please try again or contact support."},
     )
 
 @app.get("/health")
@@ -369,6 +372,43 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
         })
     print(f"AUTH_ISOLATION: User {user_id} fetched {len(accounts)} accounts.")
     return {"accounts": accounts}
+@app.delete("/api/telegram/accounts/{phone_number}")
+async def delete_account(phone_number: str, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    print(f"AUTH: Account {phone_number} deleted by user {user_id}")
+    return {"status": "success"}
+
+@app.post("/api/telegram/accounts/{phone_number}/validate")
+async def validate_account_session(phone_number: str, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
+    if hasattr(conn, "close"): conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found")
+        
+    try:
+        client = TelegramClient(StringSession(row[0]), int(row[1]), row[2])
+        await client.connect()
+        is_auth = await client.is_user_authorized()
+        await client.disconnect()
+        return {"status": "success", "authorized": is_auth}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/telegram/accounts/{phone_number}/session")
+async def dump_session_string(phone_number: str, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    row = conn.execute("SELECT session_string FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
+    if hasattr(conn, "close"): conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    return {"phone_number": phone_number, "session_string": row[0]}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -823,8 +863,10 @@ class BulkJoinRequest(BaseModel):
 
 @app.post("/api/telegram/bulk-join")
 async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_user_id)):
+    """Legacy non-streaming bulk join (kept for compatibility). Use /stream for real-time tracking."""
     conn = get_db_connection()
     row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (req.phone_number, user_id)).fetchone()
+    if hasattr(conn, "close"): conn.close()
     if not row: raise HTTPException(status_code=404, detail="Account not found")
     
     session_str, api_id, api_hash = row[0], int(row[1]), row[2]
@@ -833,32 +875,114 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
     
     results = {'joined': 0, 'failed': 0}
     try:
-        # pyre-ignore[21]: telethon channels
-        from telethon.tl.functions.channels import JoinChannelRequest
+        from telethon.tl.functions.channels import JoinChannelRequest  # pyre-ignore[21]
         for g_id in req.group_ids:
             try:
-                # User requested approx 10s interval for safety
                 await asyncio.sleep(random.randint(10, 15))
-                
-                # Resolve entity before joining to ensure success
-                resolved_id = g_id
-                if str(g_id).lstrip('-').isdigit():
-                    resolved_id = int(g_id)
+                resolved_id = int(g_id) if str(g_id).lstrip('-').isdigit() else g_id
                 entity = await client.get_entity(resolved_id)
-                
-                print(f"BKG_JOIN: Attempting to join {getattr(entity, 'title', resolved_id)} (ID: {getattr(entity, 'id', 'unknown')})")
                 await client(JoinChannelRequest(entity))
                 results['joined'] += 1
-                print(f"BKG_JOIN: Successfully joined {resolved_id}")
             except Exception as e:
                 results['failed'] += 1
-                print(f"BKG_JOIN_ERR: Failed to join {g_id}. Reason: {e}")
-                if "FloodWaitError" in str(e): 
-                    print(f"BKG_JOIN_FATAL: FloodWait detected. Stopping bulk operation.")
-                    break
+                if "FloodWaitError" in str(e): break
         return {"status": "success", **results}
     finally:
         await client.disconnect()
+
+
+@app.get("/api/telegram/bulk-join/stream")
+async def bulk_join_stream(
+    group_ids: str,
+    phone_number: str,
+    token: str = ""
+):
+    """
+    SSE Streaming Bulk Join – emits real-time progress events.
+    Uses token query param instead of Authorization header (EventSource limitation).
+    group_ids: JSON-encoded list of group IDs.
+    """
+    import json as _json
+    from jose import JWTError, jwt as _jwt  # type: ignore
+    SECRET_KEY_LOCAL = os.getenv("JWT_SECRET", "super-secret-key-change-this-in-production")
+    
+    # Manually validate the token (can't use Depends for SSE endpoints)
+    user_id = None
+    try:
+        payload = _jwt.decode(token, SECRET_KEY_LOCAL, algorithms=["HS256"])
+        user_id = payload.get("sub")
+    except Exception:
+        pass
+    
+    if not user_id:
+        async def unauth_stream():
+            yield f"data: {_json.dumps({'type': 'error', 'msg': 'Unauthorized'})}\n\n"
+        return StreamingResponse(unauth_stream(), media_type="text/event-stream")
+    
+    try:
+        ids = _json.loads(group_ids)
+    except Exception:
+        ids = [group_ids]
+
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?",
+        (phone_number, user_id)
+    ).fetchone()
+    if hasattr(conn, "close"): conn.close()
+    
+    if not row:
+        async def error_stream():
+            yield f"data: {_json.dumps({'type': 'error', 'msg': 'Account not found'})}\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
+
+    session_str, api_id_val, api_hash_val = row[0], int(row[1]), row[2]
+    total = len(ids)
+
+    async def event_generator():
+        from telethon.tl.functions.channels import JoinChannelRequest  # pyre-ignore[21]
+        client = TelegramClient(StringSession(session_str), api_id_val, api_hash_val)
+        await client.connect()
+        
+        joined: int = 0
+        failed: int = 0
+        failed_groups = []
+        
+        try:
+            yield f"data: {_json.dumps({'type': 'start', 'total': total})}\n\n"
+            
+            for idx, g_id in enumerate(ids, start=1):
+                group_label = str(g_id)
+                try:
+                    await asyncio.sleep(random.randint(10, 15))
+                    resolved_id = int(g_id) if str(g_id).lstrip('-').isdigit() else g_id
+                    entity = await client.get_entity(resolved_id)
+                    group_label = getattr(entity, 'title', str(g_id))
+                    await client(JoinChannelRequest(entity))
+                    joined = joined + 1  # type: ignore[operator]
+                    yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
+                    
+                except Exception as e:
+                    failed = failed + 1  # type: ignore[operator]
+                    err_msg = str(e)
+                    err_len = len(err_msg)
+                    err_short = err_msg[:80] + '...' if err_len > 80 else err_msg  # type: ignore[index]
+                    failed_groups.append({'name': group_label, 'reason': err_short})
+                    yield f"data: {_json.dumps({'type': 'failed', 'name': group_label, 'reason': err_short, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
+                    if "FloodWaitError" in err_msg:
+                        yield f"data: {_json.dumps({'type': 'flood', 'msg': 'Flood detected. Stopping to protect your account.'})}\n\n"
+                        break
+            
+            yield f"data: {_json.dumps({'type': 'done', 'joined': joined, 'failed': failed, 'failed_groups': failed_groups})}\n\n"
+        
+        finally:
+            await client.disconnect()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 class JoinRequest(BaseModel):
     group_id: str
@@ -1423,45 +1547,43 @@ async def task_poller():
             sender_name = f"{me_fn} {me_ln}".strip() or me_un or "Unknown"
             print(f"BKG_TASK[{task_id}]: Authenticated as '{sender_name}' (ID: {me_id})")
             
-            import ast
             try:
                 target_groups = ast.literal_eval(groups_str)
             except:
                 target_groups = [groups_str] if groups_str else []
 
-            def recursive_spin(text):
-                while '{' in text and '}' in text:
+            def recursive_spin(text: str) -> str:
+                text_obj = str(text)
+                while '{' in text_obj and '}' in text_obj:
                     # Simple regex for leaf-level spintax: {a|b|c}
-                    text = re.sub(r'\{([^{}]*)\}', lambda m: random.choice(m.group(1).split('|')), text)
-                return text
+                    text_obj = re.sub(r'\{([^{}]*)\}', lambda m: random.choice(m.group(1).split('|')), text_obj)
+                return str(text_obj)
 
             # High Fidelity Extraction Loop
-            for group in target_groups:
+            for raw_group in target_groups:
                 try:
-                    await asyncio.sleep(random.uniform(5.0, 10.0)) # Safety delay
+                    # Clean and resolve ID format (int vs str)
+                    group = str(raw_group).strip()
+                    if not group: continue
+                    
+                    target_id = group
+                    if group.lstrip('-').isdigit():
+                        target_id = int(group)
+
+                    await asyncio.sleep(random.uniform(3.0, 7.0)) # Safety delay
                     
                     # Resolve Target Entity
                     try:
-                        entity = await client.get_entity(group)
-                        print(f"BKG_TASK[{task_id}]: Target resolved -> {getattr(entity, 'title', group)}")
+                        entity = await client.get_entity(target_id)
+                        res_title = getattr(entity, 'title', str(target_id))
+                        log_debug(f"BKG_TASK[{task_id}]: Target resolved -> {res_title}")
                     except Exception as e:
-                        print(f"BKG_TASK[{task_id}]: Could not resolve entity {group}: {e}")
+                        log_debug(f"BKG_TASK[{task_id}]: Mapping Error for {group}: {str(e)}")
                         continue
 
-                    # Personalization Merging (if applicable)
-                    final_msg = message
-                    if '{{First Name}}' in final_msg or '{{Username}}' in final_msg:
-                        # Attempt to get own or target info if relevant (simplified for now to global placeholders or entity info)
-                        # For real group merge, you usually need participant context, but here we can merge target's group title
-                        final_msg = final_msg.replace('{{Group Name}}', getattr(entity, 'title', 'Our Group'))
-                        # Default placeholders for ChatGPT-style prompts
-                        final_msg = final_msg.replace('{{First Name}}', '').replace('{{Username}}', '')
-
-                    # Final Spintax processing
-                    final_msg = recursive_spin(str(final_msg))
-                    
+                    # High-Fidelity Authorization Check
                     if not await client.is_user_authorized():
-                        print(f"BKG_TASK[{task_id}]: CRITICAL - Account not authorized for {phone_num}")
+                        log_debug(f"BKG_TASK[{task_id}]: CRITICAL - Session expired for {phone_num}")
                         # Mark failed and exit since we can't send anything
                         conn = get_db_connection()
                         conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
@@ -1471,18 +1593,34 @@ async def task_poller():
                         active_tasks.remove(task_id)
                         return
 
-                    print(f"BKG_TASK[{task_id}]: Delivering payload to {group}...")
-                    msg_preview = str(final_msg)[:50]
-                    print(f"BKG_TASK[{task_id}]: Content Snapshot: {msg_preview}...")
-                    await client.send_message(entity, final_msg)
-                    print(f"BKG_TASK[{task_id}]: Status -> TRANSMITTED as {sender_name}")
+                    # Personalization Merging
+                    final_msg_base = str(message)
+                    final_msg_base = final_msg_base.replace('{{Group Name}}', getattr(entity, 'title', 'Our Group'))
+                    final_msg_base = final_msg_base.replace('{{First Name}}', '').replace('{{Username}}', '')
+
+                    # Final Spintax processing
+                    final_msg = recursive_spin(final_msg_base)
                     
-                    # Anti-Spam Interval
-                    await asyncio.sleep(random.randint(60, 180))
+                    # Forensic Snapshot
+                    msg_preview = str(final_msg)
+                    if len(msg_preview) > 50:
+                        msg_preview = msg_preview[0:50] + "..."  # type: ignore
+                        
+                    log_debug(f"BKG_TASK[{task_id}]: Sending to {target_id} via {sender_name}...")
+                    log_debug(f"BKG_TASK[{task_id}]: Content Snapshot: {msg_preview}")
+                    
+                    try:
+                        await client.send_message(entity, final_msg)
+                        log_debug(f"BKG_TASK[{task_id}]: TRANSMITTED successfully.")
+                    except Exception as send_e:
+                        log_debug(f"BKG_TASK[{task_id}]: SEND ERROR to {target_id}: {str(send_e)}")
+                    
+                    # Moderate Anti-Spam Interval
+                    await asyncio.sleep(random.randint(15, 30))
                 except Exception as group_err:
-                    print(f"BKG_TASK[{task_id}]: Group Error ({group}): {group_err}")
+                    log_debug(f"BKG_TASK[{task_id}]: Loop error on group {raw_group}: {str(group_err)}")
                     if "FloodWaitError" in str(group_err): 
-                        print(f"BKG_TASK[{task_id}]: Flood detected. Aborting sequence.")
+                        log_debug(f"BKG_TASK[{task_id}]: Flood detected. Aborting sequence.")
                         break
             
             await client.disconnect()
@@ -1547,4 +1685,4 @@ async def task_poller():
 
 if __name__ == "__main__":
     import uvicorn  # type: ignore
-
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

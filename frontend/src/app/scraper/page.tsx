@@ -29,6 +29,7 @@ export default function ScraperPage() {
     const [filter, setFilter] = useState<'all' | 'group' | 'channel'>('all');
     const [joining, setJoining] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [successMsg, setSuccessMsg] = useState('');
 
     // Member Extraction State
     const [isExtracting, setIsExtracting] = useState(false);
@@ -60,8 +61,8 @@ export default function ScraperPage() {
             });
             const data = await res.json();
             if (res.ok) {
-                // Success - the backend already saved to DB, so we can just show a success msg or fetch members
-                alert(`Successfully extracted ${data.count} members as Leads!`);
+                setSuccessMsg(`Successfully extracted ${data.count} members as Leads!`);
+                setTimeout(() => setSuccessMsg(''), 5000);
                 setIsExtracting(false);
             } else {
                 setError(data.detail || 'Failed to extract members');
@@ -86,7 +87,8 @@ export default function ScraperPage() {
             });
             const data = await res.json();
             if (res.ok) {
-                alert(`Successfully joined ${groupId}`);
+                setSuccessMsg(`Successfully joined ${groupId}`);
+                setTimeout(() => setSuccessMsg(''), 5000);
             } else {
                 setError(data.detail || `Error joining: ${data.detail}`);
             }
@@ -108,9 +110,9 @@ export default function ScraperPage() {
 
             const res = await apiFetch('/api/telegram/bulk-join', {
                 method: 'POST',
-                body: JSON.stringify({ 
-                    group_ids: Array.from(selectedGroups), 
-                    phone_number: phoneNumber 
+                body: JSON.stringify({
+                    group_ids: Array.from(selectedGroups),
+                    phone_number: phoneNumber
                 })
             });
             const data = await res.json();
@@ -137,7 +139,8 @@ export default function ScraperPage() {
                 body: JSON.stringify(groupsToSave)
             });
             if (res.ok) {
-                alert(`Successfully saved ${selectedGroups.size} groups to Leads.`);
+                setSuccessMsg(`Successfully saved ${selectedGroups.size} groups to Leads.`);
+                setTimeout(() => setSuccessMsg(''), 5000);
                 setSelectedGroups(new Set());
             } else {
                 const d = await res.json();
@@ -246,6 +249,13 @@ export default function ScraperPage() {
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {successMsg && (
+                <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+                    <CheckCircle2 size={20} />
+                    <span className="font-bold text-sm">{successMsg}</span>
+                </div>
+            )}
+
             <header className="flex justify-between items-center mb-10">
                 <div>
                     <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground">Scraper</h2>
@@ -253,22 +263,22 @@ export default function ScraperPage() {
                 </div>
                 <div className="flex gap-3">
                     {selectedGroups.size > 0 && (
-                        <button 
+                        <button
                             onClick={handleSaveToLeads}
                             disabled={saving}
                             className="bg-emerald-600 hover:bg-emerald-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300 disabled:opacity-50"
                         >
-                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} 
+                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                             Save {selectedGroups.size} to Leads
                         </button>
                     )}
                     {selectedGroups.size > 0 && (
-                        <button 
+                        <button
                             onClick={handleBulkJoin}
                             disabled={joining}
                             className="bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300 disabled:opacity-50"
                         >
-                            {joining ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} 
+                            {joining ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                             Bulk Join ({selectedGroups.size})
                         </button>
                     )}
@@ -302,7 +312,7 @@ export default function ScraperPage() {
                     <div>
                         <h4 className="font-bold text-amber-500 text-sm uppercase tracking-wider mb-0.5">Scrape Synchronization in Progress</h4>
                         <p className="text-xs text-amber-500/60 font-medium leading-relaxed">
-                            Please do <span className="text-amber-500 underline underline-offset-2">NOT</span> refresh or close this page. 
+                            Please do <span className="text-amber-500 underline underline-offset-2">NOT</span> refresh or close this page.
                             Interrupting the stream will cause loss of currently discovered leads that haven't been finalized in the database.
                         </p>
                     </div>
@@ -369,7 +379,7 @@ export default function ScraperPage() {
                     <div className="absolute inset-0 bg-indigo-500/[0.02] animate-pulse"></div>
                     <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6 relative z-10" />
                     <p className="text-xl text-foreground font-black mb-3 relative z-10 tracking-tight">{scrapeStatus}</p>
-                    
+
                     <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full mb-8 relative z-10">
                         <AlertCircle size={14} className="text-amber-500" />
                         <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">
@@ -418,91 +428,91 @@ export default function ScraperPage() {
                         </div>
                     )}
                     <div className="bg-background border border-white/5 dark:border-white/5 border-black/5 rounded-2xl overflow-x-auto shadow-xl shadow-black/5 dark:shadow-black/20">
-                    <table className="w-full text-left border-collapse">
-                        <thead>
-                            <tr className="border-b border-black/5 dark:border-white/5 text-foreground/50 text-[11px] uppercase tracking-wider bg-black/[0.02] dark:bg-white/[0.02]">
-                                <th className="font-semibold p-4 pl-6 w-10">Select</th>
-                                <th className="font-semibold p-4">Group / Channel Name</th>
-                                <th className="font-semibold p-4">Type</th>
-                                <th className="font-semibold p-4 text-center">Appearances</th>
-                                <th className="font-semibold p-4 text-right">Members</th>
-                                <th className="font-semibold p-4 text-center pr-6">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-black/5 dark:divide-white/5 whitespace-nowrap">
-                            {filteredResults.map((result) => {
-                                const isSelected = selectedGroups.has(result.id);
-                                 return (
-                                     <tr key={result.id} className={`transition-colors group ${isSelected ? 'bg-indigo-500/5' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'}`}>
-                                         <td className="p-4 pl-6">
-                                             <button
-                                                 onClick={() => toggleSelection(result.id)}
-                                                 className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-foreground/20 hover:border-indigo-500'}`}
-                                             >
-                                                 {isSelected && <CheckCircle2 size={14} />}
-                                             </button>
-                                         </td>
-                                         <td className="p-4 max-w-[300px]">
-                                             <div className="flex items-center gap-3">
-                                                 <div className={`w-10 shrink-0 h-10 rounded-xl flex items-center justify-center ${result.type === 'channel' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                                                     {result.type === 'channel' ? <Megaphone size={18} /> : <UsersRound size={18} />}
-                                                 </div>
-                                                 <div className="min-w-0 flex-1">
-                                                     <div className="font-semibold text-sm text-foreground mb-0.5 leading-tight break-words whitespace-normal line-clamp-2" title={result.title}>{result.title}</div>
-                                                     <div className="flex items-center gap-2">
-                                                       {result.username ? (
-                                                           <a href={`https://t.me/${result.username}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1 font-mono">
-                                                               @{result.username} <ExternalLink size={10} />
-                                                           </a>
-                                                       ) : (
-                                                           <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold tracking-wider uppercase">Private</span>
-                                                       )}
-                                                       <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold uppercase tracking-widest">{result.country}</span>
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-black/5 dark:border-white/5 text-foreground/50 text-[11px] uppercase tracking-wider bg-black/[0.02] dark:bg-white/[0.02]">
+                                    <th className="font-semibold p-4 pl-6 w-10">Select</th>
+                                    <th className="font-semibold p-4">Group / Channel Name</th>
+                                    <th className="font-semibold p-4">Type</th>
+                                    <th className="font-semibold p-4 text-center">Appearances</th>
+                                    <th className="font-semibold p-4 text-right">Members</th>
+                                    <th className="font-semibold p-4 text-center pr-6">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-black/5 dark:divide-white/5 whitespace-nowrap">
+                                {filteredResults.map((result) => {
+                                    const isSelected = selectedGroups.has(result.id);
+                                    return (
+                                        <tr key={result.id} className={`transition-colors group ${isSelected ? 'bg-indigo-500/5' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'}`}>
+                                            <td className="p-4 pl-6">
+                                                <button
+                                                    onClick={() => toggleSelection(result.id)}
+                                                    className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-foreground/20 hover:border-indigo-500'}`}
+                                                >
+                                                    {isSelected && <CheckCircle2 size={14} />}
+                                                </button>
+                                            </td>
+                                            <td className="p-4 max-w-[300px]">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 shrink-0 h-10 rounded-xl flex items-center justify-center ${result.type === 'channel' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                                        {result.type === 'channel' ? <Megaphone size={18} /> : <UsersRound size={18} />}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="font-semibold text-sm text-foreground mb-0.5 leading-tight break-words whitespace-normal line-clamp-2" title={result.title}>{result.title}</div>
+                                                        <div className="flex items-center gap-2">
+                                                            {result.username ? (
+                                                                <a href={`https://t.me/${result.username}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1 font-mono">
+                                                                    @{result.username} <ExternalLink size={10} />
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold tracking-wider uppercase">Private</span>
+                                                            )}
+                                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 font-bold uppercase tracking-widest">{result.country}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            <span className="text-[10px] font-black text-foreground/40 uppercase tracking-widest bg-foreground/5 border border-border px-2.5 py-1.5 rounded-lg">
-                                                {result.type}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex flex-col items-center gap-1">
-                                                <div className="text-[10px] font-bold text-foreground/60 uppercase tracking-wider">
-                                                    You: <span className="text-indigo-400">{result.user_shows || 1}</span>
+                                            </td>
+                                            <td className="p-4">
+                                                <span className="text-[10px] font-black text-foreground/40 uppercase tracking-widest bg-foreground/5 border border-border px-2.5 py-1.5 rounded-lg">
+                                                    {result.type}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <div className="text-[10px] font-bold text-foreground/60 uppercase tracking-wider">
+                                                        You: <span className="text-indigo-400">{result.user_shows || 1}</span>
+                                                    </div>
+                                                    <div className="text-[10px] font-bold text-foreground/40 uppercase tracking-wider">
+                                                        Global: <span className="text-emerald-400">{result.global_shows || 1}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="text-[10px] font-bold text-foreground/40 uppercase tracking-wider">
-                                                    Global: <span className="text-emerald-400">{result.global_shows || 1}</span>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <span className="text-sm font-bold text-foreground/80 tracking-tight">{result.participants_count.toLocaleString()}</span>
+                                                <span className="text-[10px] text-foreground/20 block font-bold uppercase mt-0.5 tracking-tighter">Net Reach</span>
+                                            </td>
+                                            <td className="p-4 pr-6">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleExtractMembers(result.username || result.id.toString())}
+                                                        className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all border border-border"
+                                                    >
+                                                        Extract
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleJoin(result.username || result.id.toString())}
+                                                        className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 transition-all border border-indigo-500/20"
+                                                    >
+                                                        Join
+                                                    </button>
                                                 </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-right">
-                                            <span className="text-sm font-bold text-foreground/80 tracking-tight">{result.participants_count.toLocaleString()}</span>
-                                            <span className="text-[10px] text-foreground/20 block font-bold uppercase mt-0.5 tracking-tighter">Net Reach</span>
-                                        </td>
-                                        <td className="p-4 pr-6">
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => handleExtractMembers(result.username || result.id.toString())}
-                                                    className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all border border-border"
-                                                >
-                                                    Extract
-                                                </button>
-                                                <button
-                                                    onClick={() => handleJoin(result.username || result.id.toString())}
-                                                    className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 transition-all border border-indigo-500/20"
-                                                >
-                                                    Join
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             ) : (
                 /* Initial state */

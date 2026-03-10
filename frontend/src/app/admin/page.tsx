@@ -26,6 +26,8 @@ export default function AdminDashboard() {
     const [selectedUser, setSelectedUser] = useState<any>(null);
     const [userDetails, setUserDetails] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
+    const [successMsg, setSuccessMsg] = useState('');
 
     useEffect(() => {
         const fetchAdminData = async () => {
@@ -45,18 +47,18 @@ export default function AdminDashboard() {
                     const usersStatus = usersRes.status;
                     let statsErr = '';
                     let usersErr = '';
-                    try { statsErr = await statsRes.text(); } catch(e) {}
-                    try { usersErr = await usersRes.text(); } catch(e) {}
-                    
+                    try { statsErr = await statsRes.text(); } catch (e) { }
+                    try { usersErr = await usersRes.text(); } catch (e) { }
+
                     console.error("Admin API Error Details:", {
                         stats: { status: statsStatus, body: statsErr },
                         users: { status: usersStatus, body: usersErr }
                     });
-                    alert(`Admin API Error!\nStats: ${statsStatus}\nUsers: ${usersStatus}\nCheck console for details.`);
+                    setErrorMsg(`Admin API Error! Stats: ${statsStatus} | Users: ${usersStatus}`);
                 }
             } catch (err: any) {
                 console.error("Critical fetch error in admin dashboard:", err);
-                alert(`Connection Error: ${err.message || 'Unknown error'}`);
+                setErrorMsg(`Connection Error: ${err.message || 'Unknown error'}`);
             } finally {
                 setLoading(false);
             }
@@ -70,7 +72,8 @@ export default function AdminDashboard() {
             method: 'POST'
         });
         if (res.ok) {
-            alert("Passkey updated successfully");
+            setSuccessMsg("Passkey updated successfully");
+            setTimeout(() => setSuccessMsg(''), 5000);
             setPasskey('');
         }
     };
@@ -115,6 +118,20 @@ export default function AdminDashboard() {
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
+            {errorMsg && (
+                <div className="fixed top-8 right-8 z-[100] bg-red-500/10 border border-red-500/20 text-red-500 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3">
+                    <X className="shrink-0" size={20} />
+                    <span className="font-bold text-sm">{errorMsg}</span>
+                    <button onClick={() => setErrorMsg('')} className="ml-4 opacity-50 hover:opacity-100"><X size={16} /></button>
+                </div>
+            )}
+            {successMsg && (
+                <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3">
+                    <Activity className="shrink-0" size={20} />
+                    <span className="font-bold text-sm">{successMsg}</span>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 mb-4 animate-in fade-in slide-in-from-left duration-700">
@@ -198,13 +215,13 @@ export default function AdminDashboard() {
                                             <td className="px-6 py-4 font-mono text-foreground/60">{user.leads}</td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-2">
-                                                    <button 
+                                                    <button
                                                         onClick={() => fetchUserDetails(user)}
                                                         className="p-2 rounded-lg bg-white/5 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 transition-all" title="View Details"
                                                     >
                                                         <Search size={16} />
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         onClick={() => toggleUserStatus(user.id)}
                                                         className={`p-2 rounded-lg bg-white/5 transition-all ${user.is_active ? 'text-orange-400 hover:bg-orange-400/10' : 'text-green-400 hover:bg-green-400/10'}`}
                                                         title={user.is_active ? 'Suspend User' : 'Activate User'}
@@ -261,13 +278,13 @@ export default function AdminDashboard() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-2">
-                                                <button 
+                                                <button
                                                     onClick={() => fetchUserDetails(u)}
                                                     className="p-2 rounded-lg bg-white/5 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 transition-all"
                                                 >
                                                     <Search size={16} />
                                                 </button>
-                                                <button 
+                                                <button
                                                     onClick={() => toggleUserStatus(u.id)}
                                                     className={`p-2 rounded-lg bg-white/5 transition-all ${u.is_active ? 'text-orange-400 hover:bg-orange-400/10' : 'text-green-400 hover:bg-green-400/10'}`}
                                                 >
@@ -343,9 +360,9 @@ export default function AdminDashboard() {
                             <button
                                 onClick={async () => {
                                     const val = (document.getElementById('newAdminPass') as HTMLInputElement).value;
-                                    if(!val) return;
+                                    if (!val) return;
                                     const res = await apiFetch(`/api/admin/settings?key=admin_password&value=${val}`, { method: 'POST' });
-                                    if(res.ok) alert('Admin password updated successfully');
+                                    if (res.ok) alert('Admin password updated successfully');
                                 }}
                                 className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-4 rounded-2xl shadow-lg shadow-red-600/20 transition-all"
                             >
@@ -378,9 +395,9 @@ export default function AdminDashboard() {
                         </div>
                         <p className="text-sm text-foreground/40">Clean up database tables to maintain performance.</p>
                         <div className="space-y-3">
-                            <button 
+                            <button
                                 onClick={async () => {
-                                    if(confirm("Purge all leads data?")) {
+                                    if (confirm("Purge all leads data?")) {
                                         await apiFetch("/api/admin/maintenance/clear-leads", { method: 'POST' });
                                         alert("Leads table cleared.");
                                     }
@@ -390,9 +407,9 @@ export default function AdminDashboard() {
                                 <span className="text-sm font-bold">Clear All Leads</span>
                                 <Database size={18} className="opacity-20 group-hover:opacity-100" />
                             </button>
-                            <button 
+                            <button
                                 onClick={async () => {
-                                    if(confirm("Purge historical task data? (Only completed/failed tasks)")) {
+                                    if (confirm("Purge historical task data? (Only completed/failed tasks)")) {
                                         await apiFetch("/api/admin/maintenance/clear-tasks", { method: 'POST' });
                                         alert("Task history purged.");
                                     }
@@ -419,7 +436,7 @@ export default function AdminDashboard() {
                                 <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Worker</div>
                                 <div className="text-sm font-bold text-indigo-500">{stats?.service_health?.poller || 'Active'}</div>
                             </div>
-                             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                                 <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">API Node</div>
                                 <div className="text-sm font-bold text-blue-500">{stats?.service_health?.api || 'Operational'}</div>
                             </div>
@@ -442,7 +459,7 @@ export default function AdminDashboard() {
                                     <p className="text-xs text-foreground/40 font-mono mt-0.5">{selectedUser.id}</p>
                                 </div>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setSelectedUser(null)}
                                 className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
                             >
@@ -506,9 +523,9 @@ export default function AdminDashboard() {
                                 </>
                             )}
                         </div>
-                        
+
                         <div className="p-6 bg-white/[0.01] border-t border-white/5 flex justify-end gap-3">
-                            <button 
+                            <button
                                 onClick={() => {
                                     toggleUserStatus(selectedUser.id);
                                     setSelectedUser((prev: any) => ({ ...prev, is_active: !prev.is_active }));
@@ -517,7 +534,7 @@ export default function AdminDashboard() {
                             >
                                 {selectedUser.is_active ? 'Suspend Account' : 'Reactivate Account'}
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setSelectedUser(null)}
                                 className="px-6 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm font-bold transition-all"
                             >
