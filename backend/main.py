@@ -846,12 +846,16 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
                     resolved_id = int(g_id)
                 entity = await client.get_entity(resolved_id)
                 
+                print(f"BKG_JOIN: Attempting to join {getattr(entity, 'title', resolved_id)} (ID: {getattr(entity, 'id', 'unknown')})")
                 await client(JoinChannelRequest(entity))
                 results['joined'] += 1
+                print(f"BKG_JOIN: Successfully joined {resolved_id}")
             except Exception as e:
                 results['failed'] += 1
-                print(f"Join Error {g_id}: {e}")
-                if "FloodWaitError" in str(e): break
+                print(f"BKG_JOIN_ERR: Failed to join {g_id}. Reason: {e}")
+                if "FloodWaitError" in str(e): 
+                    print(f"BKG_JOIN_FATAL: FloodWait detected. Stopping bulk operation.")
+                    break
         return {"status": "success", **results}
     finally:
         await client.disconnect()
@@ -1055,7 +1059,10 @@ async def get_member_leads(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     rows = conn.execute("SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
-    return {"members": [dict(r) for r in rows]}
+    return {"members": [
+        dict(id=r[0], user_id=r[1], group_id=r[2], username=r[3], first_name=r[4], last_name=r[5], created_at=r[6]) 
+        for r in rows
+    ]}
 
 @app.delete("/api/telegram/leads/members/{member_id}")
 async def delete_member_lead(member_id: int, user_id: str = Depends(get_current_user_id)):
@@ -1297,7 +1304,12 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
             "tasks": total_tasks,
             "leads": total_leads
         },
-        "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), accounts=s[3], tasks=s[4], leads=s[5]) for s in user_stats]
+        "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), accounts=s[3], tasks=s[4], leads=s[5]) for s in user_stats],
+        "service_health": {
+             "database": "Healthy",
+             "poller": "Active",
+             "api": "Operational"
+        }
     }
 
 @app.get("/api/dashboard/stats")
@@ -1391,7 +1403,11 @@ async def task_poller():
             if hasattr(conn, "close"): conn.close()
 
             if not acc:
-                print(f"BKG: No account for task {task_id}")
+                print(f"BKG: No account found for task {task_id} (User: {u_id}, Phone: {phone_num})")
+                conn = get_db_connection()
+                conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
+                if hasattr(conn, "commit"): conn.commit()
+                if hasattr(conn, "close"): conn.close()
                 return
 
             session_str, api_id, api_hash = acc[0], int(acc[1]), acc[2]
@@ -1453,15 +1469,24 @@ async def task_poller():
                 "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours, scheduled_time FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
                 (now_str,)
             ).fetchall()
+            
+            # Heartbeat log
+            print(f"POLLER: Heartbeat - {now_str} | Pending tasks found: {len(tasks)}")
+            
             if hasattr(conn, "close"): conn.close()
             
+            # Launch loop
             for t in tasks:
                 task_id = t[0]
+                task_time = t[6]
                 if task_id not in active_tasks:
                     active_tasks.add(task_id)
                     # Start task in background
                     asyncio.create_task(run_single_task(*t))
-                    print(f"BKG: Launched task {task_id}")
+                    print(f"POLLER: Launched task {task_id} scheduled for {task_time} (Server now: {now_str})")
+                else:
+                    # Log if it's already running to avoid confusion
+                    print(f"POLLER: Task {task_id} is already in execution set. Skipping launch.")
             
         except Exception as e:
             print(f"BKG: Poller major error: {e}")

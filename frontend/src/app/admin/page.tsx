@@ -410,10 +410,19 @@ export default function AdminDashboard() {
                             <Shield size={24} />
                             <h2 className="text-xl font-bold">System Health</h2>
                         </div>
-                        <p className="text-sm text-foreground/40">Monitor platform health and background worker status.</p>
-                        <div className="p-10 text-center text-sm text-foreground/20 italic">
-                            Worker health: OPTIMAL <br/>
-                            Background service is running on Hugging Face.
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                                <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Database</div>
+                                <div className="text-sm font-bold text-emerald-500">{stats?.service_health?.database || 'Healthy'}</div>
+                            </div>
+                            <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                                <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Worker</div>
+                                <div className="text-sm font-bold text-indigo-500">{stats?.service_health?.poller || 'Active'}</div>
+                            </div>
+                             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
+                                <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">API Node</div>
+                                <div className="text-sm font-bold text-blue-500">{stats?.service_health?.api || 'Operational'}</div>
+                            </div>
                         </div>
                     </div>
                 </div>

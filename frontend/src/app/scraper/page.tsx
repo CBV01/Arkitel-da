@@ -293,6 +293,22 @@ export default function ScraperPage() {
                 </div>
             )}
 
+            {loading && (
+                <div className="mb-8 p-6 bg-amber-500/10 border border-amber-500/20 rounded-[28px] flex items-center gap-4 animate-in slide-in-from-top-4 duration-500 shadow-xl shadow-amber-500/5 relative overflow-hidden group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-2000"></div>
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                        <AlertCircle size={28} className="animate-pulse" />
+                    </div>
+                    <div>
+                        <h4 className="font-bold text-amber-500 text-sm uppercase tracking-wider mb-0.5">Scrape Synchronization in Progress</h4>
+                        <p className="text-xs text-amber-500/60 font-medium leading-relaxed">
+                            Please do <span className="text-amber-500 underline underline-offset-2">NOT</span> refresh or close this page. 
+                            Interrupting the stream will cause loss of currently discovered leads that haven't been finalized in the database.
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col md:flex-row gap-6 mb-8 items-end">
                 <form onSubmit={handleSearch} className="flex-1 bg-background border border-white/5 rounded-2xl p-6 shadow-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10 transition-all group-hover:bg-purple-500/10 z-0"></div>

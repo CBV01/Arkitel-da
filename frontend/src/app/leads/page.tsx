@@ -267,7 +267,7 @@ export default function LeadsPage() {
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-[calc(100vh-100px)] flex flex-col pt-2">
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
-                    <h2 className="text-3xl font-bold mb-2 tracking-tight text-foreground flex items-center gap-3">
+                    <h2 className="text-3xl font-semibold mb-2 tracking-tight text-foreground flex items-center gap-3">
                         <Bookmark className="text-indigo-500 w-8 h-8" /> Target Leads
                     </h2>
                     <p className="text-sm text-foreground/50 font-medium">Manage discovered communities and extracted target members.</p>
@@ -460,7 +460,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
                             <div className="space-y-3">
-                                <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] ml-1">Account Proxy</label>
+                                <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] ml-1">Select Account Proxy</label>
                                 <select 
                                     className="w-full bg-foreground/[0.03] border border-border rounded-2xl py-4 px-5 text-sm font-bold text-foreground focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
                                     value={extractingPhone}
@@ -468,6 +468,18 @@ export default function LeadsPage() {
                                 >
                                     {accounts.map(acc => <option key={acc.phone_number} value={acc.phone_number} className="bg-card">{acc.phone_number}</option>)}
                                 </select>
+                                <p className="text-[10px] text-foreground/30 px-1 leading-relaxed italic">
+                                    * Platforms use your account as a secure gateway to fetch members. This ensures higher data fidelity and lower ban risk.
+                                </p>
+                            </div>
+                            <div className="bg-indigo-500/5 p-5 rounded-2xl border border-indigo-500/10">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Shield size={16} className="text-indigo-500" />
+                                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Proxy Logic</span>
+                                </div>
+                                <p className="text-[11px] text-foreground/40 leading-relaxed font-medium">
+                                    Account Proxying utilizes your existing Telegram sessions to tunnel requests. This bypasses common scraping blocks while maintaining account safety through intelligent request staggering.
+                                </p>
                             </div>
                             <div className="bg-amber-500/10 p-5 rounded-2xl border border-amber-500/20 relative overflow-hidden group">
                                 <div className="absolute top-0 right-0 p-2 opacity-10"><Shield size={40} className="text-amber-500" /></div>

@@ -111,22 +111,45 @@ export default function Dashboard() {
               <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Engine Active</span>
             </div>
           </div>
-          <div className="h-56 flex items-end justify-between gap-2.5 pb-2 relative z-10">
-            {(stats?.engagement_flow || [30, 60, 40, 80, 50, 70, 90, 45, 85, 100]).map((h: number, i: number) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-3 h-full justify-end group/bar">
-                <div className="relative w-full">
-                  <div 
-                    className="w-full bg-gradient-to-t from-indigo-600/10 via-indigo-600/40 to-indigo-500 rounded-2xl transition-all duration-700 hover:scale-x-110 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] cursor-pointer" 
-                    style={{ height: `${h}%` }}
-                  >
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all shadow-xl shadow-indigo-500/20">
-                      {h}%
-                    </div>
-                  </div>
-                </div>
-                <div className="w-1 h-1 rounded-full bg-foreground/10 group-hover/bar:bg-indigo-500 transition-colors"></div>
-              </div>
-            ))}
+          <div className="h-56 relative z-10 flex items-end">
+            <svg className="w-full h-full pb-4 pr-4" viewBox="0 0 1000 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="curveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#4f46e5" />
+                  <stop offset="50%" stopColor="#6366f1" />
+                  <stop offset="100%" stopColor="#818cf8" />
+                </linearGradient>
+                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+              <path
+                d={`M 0 100 ${ (stats?.engagement_flow || [30, 60, 40, 80, 50, 70, 90, 45, 85, 100]).map((h: number, i: number) => {
+                  const x = i * (1000 / 9);
+                  const y = 100 - h;
+                  return `L ${x} ${y}`;
+                }).join(' ') }`}
+                fill="none"
+                stroke="url(#curveGradient)"
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                filter="url(#glow)"
+                className="drop-shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all duration-1000"
+              />
+              {/* Data Points */}
+              {(stats?.engagement_flow || [30, 60, 40, 80, 50, 70, 90, 45, 85, 100]).map((h: number, i: number) => (
+                <circle 
+                  key={i} 
+                  cx={i * (1000 / 9)} 
+                  cy={100 - h} 
+                  r="4" 
+                  fill="#ffffff" 
+                  className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer"
+                />
+              ))}
+            </svg>
           </div>
           <div className="flex justify-between text-foreground/20 text-[9px] font-bold uppercase tracking-[0.3em] mt-6 border-t border-border/50 pt-4">
             <span>Historical Cycle Start</span>
