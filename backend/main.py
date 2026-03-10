@@ -337,9 +337,12 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
     try:
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
+                # Use title or name, fallback to ID if both fail
+                display_name = getattr(dialog, 'name', None) or getattr(dialog, 'title', None) or str(dialog.id)
                 dialogs_list.append({
                     "id": str(dialog.id),
-                    "name": dialog.name,
+                    "name": display_name,
+                    "title": display_name, 
                     "is_group": dialog.is_group,
                     "is_channel": dialog.is_channel
                 })
@@ -816,8 +819,8 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
         from telethon.tl.functions.channels import JoinChannelRequest  # type: ignore
         for g_id in req.group_ids:
             try:
-                # Human delay between joins
-                await asyncio.sleep(random.randint(15, 45))
+                # User requested approx 10s interval for safety
+                await asyncio.sleep(random.randint(10, 15))
                 await client(JoinChannelRequest(g_id))
                 results['joined'] += 1
             except Exception as e:
@@ -827,6 +830,86 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
         return {"status": "success", **results}
     finally:
         await client.disconnect()
+
+class JoinRequest(BaseModel):
+    group_id: str
+    phone_number: str
+
+@app.post("/api/telegram/join")
+async def join_single(req: JoinRequest, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (req.phone_number, user_id)).fetchone()
+    if not row: raise HTTPException(status_code=404, detail="Account not found")
+    
+    session_str, api_id, api_hash = row[0], int(row[1]), row[2]
+    client = TelegramClient(StringSession(session_str), api_id, api_hash)
+    await client.connect()
+    try:
+        from telethon.tl.functions.channels import JoinChannelRequest # pyre-ignore[21]
+        await client(JoinChannelRequest(req.group_id))
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        await client.disconnect()
+
+class SaveGroupRequest(BaseModel):
+    id: str
+    title: str
+    username: Optional[str] = None
+    participants_count: int = 0
+    type: str
+    is_private: bool = False
+    country: str = "Global"
+    user_shows: int = 1
+    global_shows: int = 1
+    source: str = "manual"
+
+@app.post("/api/telegram/leads/groups/bulk-save")
+async def bulk_save_groups(groups: List[SaveGroupRequest], user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    for g in groups:
+        conn.execute(
+            """INSERT OR REPLACE INTO scraped_groups 
+               (id, user_id, title, username, participants_count, type, is_private, country, user_shows, global_shows, source) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (g.id, user_id, g.title, g.username, g.participants_count, g.type, 1 if g.is_private else 0, g.country, g.user_shows, g.global_shows, g.source)
+        )
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success", "count": len(groups)}
+
+@app.get("/api/telegram/leads/groups")
+async def get_saved_groups(user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM scraped_groups WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
+    if hasattr(conn, "close"): conn.close()
+    
+    return {
+        "groups": [
+            {
+                "id": r["id"],
+                "title": r["title"],
+                "username": r["username"],
+                "participants_count": r["participants_count"],
+                "type": r["type"],
+                "is_private": bool(r["is_private"]),
+                "country": r["country"],
+                "user_shows": r["user_shows"],
+                "global_shows": r["global_shows"],
+                "source": r["source"],
+                "created_at": r["created_at"]
+            } for r in rows
+        ]
+    }
+
+@app.delete("/api/telegram/leads/groups/{group_id}")
+async def delete_saved_group(group_id: str, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM scraped_groups WHERE id = ? AND user_id = ?", (group_id, user_id))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
 
 @app.delete("/api/telegram/campaigns/{task_id}")
 async def delete_campaign(task_id: int, user_id: str = Depends(get_current_user_id)):
@@ -840,6 +923,48 @@ async def delete_campaign(task_id: int, user_id: str = Depends(get_current_user_
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
     return {"status": "success", "message": "Campaign deleted successfully"}
+
+class CampaignEditRequest(BaseModel):
+    name: Optional[str] = None
+    message_text: Optional[str] = None
+    scheduled_time: Optional[str] = None
+    target_groups: Optional[List[str]] = None
+    interval_hours: Optional[int] = None
+
+@app.put("/api/telegram/campaigns/{task_id}")
+async def edit_campaign(task_id: int, req: CampaignEditRequest, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    task = conn.execute("SELECT id FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id)).fetchone()
+    if not task:
+        if hasattr(conn, "close"): conn.close()
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    updates = []
+    params: List[Any] = []
+    if req.name is not None:
+        updates.append("name = ?")
+        params.append(req.name)
+    if req.message_text is not None:
+        updates.append("message_text = ?")
+        params.append(req.message_text)
+    if req.scheduled_time is not None:
+        updates.append("scheduled_time = ?")
+        params.append(req.scheduled_time)
+    if req.target_groups is not None:
+        updates.append("target_groups = ?")
+        params.append(json.dumps(req.target_groups))
+    if req.interval_hours is not None:
+        updates.append("interval_hours = ?")
+        params.append(req.interval_hours)
+    
+    if updates:
+        params.append(task_id)
+        params.append(user_id)
+        conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ? AND user_id = ?", tuple(params))
+        if hasattr(conn, "commit"): conn.commit()
+    
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
 
 
 class ExtractRequest(BaseModel):

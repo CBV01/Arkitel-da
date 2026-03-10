@@ -15,7 +15,8 @@ import {
     Moon,
     ChevronLeft,
     LogOut,
-    Shield
+    Shield,
+    Bookmark
 } from "lucide-react";
 import { getToken, removeToken, apiFetch } from "@/lib/auth";
 
@@ -92,6 +93,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
         { name: "Accounts", href: "/accounts", icon: Users },
         { name: "Campaigns", href: "/campaigns", icon: Megaphone },
         { name: "Scraper", href: "/scraper", icon: Search },
+        { name: "Leads", href: "/leads", icon: Bookmark },
     ];
 
     if (user?.role === 'admin') {

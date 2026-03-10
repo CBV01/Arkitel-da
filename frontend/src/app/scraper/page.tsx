@@ -28,6 +28,7 @@ export default function ScraperPage() {
     const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
     const [filter, setFilter] = useState<'all' | 'group' | 'channel'>('all');
     const [joining, setJoining] = useState(false);
+    const [saving, setSaving] = useState(false);
 
     // Member Extraction State
     const [isExtracting, setIsExtracting] = useState(false);
@@ -74,8 +75,14 @@ export default function ScraperPage() {
 
     const handleJoin = async (groupId: string) => {
         try {
-            const res = await apiFetch(`/api/telegram/join?group_id=${groupId}`, {
-                method: 'POST'
+            const accRes = await apiFetch('/api/telegram/accounts');
+            const accData = await accRes.json();
+            const phoneNumber = accData.accounts?.[0]?.phone_number;
+            if (!phoneNumber) throw new Error("No connected account.");
+
+            const res = await apiFetch('/api/telegram/join', {
+                method: 'POST',
+                body: JSON.stringify({ group_id: groupId, phone_number: phoneNumber })
             });
             const data = await res.json();
             if (res.ok) {
@@ -117,6 +124,29 @@ export default function ScraperPage() {
             setError(err.message);
         } finally {
             setJoining(false);
+        }
+    };
+
+    const handleSaveToLeads = async () => {
+        if (selectedGroups.size === 0) return;
+        setSaving(true);
+        try {
+            const groupsToSave = results.filter(r => selectedGroups.has(r.id));
+            const res = await apiFetch('/api/telegram/leads/groups/bulk-save', {
+                method: 'POST',
+                body: JSON.stringify(groupsToSave)
+            });
+            if (res.ok) {
+                alert(`Successfully saved ${selectedGroups.size} groups to Leads.`);
+                setSelectedGroups(new Set());
+            } else {
+                const d = await res.json();
+                setError(d.detail || 'Failed to save leads.');
+            }
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -222,6 +252,16 @@ export default function ScraperPage() {
                     <p className="text-sm text-foreground/60">Discover new groups and extract target members.</p>
                 </div>
                 <div className="flex gap-3">
+                    {selectedGroups.size > 0 && (
+                        <button 
+                            onClick={handleSaveToLeads}
+                            disabled={saving}
+                            className="bg-emerald-600 hover:bg-emerald-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300 disabled:opacity-50"
+                        >
+                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} 
+                            Save {selectedGroups.size} to Leads
+                        </button>
+                    )}
                     {selectedGroups.size > 0 && (
                         <button 
                             onClick={handleBulkJoin}
@@ -358,24 +398,24 @@ export default function ScraperPage() {
                         <tbody className="divide-y divide-black/5 dark:divide-white/5 whitespace-nowrap">
                             {filteredResults.map((result) => {
                                 const isSelected = selectedGroups.has(result.id);
-                                return (
-                                    <tr key={result.id} className={`transition-colors group ${isSelected ? 'bg-indigo-500/5' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'}`}>
-                                        <td className="p-4 pl-6">
-                                            <button
-                                                onClick={() => toggleSelection(result.id)}
-                                                className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-foreground/20 hover:border-indigo-500'}`}
-                                            >
-                                                {isSelected && <CheckCircle2 size={14} />}
-                                            </button>
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${result.type === 'channel' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
-                                                    {result.type === 'channel' ? <Megaphone size={18} /> : <UsersRound size={18} />}
-                                                </div>
-                                                <div>
-                                                    <div className="font-semibold text-sm text-foreground mb-0.5">{result.title}</div>
-                                                    <div className="flex items-center gap-2">
+                                 return (
+                                     <tr key={result.id} className={`transition-colors group ${isSelected ? 'bg-indigo-500/5' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'}`}>
+                                         <td className="p-4 pl-6">
+                                             <button
+                                                 onClick={() => toggleSelection(result.id)}
+                                                 className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-foreground/20 hover:border-indigo-500'}`}
+                                             >
+                                                 {isSelected && <CheckCircle2 size={14} />}
+                                             </button>
+                                         </td>
+                                         <td className="p-4 max-w-[300px]">
+                                             <div className="flex items-center gap-3">
+                                                 <div className={`w-10 shrink-0 h-10 rounded-xl flex items-center justify-center ${result.type === 'channel' ? 'bg-amber-500/10 text-amber-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                                     {result.type === 'channel' ? <Megaphone size={18} /> : <UsersRound size={18} />}
+                                                 </div>
+                                                 <div className="min-w-0 flex-1">
+                                                     <div className="font-semibold text-sm text-foreground mb-0.5 leading-tight break-words whitespace-normal line-clamp-2" title={result.title}>{result.title}</div>
+                                                     <div className="flex items-center gap-2">
                                                        {result.username ? (
                                                            <a href={`https://t.me/${result.username}`} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1 font-mono">
                                                                @{result.username} <ExternalLink size={10} />

@@ -12,6 +12,8 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from typing import Any, List, Optional, Dict
+from dotenv import load_dotenv  # type: ignore
+load_dotenv()
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +223,20 @@ def init_db():
             user_id TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS scraped_groups (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            title TEXT,
+            username TEXT,
+            participants_count INTEGER DEFAULT 0,
+            type TEXT,
+            is_private INTEGER DEFAULT 0,
+            country TEXT,
+            user_shows INTEGER DEFAULT 1,
+            global_shows INTEGER DEFAULT 1,
+            source TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
         """CREATE TABLE IF NOT EXISTS system_settings (
             key TEXT PRIMARY KEY,
             value TEXT
@@ -247,6 +263,4 @@ def init_db():
 
 
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
     init_db()
