@@ -309,7 +309,7 @@ export default function LeadsPage() {
                         <button
                             key={t}
                             onClick={() => { setActiveTab(t); setSelectedIds(new Set()); }}
-                            className={`px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-tighter transition-all ${activeTab === t ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/40' : 'text-foreground/40 hover:text-foreground hover:bg-foreground/5'}`}
+                            className={`px-5 py-2 rounded-xl text-[11px] font-bold uppercase tracking-tighter transition-all ${activeTab === t ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-500/40' : 'text-foreground/40 hover:text-foreground hover:bg-foreground/5'}`}
                         >
                             {t}
                         </button>
@@ -385,7 +385,7 @@ export default function LeadsPage() {
                                                 </div>
                                                 <div className="max-w-[200px]">
                                                     <div className="font-bold text-sm text-foreground truncate">{l.title}</div>
-                                                    <div className="text-[10px] text-foreground/30 font-black uppercase tracking-widest">{l.itemType}</div>
+                                                    <div className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest">{l.itemType}</div>
                                                 </div>
                                             </div>
                                         </td>
@@ -399,7 +399,7 @@ export default function LeadsPage() {
                                             )}
                                         </td>
                                         <td className="p-6 text-center">
-                                            <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-md tracking-tighter ${l.type === 'channel' ? 'bg-blue-500/10 text-blue-500' : (l.type === 'group' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-slate-500/10 text-slate-500')}`}>
+                                            <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-md tracking-tighter ${l.type === 'channel' ? 'bg-blue-500/10 text-blue-500' : (l.type === 'group' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-slate-500/10 text-slate-500')}`}>
                                                 {l.type}
                                             </span>
                                         </td>
@@ -407,10 +407,10 @@ export default function LeadsPage() {
                                             {l.itemType === 'community' ? (
                                                 <>
                                                     <div className="font-bold text-sm text-foreground">{(l.participants_count || 0).toLocaleString()}</div>
-                                                    <div className="text-[10px] text-foreground/20 font-black uppercase">{l.country || "Global"}</div>
+                                                    <div className="text-[10px] text-foreground/20 font-bold uppercase">{l.country || "Global"}</div>
                                                 </>
                                             ) : (
-                                                <div className="text-[10px] text-foreground/20 font-black uppercase italic">Direct Target</div>
+                                                <div className="text-[10px] text-foreground/20 font-bold uppercase italic">Direct Target</div>
                                             )}
                                         </td>
                                         <td className="p-6 text-right pr-8" onClick={(e) => e.stopPropagation()}>
@@ -460,7 +460,7 @@ export default function LeadsPage() {
                         </div>
                         <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
                             <div className="space-y-3">
-                                <label className="text-[10px] font-black text-foreground/30 uppercase tracking-[0.2em] ml-1">Account Proxy</label>
+                                <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] ml-1">Account Proxy</label>
                                 <select 
                                     className="w-full bg-foreground/[0.03] border border-border rounded-2xl py-4 px-5 text-sm font-bold text-foreground focus:ring-2 focus:ring-indigo-500/20 transition-all appearance-none cursor-pointer"
                                     value={extractingPhone}
@@ -478,7 +478,7 @@ export default function LeadsPage() {
                             <button 
                                 onClick={handleExtract}
                                 disabled={isExtracting}
-                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white h-16 rounded-[20px] text-sm font-black shadow-xl shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
+                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white h-16 rounded-[20px] text-sm font-bold shadow-xl shadow-indigo-500/20 disabled:opacity-50 flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
                             >
                                 {isExtracting ? <Loader2 size={18} className="animate-spin" /> : <ChevronRight size={18} />}
                                 {isExtracting ? 'Extracting...' : 'Start Extraction'}
