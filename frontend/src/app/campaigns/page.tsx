@@ -117,10 +117,7 @@ export default function CampaignsPage() {
         }
 
         const localDate = new Date(campaignData.schedule_time);
-        const utcMs = localDate.getTime() + (localDate.getTimezoneOffset() * 60 * 1000);
-        const utcDate = new Date(utcMs);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        const utcScheduleTime = `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth()+1)}-${pad(utcDate.getUTCDate())}T${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}`;
+        const utcScheduleTime = localDate.toISOString().slice(0, 16);
 
         setLoading(true);
         try {
@@ -159,11 +156,13 @@ export default function CampaignsPage() {
 
     const handleEdit = (camp: any) => {
         setEditingId(camp.id);
-        const schedStr = camp.scheduled_time.split('Z')[0].substring(0, 16);
+        const utcDate = new Date(camp.scheduled_time + (camp.scheduled_time.includes('Z') ? '' : 'Z'));
+        // Convert back to local for the datetime-local input
+        const localISO = new Date(utcDate.getTime() - (utcDate.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
         setCampaignData({
             name: camp.name || '',
             phone_number: camp.phone_number,
-            schedule_time: schedStr,
+            schedule_time: localISO,
             message: camp.message_text || camp.message || '',
             interval_hours: (camp.interval_hours || 0).toString()
         });
