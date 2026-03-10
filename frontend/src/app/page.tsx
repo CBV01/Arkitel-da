@@ -1,13 +1,49 @@
-"use client";
-
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { apiFetch } from '@/lib/auth';
-import { Megaphone, Shield } from 'lucide-react';
+import { Megaphone, Shield, TrendingUp, Activity, Zap } from 'lucide-react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Generate date labels for the last 7 days
+  const getDateLabels = () => {
+    const labels = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      labels.push(`${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`);
+    }
+    return labels;
+  };
+
+  const dateLabels = getDateLabels();
+  const chartData = stats?.engagement_flow || [85, 45, 60, 30, 70, 55, 40]; // Use 7 points for weekly
+
+  // Smooth curve calculation (simple interpolation)
+  const generateSmoothPath = (data: number[]) => {
+    if (!data.length) return "";
+    const width = 1000;
+    const height = 200;
+    const padding = 40;
+    const chartHeight = height - padding * 2;
+    const chartWidth = width - padding * 2;
+    const step = chartWidth / (data.length - 1);
+
+    let path = `M ${padding} ${height - padding - (data[0] / 100) * chartHeight}`;
+    
+    for (let i = 0; i < data.length - 1; i++) {
+      const x1 = padding + i * step;
+      const y1 = height - padding - (data[i] / 100) * chartHeight;
+      const x2 = padding + (i + 1) * step;
+      const y2 = height - padding - (data[i + 1] / 100) * chartHeight;
+      
+      const cx = (x1 + x2) / 2;
+      path += ` C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+    }
+    return path;
+  };
+
+  const smoothPath = generateSmoothPath(chartData);
+  const areaPath = smoothPath + ` L ${960} 160 L 40 160 Z`;
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -59,101 +95,117 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
         <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
           <div className="flex justify-between items-start mb-2">
-            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase">Messages Sent</div>
-            <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-400"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg></div>
+            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Transmission Count</div>
+            <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-400"><Activity size={16} /></div>
           </div>
           <div className="text-2xl font-bold text-foreground mb-2">{stats?.counts?.messages ?? '...'}</div>
-          <div className="flex items-center gap-1.5 text-[10px] text-foreground/30 font-medium">Total broadcast throughput</div>
+          <div className="flex items-center gap-1.5 text-[10px] text-foreground/30 font-medium italic">Verified broadcast throughput</div>
         </div>
 
         <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
           <div className="flex justify-between items-start mb-2">
-            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase">Accounts</div>
-            <div className="p-1.5 bg-indigo-500/10 rounded-lg text-indigo-500"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg></div>
+            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Active Nodes</div>
+            <div className="p-1.5 bg-indigo-500/10 rounded-lg text-indigo-500"><Zap size={16} /></div>
           </div>
           <div className="text-2xl font-bold text-foreground mb-2">{stats?.counts?.accounts ?? '...'}</div>
           <div className="flex items-center gap-1.5 text-[10px] text-emerald-400/60 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> {Number(stats?.counts?.accounts) > 0 ? 'Active Fleet' : 'Status: Offline'}
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span> {Number(stats?.counts?.accounts) > 0 ? 'Cluster Online' : 'Status: Isolated'}
           </div>
         </div>
 
         <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
           <div className="flex justify-between items-start mb-2">
-            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase">Leads Captured</div>
-            <div className="p-1.5 bg-purple-500/10 rounded-lg text-purple-400"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></div>
+            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Entity Leads</div>
+            <div className="p-1.5 bg-purple-500/10 rounded-lg text-purple-400"><Shield size={16} /></div>
           </div>
           <div className="text-2xl font-bold text-foreground mb-2">{stats?.counts?.leads ?? '...'}</div>
-          <div className="flex items-center gap-1.5 text-[10px] text-foreground/30 font-medium">Potential targets scraped</div>
+          <div className="flex items-center gap-1.5 text-[10px] text-foreground/30 font-medium italic">Targeted leads analyzed</div>
         </div>
 
         <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
           <div className="flex justify-between items-start mb-2">
-            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase">Tasks Queue</div>
-            <div className="p-1.5 bg-amber-500/10 rounded-lg text-amber-500"><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></div>
+            <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Queue Depth</div>
+            <div className="p-1.5 bg-amber-500/10 rounded-lg text-amber-500"><Activity size={16} /></div>
           </div>
           <div className="text-2xl font-bold text-foreground mb-2">{stats?.counts?.pending ?? '...'}</div>
-          <div className="flex items-center gap-1.5 text-[10px] text-amber-400/60 font-medium">Current scheduled overhead</div>
+          <div className="flex items-center gap-1.5 text-[10px] text-amber-400/60 font-medium font-mono">Cycle Overhead Status</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="lg:col-span-2 bg-card border border-border rounded-[32px] p-8 shadow-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.07] transition-all">
-            <Megaphone size={120} className="-rotate-12" />
-          </div>
-          <div className="flex justify-between items-center mb-10 relative z-10">
-            <div>
-              <h3 className="text-xl font-bold text-foreground tracking-tight">Engagement Dynamics</h3>
-              <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest mt-1">Real-time throughput analysis</p>
+        <div className="lg:col-span-2 bg-card border border-border rounded-[32px] p-8 shadow-2xl relative overflow-hidden group flex flex-col min-h-[420px]">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
+               <TrendingUp size={24} />
             </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 rounded-full border border-indigo-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Engine Active</span>
-            </div>
+            <h3 className="text-2xl font-bold text-foreground tracking-tight">Trends</h3>
           </div>
-          <div className="h-56 relative z-10 flex items-end">
-            <svg className="w-full h-full pb-4 pr-4" viewBox="0 0 1000 100" preserveAspectRatio="none">
+          <p className="text-sm text-foreground/40 mb-10 font-medium">Message outreach over the last 7 days</p>
+
+          <div className="flex-1 relative mt-4">
+            {/* Grid Lines */}
+            <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between pointer-events-none opacity-20 px-10 pt-10 pb-10">
+              {[1400, 1050, 700, 350, 0].map(val => (
+                <div key={val} className="flex items-center gap-4 w-full">
+                  <span className="text-[10px] font-mono text-foreground/50 w-8">{val}</span>
+                  <div className="flex-1 border-t border-dashed border-foreground/30" />
+                </div>
+              ))}
+            </div>
+
+            <div className="absolute inset-x-0 bottom-0 flex justify-between px-10 pointer-events-none">
+              {dateLabels.map(label => (
+                <span key={label} className="text-[10px] font-mono text-foreground/30 font-bold">{label}</span>
+              ))}
+            </div>
+
+            <svg className="w-full h-full pb-10 px-10" viewBox="0 0 1000 200" preserveAspectRatio="none">
               <defs>
-                <linearGradient id="curveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" stopColor="#4f46e5" />
-                  <stop offset="50%" stopColor="#6366f1" />
                   <stop offset="100%" stopColor="#818cf8" />
                 </linearGradient>
-                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
               </defs>
+              
+              {/* Fill Area */}
               <path
-                d={`M 0 100 ${ (stats?.engagement_flow || [30, 60, 40, 80, 50, 70, 90, 45, 85, 100]).map((h: number, i: number) => {
-                  const x = i * (1000 / 9);
-                  const y = 100 - h;
-                  return `L ${x} ${y}`;
-                }).join(' ') }`}
+                d={areaPath}
+                fill="url(#areaGradient)"
+                className="transition-all duration-1000"
+              />
+
+              {/* Main Line */}
+              <path
+                d={smoothPath}
                 fill="none"
-                stroke="url(#curveGradient)"
+                stroke="url(#lineGradient)"
                 strokeWidth="4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                filter="url(#glow)"
-                className="drop-shadow-[0_0_15px_rgba(99,102,241,0.3)] transition-all duration-1000"
+                className="drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000"
               />
-              {/* Data Points */}
-              {(stats?.engagement_flow || [30, 60, 40, 80, 50, 70, 90, 45, 85, 100]).map((h: number, i: number) => (
-                <circle 
-                  key={i} 
-                  cx={i * (1000 / 9)} 
-                  cy={100 - h} 
-                  r="4" 
-                  fill="#ffffff" 
-                  className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer"
-                />
-              ))}
+
+              {/* Data Points / Interaction Nodes */}
+              {chartData.map((val: number, i: number) => {
+                const step = 920 / (chartData.length - 1);
+                const x = 40 + i * step;
+                const y = 160 - (val / 100) * 120;
+                return (
+                  <circle 
+                    key={i} 
+                    cx={x} 
+                    cy={y} 
+                    r="4" 
+                    fill="#ffffff" 
+                    className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer"
+                  />
+                );
+              })}
             </svg>
-          </div>
-          <div className="flex justify-between text-foreground/20 text-[9px] font-bold uppercase tracking-[0.3em] mt-6 border-t border-border/50 pt-4">
-            <span>Historical Cycle Start</span>
-            <span>Current Transmission Window</span>
           </div>
         </div>
 
