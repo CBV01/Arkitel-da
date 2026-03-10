@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 
 export default function CampaignsPage() {
@@ -29,7 +29,21 @@ export default function CampaignsPage() {
 
     const [loadingTasks, setLoadingTasks] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const pageSize = 50;
+    const pageSize = 15;
+
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('preselect') === 'true') {
+            const preselected = sessionStorage.getItem('selected_lead_groups');
+            if (preselected) {
+                try {
+                    setSelectedGroups(JSON.parse(preselected));
+                    sessionStorage.removeItem('selected_lead_groups');
+                    setIsCreating(true);
+                } catch (e) {}
+            }
+        }
+    }, []);
 
     const fetchCampaigns = async () => {
         try {
@@ -165,38 +179,9 @@ export default function CampaignsPage() {
         fetchDialogs(camp.phone_number);
     };
 
-    const handleSpintaxGenerate = () => {
-        let text = spintaxInput;
-        const replacements: Record<string, string> = {
-            "Hello": "{Hello|Hi|Hey|Greetings|Howdy}",
-            "Hi": "{Hi|Hello|Hey|Hey there}",
-            "hey": "{hey|hi|hello}",
-            "Please": "{Please|Kindly|If you could}",
-            "contact": "{contact|reach out to|message|inbox}",
-            "check": "{check|look at|review|examine}",
-            "join": "{join|become a member of|enter|subscribe to}",
-            "group": "{group|channel|community|hub}",
-            "invest": "{invest|put money into|fund|back}",
-            "now": "{now|immediately|right away|instantly}",
-            "best": "{best|top|premium|elite|leading}",
-            "new": "{new|latest|fresh|recent}",
-            "exclusive": "{exclusive|limited|rare|VIP}"
-        };
-        
-        Object.keys(replacements).forEach(word => {
-            const regex = new RegExp(`\\b${word}\\b`, "gi");
-            text = text.replace(regex, (match) => {
-                const spintax = replacements[word];
-                return match[0] === match[0].toUpperCase() ? spintax : spintax.toLowerCase();
-            });
-        });
-        
-        setSpintaxInput(text);
-    };
-
-    const applySpintax = () => {
-        setCampaignData({...campaignData, message: spintaxInput});
-        setIsSpintaxOpen(false);
+    const isSpintaxValid = (text: string) => {
+        if (!text) return true;
+        return text.includes('{') && text.includes('}') && text.includes('|');
     };
 
     const handleDelete = async (id: number) => {
@@ -390,25 +375,48 @@ export default function CampaignsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between items-center">
-                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Message Payload</label>
-                                                    <button 
-                                                        type="button" 
-                                                        onClick={() => { setIsSpintaxOpen(true); setSpintaxInput(campaignData.message); }}
-                                                        className="text-[10px] font-bold text-indigo-500 hover:text-indigo-400 uppercase tracking-wider"
-                                                    >
-                                                        Spintax Assistant
-                                                    </button>
+                                            <div className="space-y-4">
+                                                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
+                                                    <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                                        <MessageCircle size={14} /> Optimization Guide (ChatGPT Prompt)
+                                                    </h4>
+                                                    <div className="text-[10px] text-foreground/50 leading-relaxed font-medium space-y-2">
+                                                        <p>1. Copy your raw message content.</p>
+                                                        <p>2. Paste this prompt into ChatGPT:</p>
+                                                        <div className="bg-background/50 p-2 rounded-lg border border-border mt-2 font-mono text-[9px] relative group">
+                                                            I need you to change the provided content below in to a SPINTAX format following the sample below <br/>
+                                                            ____ Sample _____ <br/>
+                                                            {'{Hello|Hi|Hey} {{First Name}}, ...'} <br/>
+                                                            Now here is my content to convert: {'{ PASTE YOUR CONTENT HERE }'}
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText("I need you to change the provided content below in to a SPINTAX format following the sample below \n____ Sample _____\n\n{Hello|Hi|Hey} {{First Name}},\n\n{I was checking out {{Company}} online and couldn’t find a website for your services|I looked for {{Company}} online but couldn’t spot a website for your services|I tried to find a website for {{Company}} but didn’t see one} {just wanted to make sure I wasn’t missing it—are you still active with clients?|wanted to confirm—are you still taking clients?|thought I’d check—are you still serving clients?}\n\nNow here is my content you have to convert to SPINTAX based on provided instructions { PASTE YOUR CONTENT HERE }");
+                                                                    alert("Prompt copied to clipboard!");
+                                                                }}
+                                                                className="absolute top-2 right-2 p-1.5 bg-indigo-500 text-white rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                                                            >
+                                                                <Check size={12} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <textarea
-                                                    rows={6}
-                                                    required
-                                                    value={campaignData.message}
-                                                    onChange={(e) => setCampaignData({ ...campaignData, message: e.target.value })}
-                                                    placeholder="Enter message..."
-                                                    className="w-full bg-input border border-border rounded-2xl p-5 text-sm text-foreground resize-none focus:ring-2 focus:ring-indigo-500/20 transition-all outline-none"
-                                                />
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between items-center px-1">
+                                                        <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Message Payload</label>
+                                                        {!isSpintaxValid(campaignData.message) && campaignData.message.length > 0 && (
+                                                            <span className="text-[9px] font-black text-amber-500 uppercase">Non-Spintax detected</span>
+                                                        )}
+                                                    </div>
+                                                    <textarea
+                                                        rows={5}
+                                                        required
+                                                        value={campaignData.message}
+                                                        onChange={(e) => setCampaignData({ ...campaignData, message: e.target.value })}
+                                                        placeholder="Paste your Spintax content here..."
+                                                        className={`w-full bg-input border rounded-2xl p-5 text-sm text-foreground resize-none focus:ring-2 transition-all outline-none ${!isSpintaxValid(campaignData.message) && campaignData.message.length > 0 ? 'border-amber-500/50 focus:ring-amber-500/20' : 'border-border focus:ring-indigo-500/20'}`}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
 
@@ -477,50 +485,6 @@ export default function CampaignsPage() {
                                     </div>
                                 </form>
                             )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Spintax Helper Modal */}
-            {isSpintaxOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[200] flex items-center justify-center p-6">
-                    <div className="bg-card border border-border rounded-[32px] w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="p-8 border-b border-border flex justify-between items-center bg-indigo-500/5">
-                            <div>
-                                <h3 className="font-bold text-xl text-foreground tracking-tight">Spintax Assistant</h3>
-                                <p className="text-xs text-foreground/40 font-medium">Transform your content into varying formats to bypass detection.</p>
-                            </div>
-                            <button onClick={() => setIsSpintaxOpen(false)} className="text-foreground/20 hover:text-foreground"><X size={24} /></button>
-                        </div>
-                        <div className="p-8 space-y-6">
-                            <div className="space-y-4">
-                                <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Your Content</label>
-                                <textarea 
-                                    className="w-full bg-input border border-border rounded-2xl p-6 text-sm text-foreground min-h-[200px] resize-none focus:ring-2 focus:ring-indigo-500/20 outline-none"
-                                    value={spintaxInput}
-                                    onChange={(e) => setSpintaxInput(e.target.value)}
-                                    placeholder="Paste your message here..."
-                                />
-                            </div>
-                            <div className="bg-indigo-500/10 p-4 rounded-xl border border-indigo-500/20">
-                                <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-1">PRO TIP</p>
-                                <p className="text-xs text-foreground/60 leading-relaxed">Spintax uses the <strong>{"{word1|word2|word3}"}</strong> format. The system will randomly pick one variation for every message sent, making each blast unique.</p>
-                            </div>
-                            <div className="flex gap-4">
-                                <button 
-                                    onClick={handleSpintaxGenerate}
-                                    className="flex-1 bg-background hover:bg-foreground/5 border border-border text-foreground py-4 rounded-2xl text-sm font-bold transition-all"
-                                >
-                                    Auto-Vary Synonyms
-                                </button>
-                                <button 
-                                    onClick={applySpintax}
-                                    className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white py-4 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 transition-all"
-                                >
-                                    Use This Format
-                                </button>
-                            </div>
                         </div>
                     </div>
                 </div>

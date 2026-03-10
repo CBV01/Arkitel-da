@@ -148,7 +148,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
         fixed top-0 left-0 h-full bg-background/90 md:bg-background/80 backdrop-blur-3xl 
         border-r border-border flex flex-col pt-20 md:pt-5 z-50 transition-all duration-300
         ${isMobileOpen ? "translate-x-0 w-64" : "-translate-x-full md:translate-x-0"}
-        ${isCollapsed ? "md:w-20" : "md:w-64"}
+        ${isCollapsed ? "md:w-20" : "md:w-56"}
       `}>
                 {/* Logo Area (Desktop) */}
                 <div className={`hidden md:flex items-center gap-3 mb-10 px-6 ${isCollapsed ? "justify-center px-0" : ""}`}>
@@ -231,9 +231,9 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
             {/* Main Content Wrapper */}
             <main className={`
         flex-1 min-h-screen pt-20 md:pt-0 transition-all duration-300
-        ${isCollapsed ? "md:ml-20" : "md:ml-64"}
+        ${isCollapsed ? "md:ml-20" : "md:ml-56"}
       `}>
-                <div className="p-4 md:p-8 max-w-6xl mx-auto">
+                <div className="p-4 md:p-8 max-w-7xl mx-auto">
                     {children}
                 </div>
             </main>

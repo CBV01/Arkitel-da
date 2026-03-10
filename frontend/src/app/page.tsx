@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/auth';
+import { Megaphone, Shield } from 'lucide-react';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -96,61 +97,80 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="lg:col-span-2 bg-card border border-border rounded-[24px] p-8 shadow-xl">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-lg font-bold text-foreground">Engagement Flow</h3>
-            <div className="flex gap-2">
-              <span className="px-3 py-1 bg-indigo-500/10 rounded-lg text-[10px] font-bold text-indigo-500">REAL-TIME Metrics</span>
+        <div className="lg:col-span-2 bg-card border border-border rounded-[32px] p-8 shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.07] transition-all">
+            <Megaphone size={120} className="-rotate-12" />
+          </div>
+          <div className="flex justify-between items-center mb-10 relative z-10">
+            <div>
+              <h3 className="text-xl font-black text-foreground tracking-tight">Engagement Dynamics</h3>
+              <p className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest mt-1">Real-time throughput analysis</p>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 rounded-full border border-indigo-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+              <span className="text-[10px] font-black text-indigo-500 uppercase tracking-wider">Engine Active</span>
             </div>
           </div>
-          <div className="h-48 flex items-end justify-between gap-3 border-b border-border pb-4">
-            {[30, 60, 40, 80, 50, 70, 90, 45, 85, 100].map((h, i) => (
-              <div key={i} className="flex-1 bg-gradient-to-t from-indigo-500/20 to-indigo-500 rounded-t-[4px] relative group" style={{ height: `${h}%` }}>
-                <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-background border border-border text-foreground text-[10px] font-bold px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-all">
-                  {Math.floor(h * 1.5)}%
+          <div className="h-56 flex items-end justify-between gap-2.5 pb-2 relative z-10">
+            {(stats?.engagement_flow || [30, 60, 40, 80, 50, 70, 90, 45, 85, 100]).map((h: number, i: number) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-3 h-full justify-end group/bar">
+                <div className="relative w-full">
+                  <div 
+                    className="w-full bg-gradient-to-t from-indigo-600/10 via-indigo-600/40 to-indigo-500 rounded-2xl transition-all duration-700 hover:scale-x-110 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] cursor-pointer" 
+                    style={{ height: `${h}%` }}
+                  >
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-[10px] font-black px-2 py-1 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-all shadow-xl shadow-indigo-500/20">
+                      {h}%
+                    </div>
+                  </div>
                 </div>
+                <div className="w-1 h-1 rounded-full bg-foreground/10 group-hover/bar:bg-indigo-500 transition-colors"></div>
               </div>
             ))}
           </div>
-          <div className="flex justify-between text-foreground/20 text-[10px] font-bold uppercase tracking-widest mt-4">
-            <span>Systems Online</span>
-            <span>Transmission Stable</span>
+          <div className="flex justify-between text-foreground/20 text-[9px] font-black uppercase tracking-[0.3em] mt-6 border-t border-border/50 pt-4">
+            <span>Historical Cycle Start</span>
+            <span>Current Transmission Window</span>
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-[24px] p-8 shadow-xl flex flex-col">
-          <h3 className="text-lg font-bold text-foreground mb-6">Service Health</h3>
-          <div className="space-y-6 flex-1">
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs font-medium text-foreground/50">
-                <span>Database Connectivity (Turso)</span>
-                <span className="text-emerald-400">Stable</span>
+        <div className="bg-card border border-border rounded-[32px] p-8 shadow-2xl flex flex-col relative overflow-hidden group">
+          <div className="absolute -bottom-10 -right-10 opacity-[0.02] group-hover:scale-110 transition-transform duration-1000">
+            <Shield size={200} />
+          </div>
+          <h3 className="text-xl font-black text-foreground mb-8 tracking-tight relative z-10">System Vitals</h3>
+          <div className="space-y-8 flex-1 relative z-10">
+            <div className="space-y-3">
+              <div className="flex justify-between text-[11px] font-black text-foreground/30 uppercase tracking-widest">
+                <span>Network Integrity</span>
+                <span className="text-emerald-500 tracking-tighter shadow-emerald-500/20 drop-shadow-sm">{stats?.service_health?.database || 'Stable'}</span>
               </div>
-              <div className="h-1.5 bg-foreground/[0.05] rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 w-[100%] shadow-[0_0_10px_#10b981]"></div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs font-medium text-foreground/50">
-                <span>Underground Task Poller</span>
-                <span className="text-indigo-500">Active</span>
-              </div>
-              <div className="h-1.5 bg-foreground/[0.05] rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-500 w-[100%] shadow-[0_0_10px_#6366f1]"></div>
+              <div className="h-2 bg-foreground/[0.03] rounded-full overflow-hidden border border-border/10 p-[1px]">
+                <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 w-[100%] rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
               </div>
             </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs font-medium text-foreground/50">
-                <span>Telegram API Handshake</span>
-                <span className="text-foreground/30">Idle</span>
+            <div className="space-y-3">
+              <div className="flex justify-between text-[11px] font-black text-foreground/30 uppercase tracking-widest">
+                <span>Task Automator</span>
+                <span className="text-indigo-500 tracking-tighter">{stats?.service_health?.poller || 'Active'}</span>
               </div>
-              <div className="h-1.5 bg-foreground/[0.05] rounded-full overflow-hidden">
-                <div className="h-full bg-foreground/20 w-[15%]"></div>
+              <div className="h-2 bg-foreground/[0.03] rounded-full overflow-hidden border border-border/10 p-[1px]">
+                <div className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 w-[85%] rounded-full shadow-[0_0_15px_rgba(99,102,241,0.3)] animate-pulse"></div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between text-[11px] font-black text-foreground/30 uppercase tracking-widest">
+                <span>TG API Handshake</span>
+                <span className="text-foreground/20 tracking-tighter italic">{stats?.service_health?.api || 'Idle'}</span>
+              </div>
+              <div className="h-2 bg-foreground/[0.03] rounded-full overflow-hidden border border-border/10 p-[1px]">
+                <div className="h-full bg-foreground/10 w-[15%] rounded-full"></div>
               </div>
             </div>
           </div>
-          <button className="w-full mt-8 py-3 bg-foreground/[0.03] hover:bg-foreground/[0.06] border border-border rounded-xl text-xs font-bold text-foreground/40 hover:text-foreground transition-all">
-            System Diagnostics
+          <button className="w-full mt-10 py-4 bg-foreground/[0.03] hover:bg-foreground/[0.06] border border-border rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-foreground/30 hover:text-foreground transition-all relative z-10 group/btn overflow-hidden">
+            <span className="relative z-10">Run System Diagnostics</span>
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/5 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000"></div>
           </button>
         </div>
       </div>

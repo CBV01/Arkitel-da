@@ -349,14 +349,20 @@ export default function ScraperPage() {
 
             {/* Results Area */}
             {loading && results.length === 0 ? (
-                <div className="border border-dashed border-border rounded-2xl p-16 flex flex-col items-center justify-center text-center relative overflow-hidden bg-card shadow-2xl">
+                <div className="border border-dashed border-border rounded-3xl p-16 flex flex-col items-center justify-center text-center relative overflow-hidden bg-card shadow-2xl">
                     <div className="absolute inset-0 bg-indigo-500/[0.02] animate-pulse"></div>
-                    <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4 relative z-10" />
-                    <p className="text-lg text-foreground font-bold mb-2 relative z-10">{scrapeStatus}</p>
-                    <p className="text-sm text-foreground/50 font-medium mb-6 relative z-10">Starting connection...</p>
+                    <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6 relative z-10" />
+                    <p className="text-xl text-foreground font-black mb-3 relative z-10 tracking-tight">{scrapeStatus}</p>
                     
-                    <button onClick={handleStop} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold rounded-xl text-sm transition-all border border-red-500/20 relative z-10 shadow-lg shadow-red-500/10 active:scale-95">
-                        Cancel Search
+                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full mb-8 relative z-10">
+                        <AlertCircle size={14} className="text-amber-500" />
+                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">
+                            DO NOT CLOSE OR REFRESH: DISCOVERY IN PROGRESS
+                        </p>
+                    </div>
+
+                    <button onClick={handleStop} className="px-8 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold rounded-2xl text-xs transition-all border border-red-500/20 relative z-10 shadow-lg shadow-red-500/10 active:scale-95 uppercase tracking-widest">
+                        Abort Scan
                     </button>
                 </div>
             ) : searched && results.length === 0 && !loading ? (
@@ -370,16 +376,28 @@ export default function ScraperPage() {
             ) : results.length > 0 ? (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     {loading && (
-                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-6 flex flex-col md:flex-row gap-4 items-center justify-between shadow-xl">
-                            <div className="flex items-center gap-4">
-                                <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
-                                <div>
-                                    <h4 className="text-foreground font-bold tracking-tight mb-1">{scrapeStatus}</h4>
-                                    <p className="text-sm text-foreground/60 font-medium">Auto-populating table in real-time... Found <strong className="text-indigo-400">{results.length}</strong> targets.</p>
+                        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-[32px] p-6 flex flex-col md:flex-row gap-6 items-center justify-between shadow-2xl relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500/20">
+                                <div className="h-full bg-indigo-500 animate-[shimmer_2s_infinite] w-full"></div>
+                            </div>
+                            <div className="flex items-center gap-5">
+                                <div className="relative">
+                                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                                    <div className="absolute inset-0 bg-indigo-500/20 blur-xl animate-pulse"></div>
+                                </div>
+                                <div className="flex flex-col">
+                                    <h4 className="text-lg font-black text-foreground tracking-tight mb-0.5">{scrapeStatus}</h4>
+                                    <div className="flex items-center gap-3">
+                                        <p className="text-xs text-foreground/50 font-bold uppercase tracking-wider">Found <span className="text-indigo-400">{results.length}</span> Communities</p>
+                                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                                            <AlertCircle size={10} className="text-amber-500" />
+                                            <span className="text-[9px] font-black text-amber-500 uppercase tracking-tighter">Stay on this page</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <button onClick={handleStop} className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold rounded-xl text-sm transition-all border border-red-500/20 active:scale-95 whitespace-nowrap">
-                                Stop Engine & Keep Variables
+                            <button onClick={handleStop} className="px-8 py-3.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-black rounded-2xl text-[10px] uppercase tracking-[0.2em] transition-all border border-red-500/20 active:scale-95 whitespace-nowrap shadow-xl shadow-red-500/5">
+                                Terminate Feed
                             </button>
                         </div>
                     )}
