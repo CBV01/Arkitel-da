@@ -677,10 +677,21 @@ async def scrape_keyword_stream(
             
             # DB insert
             conn2 = get_db_connection()
-            for k, v in ug.items(): conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (v.get('id'), user_id))
-            for item in s_res:
+            all_found = list(ug.values()) + s_res
+            for item in all_found:
                 gid = item.get('id')
-                if gid: conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (gid, user_id))
+                if not gid: continue
+                # Save to history
+                conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (gid, user_id))
+                # Save to Leads (scraped_groups) for persistent visibility on Leads page
+                conn2.execute(
+                    """INSERT OR REPLACE INTO scraped_groups 
+                       (id, user_id, title, username, participants_count, type, is_private, country, user_shows, global_shows, source) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (str(gid), user_id, item.get('title', 'Unknown'), item.get('username'), item.get('participants_count', 0), 
+                     item.get('type', 'group'), 1 if item.get('is_private') else 0, item.get('country', country or 'Global'), 
+                     item.get('user_shows', 1), item.get('global_shows', 1), "scraper")
+                )
             if hasattr(conn2, "commit"): conn2.commit()
             if hasattr(conn2, "close"): conn2.close()
 
@@ -757,20 +768,7 @@ async def scrape_keyword(
         if key not in unique_groups and item.get('username'):
             unique_groups[key] = item
 
-    # Record all discovered channels into scrape_history
-    conn2 = get_db_connection()
-    for gid in unique_groups:
-        conn2.execute(
-            "INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)",
-            (gid, user_id)
-        )
-    if hasattr(conn2, "commit"):
-        conn2.commit()
-    if hasattr(conn2, "close"):
-        conn2.close()
-
     # LAYER 3: Spider Crawler
-    # Now that we have the base unique_groups from Layer 1 & 2, run Spider crawler to find deeper connections
     print(f"SCRAPER: Starting Layer 3 (Spider Crawler) based on top results...")
     spider_results = await _scrape_spider(list(unique_groups.values()), rows)
     for item in spider_results:
@@ -778,21 +776,25 @@ async def scrape_keyword(
         if key not in unique_groups and item.get('username'):
             unique_groups[key] = item
             
-    # Record spider discoveries to scrape_history
-    conn3 = get_db_connection()
-    for item in spider_results:
-        gid = item.get('id')
-        if gid:
-            conn3.execute(
-                "INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)",
-                (gid, user_id)
-            )
-    if hasattr(conn3, "commit"):
-        conn3.commit()
-    if hasattr(conn3, "close"):
-        conn3.close()
-
     final_list = list(unique_groups.values())
+
+    # Record all found to history and leads
+    conn2 = get_db_connection()
+    for item in final_list:
+        gid = item.get('id')
+        if not gid: continue
+        conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (gid, user_id))
+        conn2.execute(
+            """INSERT OR REPLACE INTO scraped_groups 
+               (id, user_id, title, username, participants_count, type, is_private, country, user_shows, global_shows, source) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (str(gid), user_id, item.get('title', 'Unknown'), item.get('username'), item.get('participants_count', 0), 
+             item.get('type', 'group'), 1 if item.get('is_private') else 0, item.get('country', 'Global'), 
+             item.get('user_shows', 1), item.get('global_shows', 1), "scraper")
+        )
+    if hasattr(conn2, "commit"): conn2.commit()
+    if hasattr(conn2, "close"): conn2.close()
+
     print(f"SCRAPER: Done — {len(final_list)} unique results for '{base_query}' "
           f"(TG:{len(telegram_results) if isinstance(telegram_results, dict) else 0} "
           f"Lyzem:{len(lyzem_results) if isinstance(lyzem_results, list) else 0} "
@@ -816,12 +818,20 @@ async def bulk_join(req: BulkJoinRequest, user_id: str = Depends(get_current_use
     
     results = {'joined': 0, 'failed': 0}
     try:
-        from telethon.tl.functions.channels import JoinChannelRequest  # type: ignore
+        # pyre-ignore[21]: telethon channels
+        from telethon.tl.functions.channels import JoinChannelRequest
         for g_id in req.group_ids:
             try:
                 # User requested approx 10s interval for safety
                 await asyncio.sleep(random.randint(10, 15))
-                await client(JoinChannelRequest(g_id))
+                
+                # Resolve entity before joining to ensure success
+                resolved_id = g_id
+                if str(g_id).lstrip('-').isdigit():
+                    resolved_id = int(g_id)
+                entity = await client.get_entity(resolved_id)
+                
+                await client(JoinChannelRequest(entity))
                 results['joined'] += 1
             except Exception as e:
                 results['failed'] += 1
@@ -845,8 +855,15 @@ async def join_single(req: JoinRequest, user_id: str = Depends(get_current_user_
     client = TelegramClient(StringSession(session_str), api_id, api_hash)
     await client.connect()
     try:
+        # Resolve entity first
+        resolved_id = req.group_id
+        if str(req.group_id).lstrip('-').isdigit():
+            resolved_id = int(req.group_id)
+        entity = await client.get_entity(resolved_id)
+
+        # pyre-ignore[21]
         from telethon.tl.functions.channels import JoinChannelRequest # pyre-ignore[21]
-        await client(JoinChannelRequest(req.group_id))
+        await client(JoinChannelRequest(entity))
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
