@@ -542,17 +542,20 @@ export default function AccountsPage() {
                                             </form>
                                         ) : (
                                             <div className="space-y-6 animate-in fade-in duration-500">
-                                                <div className="relative mx-auto w-56 h-56 bg-foreground/[0.03] border border-border rounded-3xl p-4 group">
+                                                <div className="relative mx-auto w-48 h-48 bg-white border border-border rounded-2xl p-3 group overflow-hidden">
                                                     {qrUrl ? (
                                                         <img 
-                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`} 
-                                                            alt="Telegram Login QR"
+                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=0&data=${encodeURIComponent(qrUrl)}`} 
+                                                            alt="QR"
                                                             className={`w-full h-full object-contain transition-opacity duration-1000 ${qrStatus === 'success' ? 'opacity-20' : 'opacity-100'}`}
+                                                            onError={(e) => {
+                                                                (e.target as any).src = `https://chart.googleapis.com/chart?chs=250x250&cht=qr&chl=${encodeURIComponent(qrUrl)}`;
+                                                            }}
                                                         />
                                                     ) : (
-                                                        <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                                                            <Loader2 size={32} className="animate-spin text-indigo-500" />
-                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generating QR...</span>
+                                                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                                                            <Loader2 size={24} className="animate-spin text-indigo-500" />
+                                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Generating</span>
                                                         </div>
                                                     )}
                                                     
@@ -579,19 +582,10 @@ export default function AccountsPage() {
                                                     )}
                                                 </div>
                                                 
-                                                <div className="space-y-4">
-                                                    <div className="flex items-center gap-4 text-left bg-foreground/5 p-4 rounded-2xl">
-                                                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-bold shrink-0 text-foreground">1</div>
-                                                        <p className="text-xs text-foreground/60 leading-relaxed">Open <b className="text-foreground">Telegram</b> on your phone</p>
-                                                    </div>
-                                                    <div className="flex items-center gap-4 text-left bg-foreground/5 p-4 rounded-2xl">
-                                                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-bold shrink-0 text-foreground">2</div>
-                                                        <p className="text-xs text-foreground/60 leading-relaxed">Go to <b className="text-foreground">Settings</b> &gt; <b className="text-foreground">Devices</b> &gt; <b className="text-foreground">Link Desktop Device</b></p>
-                                                    </div>
-                                                    <div className="flex items-center gap-4 text-left bg-foreground/5 p-4 rounded-2xl">
-                                                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-bold shrink-0 text-foreground">3</div>
-                                                        <p className="text-xs text-foreground/60 leading-relaxed">Point your phone's camera at this screen to scan the QR code</p>
-                                                    </div>
+                                                <div className="pt-2">
+                                                    <p className="text-[10px] text-foreground/40 font-medium leading-relaxed px-4">
+                                                        Scan with <b className="text-foreground">Telegram &gt; Settings &gt; Devices</b> to link instantly.
+                                                    </p>
                                                 </div>
                                             </div>
                                         )}

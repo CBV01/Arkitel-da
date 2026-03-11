@@ -29,9 +29,9 @@ export default function Dashboard() {
     if (!data.length) return "";
     const width = 1000;
     const height = 200;
-    const padding = 40;
+    const padding = 10;
     const chartHeight = height - padding * 2;
-    const chartWidth = width - padding * 2;
+    const chartWidth = width - 20; // Allow slight right padding
     const step = chartWidth / (data.length - 1);
 
     let path = `M ${padding} ${height - padding - (data[0] / 100) * chartHeight}`;
@@ -49,7 +49,7 @@ export default function Dashboard() {
   };
 
   const smoothPath = generateSmoothPath(chartData);
-  const areaPath = smoothPath + ` L ${960} 160 L 40 160 Z`;
+  const areaPath = smoothPath + ` L 990 190 L 10 190 Z`;
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -150,21 +150,21 @@ export default function Dashboard() {
 
           <div className="flex-1 mt-4 flex">
             {/* Y-Axis Labels */}
-            <div className="flex flex-col justify-between py-10 pr-6 text-[10px] font-mono text-foreground/60 font-bold h-full w-20 shrink-0 text-right border-r border-border/30">
+            <div className="flex flex-col justify-between py-10 pr-3 text-[10px] font-mono text-foreground/50 font-bold h-full w-14 shrink-0 text-right border-r border-border/20">
               {[1400, 1050, 700, 350, 0].map(val => (
                 <span key={val}>{val}</span>
               ))}
             </div>
 
-            <div className="flex-1 relative pl-6">
+            <div className="flex-1 relative pl-3">
               {/* Grid Lines */}
-              <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between pointer-events-none opacity-10 py-10 ml-6">
+              <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between pointer-events-none opacity-10 py-10 ml-3">
                 {[1400, 1050, 700, 350, 0].map(val => (
                   <div key={val} className="w-full border-t border-dashed border-foreground/50" />
                 ))}
               </div>
 
-              <div className="absolute inset-x-0 bottom-0 flex justify-between pointer-events-none ml-6">
+              <div className="absolute inset-x-0 bottom-0 flex justify-between pointer-events-none ml-3">
                 {dateLabels.map(label => (
                   <span key={label} className="text-[10px] font-mono text-foreground/40 font-bold">{label}</span>
                 ))}
@@ -202,9 +202,9 @@ export default function Dashboard() {
 
               {/* Data Points / Interaction Nodes */}
               {chartData.map((val: number, i: number) => {
-                const step = 920 / (chartData.length - 1);
-                const x = 40 + i * step;
-                const y = 160 - (val / 100) * 120;
+                const step = 980 / (chartData.length - 1);
+                const x = 10 + i * step;
+                const y = 190 - (val / 100) * 180;
                 return (
                   <circle 
                     key={i} 
