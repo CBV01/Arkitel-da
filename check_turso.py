@@ -1,17 +1,24 @@
 import os
 import sys
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 # Add current folder to sys.path
 sys.path.append(os.path.join(os.getcwd(), 'backend'))
 
-load_dotenv('backend/.env')
+load_dotenv(os.path.join('backend', '.env'))
 
-from backend.database import get_db_connection
+from database import get_db_connection # type: ignore
 
 def check():
     url = os.getenv('TURSO_DATABASE_URL')
-    print(f"URL: {url[:30]}..." if url else "URL: None")
+    if url:
+        truncated_url = ""
+        for i, char in enumerate(url):
+            if i >= 30: break
+            truncated_url += char
+        print(f"URL: {truncated_url}...")
+    else:
+        print("URL: None")
     conn = get_db_connection()
     try:
         # Get users

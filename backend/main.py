@@ -81,6 +81,24 @@ async def lifespan(app: FastAPI):
     await POOL.disconnect_all()
     print("CORE: All clients disconnected. Shutdown complete.")
 
+async def get_current_admin(user_id: str = Depends(get_current_user_id)):
+    print(f"AUTH_DEBUG: Checking admin rights for {user_id}")
+    if user_id == "admin_virtual_id":
+        return user_id
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            print(f"AUTH_DEBUG: User {user_id} not found in DB")
+            raise HTTPException(status_code=403, detail="Admin access required: User not found")
+        if row[0] != 'admin':
+            print(f"AUTH_DEBUG: User {user_id} has role {row[0]}, expected admin")
+            raise HTTPException(status_code=403, detail=f"Admin access required: role is {row[0]}")
+        return user_id
+    finally:
+        if hasattr(conn, "close"): conn.close()
+    return user_id
+
 app = FastAPI(title="ArkiTel Automation API", lifespan=lifespan)
 
 app.add_middleware(
@@ -140,7 +158,13 @@ async def debug_db():
     url = os.getenv("TURSO_DATABASE_URL", "NOT_SET")
     token = os.getenv("TURSO_AUTH_TOKEN", "NOT_SET")
     u_str = str(url) if url else "NOT_SET"
-    display_url = str(u_str)[0:20] + "..." if u_str != "NOT_SET" else "NOT_SET" # type: ignore
+    display_url = "NOT_SET"
+    if u_str != "NOT_SET":
+        d_url = ""
+        for i, char in enumerate(u_str):
+            if i >= 20: break
+            d_url += char
+        display_url = d_url + "..."
     return {
         "url": display_url,
         "token_set": bool(token and token != "NOT_SET"),
@@ -1778,24 +1802,6 @@ async def get_leads(user_id: str = Depends(get_current_user_id)):
     }
 
 # --- Admin Endpoints ---
-
-async def get_current_admin(user_id: str = Depends(get_current_user_id)):
-    print(f"AUTH_DEBUG: Checking admin rights for {user_id}")
-    if user_id == "admin_virtual_id":
-        return user_id
-    conn = get_db_connection()
-    try:
-        row = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
-        if not row:
-            print(f"AUTH_DEBUG: User {user_id} not found in DB")
-            raise HTTPException(status_code=403, detail="Admin access required: User not found")
-        if row[0] != 'admin':
-            print(f"AUTH_DEBUG: User {user_id} has role {row[0]}, expected admin")
-            raise HTTPException(status_code=403, detail=f"Admin access required: role is {row[0]}")
-        return user_id
-    finally:
-        if hasattr(conn, "close"): conn.close()
-    return user_id
 
 @app.post("/api/admin/maintenance/clear-leads")
 async def clear_leads(admin_id: str = Depends(get_current_admin)):
