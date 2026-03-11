@@ -196,7 +196,7 @@ export default function AccountsPage() {
                         setIsConnecting(false);
                         setStep('phone');
                         setLoginMode('phone');
-                    }, 2000);
+                    }, 800);
                 } else if (data.status === 'pending') {
                     setTimeout(poll, 2000);
                 } else {
@@ -327,59 +327,99 @@ export default function AccountsPage() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                    {accounts.map((acc, idx) => (
-                        <div key={idx} className="bg-card/60 backdrop-blur-2xl border border-border rounded-[36px] p-8 group hover:border-indigo-500/30 transition-all relative overflow-hidden flex flex-col">
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-[80px] -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/20"></div>
-
-                            <div className="flex items-center gap-6 mb-8 relative z-10">
-                                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black transition-all group-hover:rotate-6 group-hover:scale-110 duration-500">
-                                    {(acc.phone_number?.slice(-2) || 'N').toUpperCase()}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    {accounts.map((acc) => (
+                        <div key={acc.phone_number} className="bg-card border border-border p-6 rounded-[32px] group relative hover:shadow-2xl hover:shadow-indigo-500/5 transition-all duration-500 flex flex-col">
+                            {/* Status and Action Header */}
+                            <div className="flex justify-between items-start mb-6">
+                                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full flex items-center gap-1.5 uppercase transition-all group-hover:bg-emerald-500/20">
+                                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                                    {acc.status}
+                                </span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => handleValidateSession(acc.phone_number)}
+                                        className="p-1.5 bg-foreground/5 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-lg text-foreground/30 transition-all"
+                                        title="Pulse Check"
+                                    >
+                                        {actionLoading === acc.phone_number + '_valid' ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={14} />}
+                                    </button>
+                                    <button 
+                                        onClick={() => handleSessionDump(acc.phone_number)}
+                                        className="p-1.5 bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 rounded-lg text-foreground/30 transition-all"
+                                        title="Export Key"
+                                    >
+                                        {actionLoading === acc.phone_number + '_dump' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteAccount(acc.phone_number)}
+                                        className="p-1.5 bg-foreground/5 hover:bg-red-500/10 hover:text-red-500 rounded-lg text-foreground/30 transition-all"
+                                        title="Delete"
+                                    >
+                                        {actionLoading === acc.phone_number ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                                    </button>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="font-bold text-foreground text-xl tracking-tight truncate mb-1">
-                                        {acc.phone_number}
-                                    </h4>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-[pulse_2s_infinite]"></div>
-                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500/80">CORE ONLINE</span>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => handleDeleteAccount(acc.phone_number)}
-                                    disabled={actionLoading === acc.phone_number}
-                                    className="p-3 rounded-2xl bg-foreground/5 text-foreground/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-border disabled:opacity-50">
-                                    {actionLoading === acc.phone_number ? <Loader2 size={20} className="animate-spin" /> : <X size={20} />}
-                                </button>
                             </div>
-
-                            <div className="space-y-4 relative z-10 mb-8 flex-1">
-                                <div className="flex justify-between items-center py-4 border-b border-border/50">
-                                    <span className="text-[11px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Identity Lock</span>
-                                    <span className="text-xs font-mono font-medium text-foreground/60 bg-foreground/5 px-2 py-1 rounded-md">API-{acc.api_id?.slice(0, 4) || '••••'}</span>
-                                </div>
-                                <div className="flex justify-between items-center py-2">
-                                    <span className="text-[11px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Traffic Capacity</span>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-12 h-1.5 bg-foreground/5 rounded-full overflow-hidden">
-                                            <div className="w-3/4 h-full bg-indigo-500 rounded-full" />
+                            
+                            {/* Profile Image and Identity */}
+                            <div className="flex flex-col items-center mb-6">
+                                <div className="w-20 h-20 rounded-full border-4 border-foreground/5 p-1 mb-3 bg-foreground/[0.02] relative shadow-inner">
+                                    {acc.profile_photo ? (
+                                        <img 
+                                            src={process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`} 
+                                            className="w-full h-full rounded-full object-cover" 
+                                            onError={(e) => { (e.target as any).src = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png' }}
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                                            <Users size={32} />
                                         </div>
-                                        <span className="text-[10px] font-bold text-foreground/80">OPTIMAL</span>
+                                    )}
+                                </div>
+                                <h4 className="text-lg font-bold text-foreground tracking-tight">{acc.first_name || 'Account'} {acc.last_name || ''}</h4>
+                                <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1">@{acc.username || 'unknown_node'}</p>
+                            </div>
+
+                            {/* Info Grid */}
+                            <div className="bg-foreground/[0.03] border border-border/50 rounded-2xl p-5 mb-auto space-y-4">
+                                <div className="flex items-center justify-between text-[10px] font-bold text-foreground/30 uppercase tracking-tighter">
+                                    <span className="flex items-center gap-1.5"><Rocket size={12} className="opacity-50" /> #NODE_{acc.phone_number.slice(-4)}</span>
+                                    <span className="flex items-center gap-1.5"><Globe size={12} className="opacity-50" /> {acc.country || 'Global'}</span>
+                                </div>
+                                
+                                <div className="flex flex-col gap-2.5">
+                                    <div className="flex items-center gap-3 text-xs font-bold text-foreground/70">
+                                        <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500"><Phone size={14} /></div>
+                                        {acc.phone_number}
+                                    </div>
+                                    <div className="flex items-center gap-2 justify-between">
+                                        <div className="flex items-center gap-3 text-xs font-bold text-foreground/70">
+                                            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500"><Rocket size={14} /></div>
+                                            Capacity
+                                        </div>
+                                        <span className="text-[10px] font-bold text-foreground/40">98.4%</span>
+                                    </div>
+                                </div>
+
+                                <div className="h-px bg-border/20 my-1" />
+
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
+                                        <CheckCircle2 size={12} className="text-emerald-500" />
+                                        Identity Lock
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
+                                        <Rocket size={12} className="text-indigo-500" />
+                                        Neural Pulse
                                     </div>
                                 </div>
                             </div>
-
-                            <div className="grid grid-cols-2 gap-3 relative z-10">
-                                <button
-                                    onClick={() => handleSessionDump(acc.phone_number)}
-                                    className="bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] border border-border">
-                                    Export Key
-                                </button>
-                                <button
-                                    onClick={() => handleValidateSession(acc.phone_number)}
-                                    disabled={actionLoading === acc.phone_number + '_valid'}
-                                    className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 transition-all py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] border border-indigo-500/10 disabled:opacity-50">
-                                    {actionLoading === acc.phone_number + '_valid' ? 'Verifying...' : 'Pulse Check'}
+                            
+                            {/* Joined Footer */}
+                            <div className="flex items-center justify-between pt-5 mt-5 border-t border-border/10">
+                                <span className="text-[10px] font-bold text-foreground/20 uppercase tracking-[0.1em]">Joined {acc.created_at ? new Date(acc.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recently'}</span>
+                                <button className="text-[10px] font-black text-indigo-500 uppercase tracking-widest hover:text-indigo-400 flex items-center gap-1 transition-all group/btn">
+                                    View Details <ChevronRight size={10} className="group-hover/btn:translate-x-1 transition-transform" />
                                 </button>
                             </div>
                         </div>
@@ -602,44 +642,44 @@ export default function AccountsPage() {
                                             </div>
                                         </div>
 
-                                        <h3 className="text-3xl font-bold text-foreground mb-3 tracking-tight">Security Code</h3>
-                                        <p className="text-foreground/40 text-sm font-medium mb-12 max-w-[280px] mx-auto leading-relaxed">
+                                        <h3 className="text-2xl font-bold text-foreground mb-2 tracking-tight">Security Code</h3>
+                                        <p className="text-foreground/40 text-[11px] font-bold mb-8 max-w-[240px] mx-auto leading-relaxed uppercase tracking-tighter">
                                             Enter the 5-digit verification code sent to your active Telegram session.
                                         </p>
 
                                         {error && (
-                                            <div className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-3 animate-in shake duration-500">
-                                                <AlertCircle size={16} className="shrink-0" />
+                                            <div className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] font-bold flex items-center gap-2 animate-in shake duration-500 text-left">
+                                                <AlertCircle size={14} className="shrink-0" />
                                                 <span>{error}</span>
                                             </div>
                                         )}
 
-                                        <form onSubmit={handleVerifyCode} className="space-y-10">
-                                            <div className="flex justify-center gap-4">
+                                        <form onSubmit={handleVerifyCode} className="space-y-6">
+                                            <div className="flex justify-center">
                                                 <input
                                                     type="text"
                                                     value={otp}
                                                     onChange={(e) => setOtp(e.target.value)}
                                                     placeholder="•••••"
                                                     maxLength={5}
-                                                    className="w-full h-20 bg-foreground/5 border border-border rounded-[24px] text-center text-4xl font-black tracking-[0.5em] text-foreground focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:bg-foreground/10 transition-all"
+                                                    className="w-full h-14 bg-foreground/5 border border-border rounded-xl text-center text-2xl font-black tracking-[0.5em] text-foreground focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:bg-foreground/10 transition-all"
                                                     required
                                                     autoFocus
                                                 />
                                             </div>
 
-                                            <div className="flex flex-col gap-4">
+                                            <div className="flex flex-col gap-3">
                                                 <button
                                                     type="submit"
                                                     disabled={loading || otp.length < 5}
-                                                    className="w-full h-16 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 text-base font-bold transition-all rounded-[20px] flex items-center justify-center gap-3 active:scale-[0.98]"
+                                                    className="w-full h-12 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 text-sm font-bold transition-all rounded-xl flex items-center justify-center gap-2 active:scale-[0.98]"
                                                 >
-                                                    {loading ? <Loader2 size={24} className="animate-spin" /> : 'Complete Link'}
+                                                    {loading ? <Loader2 size={18} className="animate-spin" /> : 'Link Account'}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setStep('phone')}
-                                                    className="text-foreground/40 hover:text-foreground text-[11px] font-black uppercase tracking-widest transition-colors py-2"
+                                                    className="text-foreground/30 hover:text-foreground text-[10px] font-bold uppercase tracking-widest transition-colors py-1"
                                                 >
                                                     ← Change Number
                                                 </button>

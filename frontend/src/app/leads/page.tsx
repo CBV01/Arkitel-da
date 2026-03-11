@@ -487,111 +487,73 @@ export default function LeadsPage() {
                     <p className="text-foreground/20 text-xs">Try adjusting your filters or search query.</p>
                 </div>
             ) : (
-                <div className="bg-card border border-border rounded-[32px] overflow-hidden shadow-2xl overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse min-w-[1000px]">
-                        <thead>
-                            <tr className="border-b border-border text-[10px] font-bold uppercase tracking-[0.2em] text-foreground/30 bg-foreground/[0.01]">
-                                <th className="p-6 w-12 text-center">
-                                    <button
-                                        onClick={() => toggleSelectAll(isAllVisibleSelected)}
-                                        className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isAllVisibleSelected ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-border bg-foreground/5 hover:border-foreground/30'}`}
-                                    >
-                                        {isAllVisibleSelected && <Check size={12} />}
-                                    </button>
-                                </th>
-                                <th className="p-6">Lead / Entity</th>
-                                <th className="p-6">Identifiers</th>
-                                <th className="p-6 text-center">Type</th>
-                                <th className="p-6 text-right">Metrics / Info</th>
-                                <th className="p-6 text-right pr-10">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border">
-                            {visibleLeads.map((l) => {
-                                const isSelected = selectedIds.has(l.id);
-                                return (
-                                    <tr
-                                        key={l.id}
-                                        className={`group hover:bg-foreground/[0.01] transition-all cursor-pointer ${isSelected ? 'bg-indigo-500/[0.03]' : ''}`}
-                                        onClick={() => toggleSelection(l.id)}
-                                    >
-                                        <td className="p-6 text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                    {visibleLeads.map((l) => (
+                        <div 
+                            key={l.id} 
+                            onClick={() => toggleSelection(l.id)}
+                            className={`group bg-card/60 border border-border/50 rounded-3xl p-5 hover:border-indigo-500/30 transition-all cursor-pointer relative overflow-hidden flex flex-col ${selectedIds.has(l.id) ? 'ring-2 ring-indigo-500 bg-indigo-500/5 border-indigo-500/20' : ''}`}
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${l.itemType === 'member' ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
+                                    {l.itemType === 'member' ? <UsersRound size={18} /> : (l.type === 'channel' ? <Megaphone size={18} /> : <Users size={18} />)}
+                                </div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {l.itemType === 'community' && (
+                                        <>
                                             <button
-                                                onClick={() => toggleSelection(l.id)}
-                                                className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-500 border-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'border-border bg-foreground/[0.02] hover:border-foreground/20'}`}
+                                                onClick={(e) => { e.stopPropagation(); handleSingleJoin(l.id, l.username); }}
+                                                className="p-1.5 bg-foreground/5 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-lg text-foreground/30 transition-all"
+                                                title="Join"
                                             >
-                                                {isSelected && <Check size={12} />}
+                                                <UserPlus size={14} />
                                             </button>
-                                        </td>
-                                        <td className="p-6">
-                                            <div className="flex items-center gap-4">
-                                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border shadow-sm ${l.itemType === 'member' ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
-                                                    {l.itemType === 'member' ? <UsersRound size={18} /> : (l.type === 'channel' ? <Megaphone size={18} /> : <Users size={18} />)}
-                                                </div>
-                                                <div className="max-w-[200px]">
-                                                    <div className="font-bold text-sm text-foreground truncate">{l.title}</div>
-                                                    <div className="text-[10px] text-foreground/30 font-bold uppercase tracking-widest">{l.itemType}</div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-6">
-                                            {l.username ? (
-                                                <div className="flex items-center gap-1.5 text-indigo-500 font-bold text-xs bg-indigo-500/5 px-2.5 py-1 rounded-full w-fit">
-                                                    @{l.username}
-                                                </div>
-                                            ) : (
-                                                <div className="text-[10px] text-foreground/20 font-medium">ID: {l.id}</div>
-                                            )}
-                                        </td>
-                                        <td className="p-6 text-center">
-                                            <span className={`text-[10px] font-bold uppercase px-2.5 py-1 rounded-md tracking-tighter ${l.type === 'channel' ? 'bg-blue-500/10 text-blue-500' : (l.type === 'group' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-slate-500/10 text-slate-500')}`}>
-                                                {l.type}
-                                            </span>
-                                        </td>
-                                        <td className="p-6 text-right">
-                                            {l.itemType === 'community' ? (
-                                                <>
-                                                    <div className="font-bold text-sm text-foreground">{(l.participants_count || 0).toLocaleString()}</div>
-                                                    <div className="text-[10px] text-foreground/20 font-bold uppercase">{l.country || "Global"}</div>
-                                                </>
-                                            ) : (
-                                                <div className="text-[10px] text-foreground/20 font-bold uppercase italic">Direct Target</div>
-                                            )}
-                                        </td>
-                                        <td className="p-6 text-right pr-8" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex items-center justify-end gap-1 font-bold">
-                                                {l.itemType === 'community' && (
-                                                    <>
-                                                        <button
-                                                            onClick={() => handleSingleJoin(l.id, l.username)}
-                                                            className="p-2 text-foreground/30 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-xl transition-all"
-                                                            title="Join Community"
-                                                        >
-                                                            <UserPlus size={18} />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setExtractingGroup(l.username || l.id)}
-                                                            className="p-2 text-foreground/30 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-xl transition-all"
-                                                            title="Extract Members"
-                                                        >
-                                                            <Shield size={18} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                                <button
-                                                    onClick={() => handleDeleteSingle(l.id, l.itemType === 'member' ? 'member' : 'group')}
-                                                    className="p-2 text-foreground/30 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
-                                                    title="Remove Lead"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setExtractingGroup(l.username || l.id); }}
+                                                className="p-1.5 bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 rounded-lg text-foreground/30 transition-all"
+                                                title="Extract"
+                                            >
+                                                <Shield size={14} />
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteSingle(l.id, l.itemType === 'member' ? 'member' : 'group'); }}
+                                        className="p-1.5 bg-foreground/5 hover:bg-red-500/10 hover:text-red-500 rounded-lg text-foreground/30 transition-all"
+                                        title="Delete"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex-1 min-w-0 mb-4">
+                                <h4 className="font-bold text-sm text-foreground truncate mb-1">{l.title}</h4>
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md tracking-tighter ${l.type === 'channel' ? 'bg-blue-500/10 text-blue-500' : (l.type === 'group' ? 'bg-indigo-500/10 text-indigo-500' : 'bg-slate-500/10 text-slate-500')}`}>
+                                        {l.type}
+                                    </span>
+                                    {l.username && <span className="text-[10px] text-indigo-500/70 font-bold truncate">@{l.username}</span>}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-4 border-t border-border/30">
+                                <div className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">
+                                    {l.itemType === 'community' ? (l.participants_count || 0).toLocaleString() + ' Members' : 'Direct Target'}
+                                </div>
+                                <div className="text-[10px] font-bold text-foreground/20 uppercase">
+                                    {l.country || "Global"}
+                                </div>
+                            </div>
+
+                            {/* Selection Checkmark */}
+                            {selectedIds.has(l.id) && (
+                                <div className="absolute top-2 right-2 p-1 bg-indigo-500 rounded-full text-white">
+                                    <Check size={10} />
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
             )}
 

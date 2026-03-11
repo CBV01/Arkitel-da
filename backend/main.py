@@ -15,7 +15,8 @@ import collections
 import asyncio
 import random
 import json
-from typing import Optional, List, Dict, Any, Union
+import base64
+from typing import Optional, List, Dict, Any, Union, cast
 import re
 import ast
 import traceback
@@ -35,6 +36,8 @@ from telethon.tl.functions.channels import JoinChannelRequest, GetParticipantsRe
 from telethon.tl.functions.messages import SearchGlobalRequest, CheckChatInviteRequest, ImportChatInviteRequest  # type: ignore
 from telethon.tl.functions.contacts import SearchRequest # type: ignore
 from telethon.tl.types import ChannelParticipantsSearch, InputMessagesFilterEmpty, InputPeerEmpty, InputPeerChannel, InputPeerChat # type: ignore
+from telethon.tl.functions.help import GetConfigRequest # type: ignore
+from fastapi.staticfiles import StaticFiles # type: ignore
 
 from config import TELEGRAM_API_ID, TELEGRAM_API_HASH  # type: ignore
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_id  # type: ignore
@@ -83,6 +86,50 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Static files for profile photos
+if not os.path.exists("static/avatars"):
+    os.makedirs("static/avatars", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+async def fetch_tg_profile_data(client: TelegramClient, phone_number: str):
+    """Fetches profile details and downloads photo for an authenticated client."""
+    me = await client.get_me()
+    first_name = getattr(me, 'first_name', '')
+    last_name = getattr(me, 'last_name', '')
+    username = getattr(me, 'username', '')
+    
+    # Try to get country from phone number prefix
+    country = "Unknown"
+    if phone_number.startswith('+'):
+        # Very basic mapping, ideally use a library
+        prefixes = {"+1": "USA", "+44": "UK", "+234": "Nigeria", "+91": "India", "+62": "Indonesia"}
+        for p, c in prefixes.items():
+            if phone_number.startswith(p):
+                country = c
+                break
+
+    # Download profile photo
+    photo_path = None
+    try:
+        user_id = getattr(me, 'id', 0)
+        user_photo = getattr(me, 'photo', None)
+        if user_photo:
+            filename = f"avatar_{user_id}.jpg"
+            save_path = f"static/avatars/{filename}"
+            await client.download_profile_photo(me, file=save_path)
+            photo_path = f"/static/avatars/{filename}"
+    except Exception as e:
+        print(f"BKG: Photo download error: {e}")
+        
+    return {
+        "first_name": first_name,
+        "last_name": last_name,
+        "username": username,
+        "profile_photo": photo_path,
+        "country": country
+    }
+
 
 @app.get("/api/debug/db")
 async def debug_db():
@@ -175,28 +222,36 @@ async def qr_login_worker(client: TelegramClient, qr, user_id, api_id, api_hash,
         user = await qr.wait()
         print(f"QR_WORKER[{token}]: Scan SUCCESS. Logged in as ID {user.id}")
         
-        # Login success!
-        session_string = client.session.save()
+        # Login success! Get full profile
         me = await client.get_me()
-        phone = getattr(me, 'phone', 'Unknown')
+        user_id_val = getattr(me, 'id', 0)
+        phone = getattr(me, 'phone', f"ID_{user_id_val}")
+        # Fetch profile data and ensure it's fully resolved
+        profile_data = await fetch_tg_profile_data(client, phone)
+        profile: Dict[str, Any] = cast(Dict[str, Any], profile_data)
+        session_string = str(client.session.save()) # type: ignore
         
-        # If phone is still unknown, we try to use a placeholder or ID
-        if phone == 'Unknown' or not phone:
-            phone = f"ID_{user.id}"
-
         # Save to DB
         conn = get_db_connection()
-        # Check if already exists to avoid duplicates
+        # Check if already exists
         existing = conn.execute("SELECT 1 FROM accounts WHERE phone_number = ?", (phone,)).fetchone()
         if existing:
              conn.execute(
-                "UPDATE accounts SET user_id = ?, session_string = ?, api_id = ?, api_hash = ?, status = 'active' WHERE phone_number = ?",
-                (user_id, session_string, str(api_id), api_hash, phone)
+                """UPDATE accounts SET user_id = ?, session_string = ?, api_id = ?, api_hash = ?, 
+                   first_name = ?, last_name = ?, username = ?, profile_photo = ?, country = ?, status = 'active' 
+                   WHERE phone_number = ?""",
+                (user_id, session_string, str(api_id), api_hash, 
+                 profile['first_name'], profile['last_name'], profile['username'], 
+                 profile['profile_photo'], profile['country'], phone)
             )
         else:
             conn.execute(
-                "INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, status) VALUES (?, ?, ?, ?, ?, ?)",
-                (user_id, phone, session_string, str(api_id), api_hash, "active")
+                """INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, 
+                   first_name, last_name, username, profile_photo, country, status) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, phone, session_string, str(api_id), api_hash,
+                 profile['first_name'], profile['last_name'], profile['username'], 
+                 profile['profile_photo'], profile['country'], "active")
             )
         if hasattr(conn, "commit"): conn.commit()
         if hasattr(conn, "close"): conn.close()
@@ -388,15 +443,36 @@ async def verify_code(req: VerifyCodeRequest, user_id: str = Depends(get_current
             code=req.code,
             phone_code_hash=req.phone_code_hash
         )
-        session_string = client.session.save()
+        # Success! Fetch profile
+        profile_data = await fetch_tg_profile_data(client, req.phone_number)
+        profile: Dict[str, Any] = cast(Dict[str, Any], profile_data)
+        session_string = str(client.session.save()) # type: ignore
         
         # Save to DB with API credentials
         conn = get_db_connection()
         print(f"DB: Saving account {req.phone_number} for user {user_id}")
-        conn.execute(
-            "INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, status) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, req.phone_number, session_string, str(api_id), api_hash, "active")
-        )
+        
+        # Check if already exists
+        existing = conn.execute("SELECT 1 FROM accounts WHERE phone_number = ?", (req.phone_number,)).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE accounts SET user_id = ?, session_string = ?, api_id = ?, api_hash = ?, 
+                   first_name = ?, last_name = ?, username = ?, profile_photo = ?, country = ?, status = 'active' 
+                   WHERE phone_number = ?""",
+                (user_id, session_string, str(api_id), api_hash, 
+                 profile['first_name'], profile['last_name'], profile['username'], 
+                 profile['profile_photo'], profile['country'], req.phone_number)
+            )
+        else:
+            conn.execute(
+                """INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, 
+                   first_name, last_name, username, profile_photo, country, status) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, req.phone_number, session_string, str(api_id), api_hash,
+                 profile['first_name'], profile['last_name'], profile['username'], 
+                 profile['profile_photo'], profile['country'], "active")
+            )
+            
         if hasattr(conn, "commit"): conn.commit()
         if hasattr(conn, "close"): conn.close()
         print(f"DB: Account {req.phone_number} saved successfully.")
@@ -516,8 +592,11 @@ async def qr_status(token: str):
 @app.get("/api/telegram/accounts")
 async def get_accounts(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    # explicitly fetch api_id and api_hash to avoid 'empty' looking accounts in frontend
-    rows = conn.execute("SELECT phone_number, status, api_id, api_hash FROM accounts WHERE user_id = ?", (user_id,)).fetchall()
+    rows = conn.execute("""
+        SELECT phone_number, status, api_id, api_hash, 
+               first_name, last_name, username, profile_photo, country, created_at 
+        FROM accounts WHERE user_id = ?
+    """, (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     
     accounts = []
@@ -526,9 +605,14 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
             "phone_number": row[0],
             "status": row[1],
             "api_id": row[2],
-            "api_hash": row[3]
+            "api_hash": row[3],
+            "first_name": row[4],
+            "last_name": row[5],
+            "username": row[6],
+            "profile_photo": row[7],
+            "country": row[8],
+            "created_at": row[9]
         })
-    print(f"AUTH_ISOLATION: User {user_id} fetched {len(accounts)} accounts.")
     return {"accounts": accounts}
 @app.delete("/api/telegram/accounts/{phone_number}")
 async def delete_account(phone_number: str, user_id: str = Depends(get_current_user_id)):
@@ -1668,16 +1752,24 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
             (user_id,)
         ).fetchall()
         
-        # Construct engagement flow
-        base_flows = [30, 60, 40, 80, 50, 70, 90, 45, 85, 100] # Default
-        if total_leads > 0:
-            import random
-            base_flows = [random.randint(40, 100) for _ in range(10)]
+        # Construct engagement flow (Real trends)
+        # We fetch message counts for the last 7 days from tasks
+        trends = []
+        for i in range(6, -1, -1):
+            day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            count = conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed' AND scheduled_time LIKE ?",
+                (user_id, f"{day}%")
+            ).fetchone()[0]
+            # Since task counts might be zero, we normalize it to a 0-100 scale for the chart, 
+            # or just show raw counts if they are high enough. 
+            # Send raw counts, frontend will scale the chart
+            trends.append(count)
             
         service_health = {
-             "database": "Stable",
-             "poller": "Active" if pending_tasks >= 0 else "Offline",
-             "api": "Idle" if pending_tasks == 0 else "Transmitting..."
+             "database": "Online",
+             "poller": "Active" if pending_tasks >= 0 else "Degraded",
+             "api": "Operational" if total_accounts > 0 else "Idle"
         }
 
         return {
@@ -1695,7 +1787,7 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
                     "time": t[3]
                 } for t in tasks_rows
             ],
-            "engagement_flow": base_flows,
+            "engagement_flow": trends,
             "service_health": service_health
         }
     except Exception as e:

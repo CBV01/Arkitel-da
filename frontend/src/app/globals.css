@@ -10,12 +10,12 @@
 }
 
 :root[class~="dark"] {
-  --background: #0a0a0c;
+  --background: #09090b;
   --foreground: #f8fafc;
-  --card: #0b0c10;
+  --card: #1c1c21;
   --card-foreground: #f8fafc;
-  --border: rgba(255, 255, 255, 0.05);
-  --input: #1c2231;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: #27272a;
 }
 
 @theme inline {

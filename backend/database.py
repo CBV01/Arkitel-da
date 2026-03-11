@@ -11,7 +11,7 @@ import json
 import urllib.request
 import urllib.parse
 import urllib.error
-from typing import Any, List, Optional, Dict
+from typing import Any, List, Optional, Dict, Union, cast
 from dotenv import load_dotenv  # type: ignore
 load_dotenv()
 
@@ -161,7 +161,7 @@ class TursoConnection:
 # Public helpers
 # ---------------------------------------------------------------------------
 
-def get_db_connection():
+def get_db_connection() -> Any:
     db_url = os.getenv("TURSO_DATABASE_URL", "")
     auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
 
@@ -195,7 +195,13 @@ def init_db():
             session_string TEXT NOT NULL,
             api_id TEXT,
             api_hash TEXT,
-            status TEXT DEFAULT 'active'
+            first_name TEXT,
+            last_name TEXT,
+            username TEXT,
+            profile_photo TEXT,
+            country TEXT,
+            status TEXT DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
         """CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -243,15 +249,25 @@ def init_db():
         )""",
     ]
 
-    conn = get_db_connection()
+    conn = cast(Any, get_db_connection())
     for q in table_queries:
         conn.execute(q)
     
-    # Migration: Ensure accounts table has user_id
-    try:
-        conn.execute("ALTER TABLE accounts ADD COLUMN user_id TEXT")
-    except:
-        pass # Column likely exists
+    # Migration: Ensure accounts table has all needed fields
+    needed_cols = [
+        ("user_id", "TEXT"),
+        ("first_name", "TEXT"),
+        ("last_name", "TEXT"),
+        ("username", "TEXT"),
+        ("profile_photo", "TEXT"),
+        ("country", "TEXT"),
+        ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+    ]
+    for col_name, col_type in needed_cols:
+        try:
+            conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} {col_type}")
+        except:
+            pass # Column likely exists
     
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")
