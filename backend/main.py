@@ -1807,9 +1807,15 @@ async def get_leads(user_id: str = Depends(get_current_user_id)):
 async def clear_leads(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
     
+    # Thoroughly wipe all lead-related data
     conn.execute("DELETE FROM leads")
+    conn.execute("DELETE FROM scraped_groups")
+    conn.execute("DELETE FROM lead_members")
+    conn.execute("DELETE FROM scrape_history")
+    
     if hasattr(conn, "commit"): conn.commit()
-    return {"status": "success", "message": "All leads cleared"}
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success", "message": "All database lead intelligence has been purged."}
 
 @app.post("/api/admin/maintenance/clear-tasks")
 async def clear_tasks(admin_id: str = Depends(get_current_admin)):
@@ -1984,10 +1990,10 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
         else:
             # Core counts for regular user
             total_accounts = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchone()[0]
-            c_scraped = conn.execute("SELECT COUNT(*) FROM scraped_groups WHERE user_id = ?", (user_id,)).fetchone()[0]
-            c_groups = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
-            c_members = conn.execute("SELECT COUNT(*) FROM lead_members WHERE user_id = ?", (user_id,)).fetchone()[0]
-            total_leads = c_scraped + c_groups + c_members
+            
+            # Dashboard leads should strictly match what the user sees in the Leads page
+            total_leads = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
+            
             pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
             messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed'", (user_id,)).fetchone()[0]
             

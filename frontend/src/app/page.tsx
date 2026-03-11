@@ -27,31 +27,39 @@ export default function Dashboard() {
   const maxVal = Math.max(...chartData, 10);
   const chartMax = Math.ceil(maxVal / 10) * 10; // Round to nearest 10
   
-  // Smooth curve calculation (dynamic scaling)
-  const generateSmoothPath = (data: number[]) => {
-    if (!data.length) return "";
-    const width = 1000;
-    const height = 200;
-    const padding = 20;
-    const chartHeight = height - padding * 2;
-    const chartWidth = width - padding * 2;
-    const step = chartWidth / (data.length - 1);
-
-    const getY = (val: number) => height - padding - (val / chartMax) * chartHeight;
-
-    let path = `M ${padding} ${getY(data[0])}`;
-    
-    for (let i = 0; i < data.length - 1; i++) {
-        const x1 = padding + i * step;
-        const y1 = getY(data[i]);
-        const x2 = padding + (i + 1) * step;
-        const y2 = getY(data[i + 1]);
-        
-        const cx = (x1 + x2) / 2;
-        path += ` C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
-    }
-    return path;
-  };
+    // Smooth curve calculation (dynamic scaling)
+    const generateSmoothPath = (data: number[]) => {
+      if (!data || data.length < 2) return "";
+      const width = 1000;
+      const height = 200;
+      const padding = 20;
+      const chartHeight = height - padding * 2;
+      const chartWidth = width - padding * 2;
+      const step = chartWidth / (data.length - 1);
+  
+      const getY = (val: number) => {
+          const v = isNaN(val) ? 0 : val;
+          return height - padding - (v / chartMax) * chartHeight;
+      };
+  
+      // If all data points are zero, return a straight line at the bottom
+      if (data.every(v => v === 0)) {
+          return `M ${padding} ${getY(0)} L ${width - padding} ${getY(0)}`;
+      }
+  
+      let path = `M ${padding} ${getY(data[0])}`;
+      
+      for (let i = 0; i < data.length - 1; i++) {
+          const x1 = padding + i * step;
+          const y1 = getY(data[i]);
+          const x2 = padding + (i + 1) * step;
+          const y2 = getY(data[i + 1]);
+          
+          const cx = (x1 + x2) / 2;
+          path += ` C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+      }
+      return path;
+    };
 
   const smoothPath = generateSmoothPath(chartData);
   const areaPath = smoothPath + ` L 980 180 L 20 180 Z`;
@@ -212,12 +220,14 @@ export default function Dashboard() {
               {/* Data Points / Interaction Nodes */}
               {chartData.map((val: number, i: number) => {
                 const width = 1000;
+                const height = 200;
                 const padding = 20;
+                const chartHeight = height - padding * 2;
                 const chartWidth = width - padding * 2;
                 const step = chartWidth / (chartData.length - 1);
                 
                 const x = padding + i * step;
-                const y = 180 - (val / chartMax) * 160;
+                const y = height - padding - (val / chartMax) * chartHeight;
                 return (
                   <circle 
                     key={i} 
@@ -225,7 +235,7 @@ export default function Dashboard() {
                     cy={y} 
                     r="4" 
                     fill="#ffffff" 
-                    className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer"
+                    className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer relative z-10"
                   />
                 );
               })}
