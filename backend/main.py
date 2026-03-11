@@ -592,11 +592,20 @@ async def qr_status(token: str):
 @app.get("/api/telegram/accounts")
 async def get_accounts(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    rows = conn.execute("""
-        SELECT phone_number, status, api_id, api_hash, 
-               first_name, last_name, username, profile_photo, country, created_at 
-        FROM accounts WHERE user_id = ?
-    """, (user_id,)).fetchall()
+    if user_id == "admin_virtual_id":
+        # Admin sees all accounts in the system
+        rows = conn.execute("""
+            SELECT phone_number, status, api_id, api_hash, 
+                   first_name, last_name, username, profile_photo, country, created_at 
+            FROM accounts
+        """).fetchall()
+    else:
+        # Regular user only sees their own accounts
+        rows = conn.execute("""
+            SELECT phone_number, status, api_id, api_hash, 
+                   first_name, last_name, username, profile_photo, country, created_at 
+            FROM accounts WHERE user_id = ?
+        """, (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     
     accounts = []
@@ -1735,36 +1744,49 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
 async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     try:
-        # Core counts
-        total_accounts = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchone()[0]
-        
-        # Combined Leads count (Groups/Channels + Members)
-        c_scraped = conn.execute("SELECT COUNT(*) FROM scraped_groups WHERE user_id = ?", (user_id,)).fetchone()[0]
-        c_members = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
-        total_leads = c_scraped + c_members
-        
-        pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
-        messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed'", (user_id,)).fetchone()[0]
-        
-        # Get active campaigns for table
-        tasks_rows = conn.execute(
-            "SELECT phone_number, status, message_text, scheduled_time FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC LIMIT 5", 
-            (user_id,)
-        ).fetchall()
-        
-        # Construct engagement flow (Real trends)
-        # We fetch message counts for the last 7 days from tasks
-        trends = []
-        for i in range(6, -1, -1):
-            day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
-            count = conn.execute(
-                "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed' AND scheduled_time LIKE ?",
-                (user_id, f"{day}%")
-            ).fetchone()[0]
-            # Since task counts might be zero, we normalize it to a 0-100 scale for the chart, 
-            # or just show raw counts if they are high enough. 
-            # Send raw counts, frontend will scale the chart
-            trends.append(count)
+        if user_id == "admin_virtual_id":
+            # Global counts for Admin
+            total_accounts = conn.execute("SELECT COUNT(*) FROM accounts WHERE status = 'active'").fetchone()[0]
+            c_scraped = conn.execute("SELECT COUNT(*) FROM scraped_groups").fetchone()[0]
+            c_members = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+            total_leads = c_scraped + c_members
+            pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").fetchone()[0]
+            messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'completed'").fetchone()[0]
+            
+            tasks_rows = conn.execute(
+                "SELECT phone_number, status, message_text, scheduled_time FROM tasks ORDER BY scheduled_time DESC LIMIT 5"
+            ).fetchall()
+            
+            trends = []
+            for i in range(6, -1, -1):
+                day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE status = 'completed' AND scheduled_time LIKE ?",
+                    (f"{day}%",)
+                ).fetchone()[0]
+                trends.append(count)
+        else:
+            # Core counts for regular user
+            total_accounts = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchone()[0]
+            c_scraped = conn.execute("SELECT COUNT(*) FROM scraped_groups WHERE user_id = ?", (user_id,)).fetchone()[0]
+            c_members = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
+            total_leads = c_scraped + c_members
+            pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
+            messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed'", (user_id,)).fetchone()[0]
+            
+            tasks_rows = conn.execute(
+                "SELECT phone_number, status, message_text, scheduled_time FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC LIMIT 5", 
+                (user_id,)
+            ).fetchall()
+            
+            trends = []
+            for i in range(6, -1, -1):
+                day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+                count = conn.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed' AND scheduled_time LIKE ?",
+                    (user_id, f"{day}%")
+                ).fetchone()[0]
+                trends.append(count)
             
         service_health = {
              "database": "Online",
