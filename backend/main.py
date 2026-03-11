@@ -314,7 +314,7 @@ class TelegramPool:
             except: pass
             
             conn = get_db_connection()
-            conn.execute("UPDATE accounts SET status = 'active', last_active = ? WHERE phone_number = ?", (datetime.now(), phone_number))
+            conn.execute("UPDATE accounts SET status = 'active' WHERE phone_number = ?", (phone_number,))
             if hasattr(conn, "commit"): conn.commit()
             if hasattr(conn, "close"): conn.close()
             
