@@ -4,7 +4,7 @@ import binascii
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt  # type: ignore
-from fastapi import Depends, HTTPException, status  # type: ignore
+from fastapi import Depends, HTTPException, status, Request  # type: ignore
 from fastapi.security import OAuth2PasswordBearer  # type: ignore
 
 # Configuration
@@ -12,9 +12,10 @@ SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-key-change-this-in-production
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
 
 def hash_password(password: str) -> str:
+# ... (rest of the file stays same)
     """Hash a password for storing."""
     salt = hashlib.sha256(os.urandom(60)).hexdigest().encode('ascii')
     pwdhash = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), 
@@ -53,14 +54,31 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-async def get_current_user_id(token: str = Depends(oauth2_scheme)):
+from fastapi import Depends, HTTPException, status, Request  # type: ignore
+
+# ... (other imports)
+
+async def get_current_user_id(request: Request, token: Optional[str] = Depends(oauth2_scheme)):
+    """
+    Smarter auth that checks both Bearer header AND ?token= query parameter.
+    Required for SSE/EventSource which doesn't support custom headers.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
+    # Priority: 1. Header (token arg from oauth2_scheme) 2. Query Parameter
+    final_token = token
+    if not final_token:
+        final_token = request.query_params.get("token")
+        
+    if not final_token:
+        raise credentials_exception
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(str(final_token), SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
             raise credentials_exception
