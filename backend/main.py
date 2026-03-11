@@ -270,19 +270,28 @@ class TelegramPool:
                         except: pass
                 
             # Create a new connection instance
-            # We don't fetch from DB here because it's expensive per check, 
-            # we only fetch when we NEED a new client object.
             conn = get_db_connection()
-            row = conn.execute(
-                "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", 
-                (phone_number, user_id)
-            ).fetchone()
+            # Admins can access ANY account. Regular users only their own.
+            if user_id == "admin_virtual_id":
+                row = conn.execute(
+                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ?", 
+                    (phone_number,)
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ? AND user_id = ?", 
+                    (phone_number, user_id)
+                ).fetchone()
+            
             if hasattr(conn, "close"): conn.close()
             
             if not row:
-                raise HTTPException(status_code=404, detail=f"Account {phone_number} not found.")
+                raise HTTPException(status_code=404, detail=f"Account {phone_number} not found or unauthorized.")
                 
-            session_str, api_id, api_hash = row[0], int(row[1]), row[2]
+            session_str, api_id, api_hash, actual_owner_id = row[0], int(row[1]), row[2], row[3]
+            
+            # Map back to the ACTUAL owner to avoid duplicate client instances in pool
+            key = (actual_owner_id, phone_number)
             
             log_debug(f"POOL: Booting new persistent node for {phone_number}")
             new_client = TelegramClient(StringSession(session_str), int(api_id), api_hash)
@@ -608,20 +617,21 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
     try:
         client = await POOL.get_client(user_id, req.phone_number)
         dialogs_list = []
-        async for dialog in client.iter_dialogs():
+        # Added limit to avoid long timeouts on large accounts (200 is usually enough for campaigns)
+        async for dialog in client.iter_dialogs(limit=200):
             if dialog.is_group or dialog.is_channel:
-                # Use title or name, fallback to ID if both fail
-                display_name = getattr(dialog, 'name', None) or getattr(dialog, 'title', None) or str(dialog.id)
+                name = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or str(dialog.id)
                 dialogs_list.append({
                     "id": str(dialog.id),
-                    "name": display_name,
-                    "title": display_name, 
+                    "name": name,
+                    "title": name,
                     "is_group": dialog.is_group,
                     "is_channel": dialog.is_channel
                 })
         return {"dialogs": dialogs_list}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        log_debug(f"DIALOGS_ERROR for {req.phone_number}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Could not fetch dialogs: {str(e)}")
 
 @app.post("/api/telegram/qr/init")
 async def qr_init(user_id: str = Depends(get_current_user_id)):
@@ -1611,23 +1621,15 @@ class ExtractRequest(BaseModel):
 
 @app.post("/api/telegram/extract")
 async def extract_members(req: ExtractRequest, user_id: str = Depends(get_current_user_id)):
-    conn = get_db_connection()
-    row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (req.phone_number, user_id)).fetchone()
-    if hasattr(conn, "close"): conn.close()
-    if not row: raise HTTPException(status_code=404, detail="Account not found")
-    
-    session_str, api_id, api_hash = row[0], int(row[1]), row[2]
-    client = TelegramClient(StringSession(session_str), api_id, api_hash)
-    await client.connect()
-    
     try:
-        # Resolve entity (can be a username or ID)
+        client = await POOL.get_client(user_id, req.phone_number)
+        
+        # Resolve entity
         target = req.group_id
         if str(target).lstrip('-').isdigit(): target = int(target)
         entity = await client.get_entity(target)
         
-        # Optimized high-speed extraction using get_participants wrapper
-        # limit is set to 1000 for efficiency while staying within common safety limits
+        # Get participants
         users = await client.get_participants(entity, limit=1000)
         
         participants = []
@@ -1652,9 +1654,8 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
 
         return {"status": "success", "count": len(participants)}
     except Exception as e:
+        log_debug(f"EXTRACT_ERROR for {req.phone_number}: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Extraction failed: {str(e)}")
-    finally:
-        await client.disconnect()
 
 @app.get("/api/telegram/leads/members")
 async def get_member_leads(user_id: str = Depends(get_current_user_id)):
