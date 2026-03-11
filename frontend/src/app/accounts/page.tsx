@@ -45,6 +45,12 @@ export default function AccountsPage() {
     const [apiHash, setApiHash] = useState('');
     const [showAdvanced, setShowAdvanced] = useState(false);
     
+    // QR Login State
+    const [loginMode, setLoginMode] = useState<'phone' | 'qr'>('phone');
+    const [qrUrl, setQrUrl] = useState('');
+    const [qrToken, setQrToken] = useState('');
+    const [qrStatus, setQrStatus] = useState<'idle' | 'scanning' | 'success' | 'expired'>('idle');
+    
     const [otp, setOtp] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -160,6 +166,56 @@ export default function AccountsPage() {
         }
     };
 
+    const handleInitQrLogin = async () => {
+        setLoading(true);
+        setError('');
+        setLoginMode('qr');
+        setQrStatus('scanning');
+        try {
+            const res = await apiFetch('/api/telegram/qr/init', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                setQrUrl(data.url);
+                setQrToken(data.token);
+                // Start polling
+                startQrPolling(data.token);
+            } else {
+                setError(data.detail || 'Failed to initialize QR login.');
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const startQrPolling = async (token: string) => {
+        const poll = async () => {
+            if (!isConnecting || loginMode !== 'qr') return;
+            try {
+                const res = await apiFetch(`/api/telegram/qr/status/${token}`);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    setQrStatus('success');
+                    setStep('success');
+                    fetchAccounts();
+                    setTimeout(() => {
+                        setIsConnecting(false);
+                        setStep('phone');
+                        setLoginMode('phone');
+                    }, 2000);
+                } else if (data.status === 'pending') {
+                    setTimeout(poll, 2000);
+                } else {
+                    setQrStatus('expired');
+                }
+            } catch (e) {
+                console.error("QR Poll error", e);
+            }
+        };
+        poll();
+    };
+
     const handleDeleteAccount = async (phone: string) => {
         if (!confirm(`Are you sure you want to delete ${phone}? This will permanently remove the authentication session.`)) return;
         setActionLoading(phone);
@@ -192,6 +248,25 @@ export default function AccountsPage() {
             }
         } catch (err) {
             setError(`Validation failed for ${phone}.`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    const handleSessionDump = async (phone: string) => {
+        setActionLoading(phone + '_dump');
+        try {
+            const res = await apiFetch(`/api/telegram/accounts/${phone}/session`);
+            if (res.ok) {
+                const data = await res.json();
+                await navigator.clipboard.writeText(data.session_string || '');
+                setSuccessMsg(`Session key for ${phone} copied to clipboard.`);
+                setTimeout(() => setSuccessMsg(''), 5000);
+            } else {
+                setError(`Could not export session for ${phone}.`);
+            }
+        } catch (err) {
+            setError(`Export failed for ${phone}.`);
         } finally {
             setActionLoading(null);
         }
@@ -347,10 +422,25 @@ export default function AccountsPage() {
                                             </div>
                                         </div>
 
-                                        <h3 className="text-3xl font-bold text-white mb-3 tracking-tight">Welcome Back</h3>
-                                        <p className="text-white/40 text-sm font-medium mb-12 max-w-[280px] mx-auto leading-relaxed">
-                                            Connect your Telegram to start discovering leads automatically.
+                                        <h3 className="text-3xl font-bold text-white mb-3 tracking-tight">Connect Account</h3>
+                                        <p className="text-white/40 text-sm font-medium mb-8 max-w-[280px] mx-auto leading-relaxed">
+                                            Choose your preferred method to link your Telegram node.
                                         </p>
+
+                                        <div className="flex bg-white/5 p-1 rounded-2xl mb-8">
+                                            <button 
+                                                onClick={() => setLoginMode('phone')}
+                                                className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${loginMode === 'phone' ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                                            >
+                                                Phone Number
+                                            </button>
+                                            <button 
+                                                onClick={handleInitQrLogin}
+                                                className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${loginMode === 'qr' ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                                            >
+                                                QR Code
+                                            </button>
+                                        </div>
 
                                         {error && (
                                             <div className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-3 animate-in shake duration-500">
@@ -359,139 +449,195 @@ export default function AccountsPage() {
                                             </div>
                                         )}
 
-                                        <form onSubmit={handleSendCode} className="space-y-8 text-left">
-                                            <div className="space-y-3">
-                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 flex items-center gap-2 px-1">
-                                                    <Phone size={10} className="text-indigo-500" />
-                                                    Your Telegram Number
-                                                </label>
-                                                
-                                                <div className="flex gap-3">
-                                                    {/* Country Selector */}
-                                                    <div className="relative">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setShowCountrySelector(!showCountrySelector)}
-                                                            className="h-14 px-4 bg-white/[0.03] border border-white/10 rounded-2xl flex items-center gap-3 hover:bg-white/[0.08] transition-all group"
-                                                        >
-                                                            <span className="text-lg">{selectedCountry.flag}</span>
-                                                            <span className="text-white font-bold text-sm">{selectedCountry.code}</span>
-                                                            <span className="text-white/40 font-medium text-sm">{selectedCountry.dial}</span>
-                                                            <ChevronDown size={14} className={`text-white/20 transition-transform duration-300 ${showCountrySelector ? 'rotate-180' : ''}`} />
-                                                        </button>
+                                        {loginMode === 'phone' ? (
+                                            <form onSubmit={handleSendCode} className="space-y-8 text-left">
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 flex items-center gap-2 px-1">
+                                                        <Phone size={10} className="text-indigo-500" />
+                                                        Your Telegram Number
+                                                    </label>
+                                                    
+                                                    <div className="flex gap-3">
+                                                        {/* Country Selector */}
+                                                        <div className="relative">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowCountrySelector(!showCountrySelector)}
+                                                                className="h-14 px-4 bg-white/[0.03] border border-white/10 rounded-2xl flex items-center gap-3 hover:bg-white/[0.08] transition-all group"
+                                                            >
+                                                                <span className="text-lg">{selectedCountry.flag}</span>
+                                                                <span className="text-white font-bold text-sm">{selectedCountry.code}</span>
+                                                                <span className="text-white/40 font-medium text-sm">{selectedCountry.dial}</span>
+                                                                <ChevronDown size={14} className={`text-white/20 transition-transform duration-300 ${showCountrySelector ? 'rotate-180' : ''}`} />
+                                                            </button>
 
-                                                        {showCountrySelector && (
-                                                            <>
-                                                                <div 
-                                                                    className="fixed inset-0 z-30" 
-                                                                    onClick={() => setShowCountrySelector(false)} 
-                                                                />
-                                                                <div className="absolute top-full left-0 mt-2 w-72 bg-[#16171d] border border-white/10 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                                                    <div className="p-3 border-b border-white/5">
-                                                                        <div className="relative">
-                                                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" size={14} />
-                                                                            <input 
-                                                                                type="text"
-                                                                                placeholder="Search countries..."
-                                                                                className="w-full bg-white/5 border-none rounded-xl py-2 pl-9 pr-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                                                                                value={countrySearch}
-                                                                                onChange={(e) => setCountrySearch(e.target.value)}
-                                                                                autoFocus
-                                                                            />
+                                                            {showCountrySelector && (
+                                                                <>
+                                                                    <div 
+                                                                        className="fixed inset-0 z-30" 
+                                                                        onClick={() => setShowCountrySelector(false)} 
+                                                                    />
+                                                                    <div className="absolute top-full left-0 mt-2 w-72 bg-[#16171d] border border-white/10 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                                        <div className="p-3 border-b border-white/5">
+                                                                            <div className="relative">
+                                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" size={14} />
+                                                                                <input 
+                                                                                    type="text"
+                                                                                    placeholder="Search countries..."
+                                                                                    className="w-full bg-white/5 border-none rounded-xl py-2 pl-9 pr-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                                                                    value={countrySearch}
+                                                                                    onChange={(e) => setCountrySearch(e.target.value)}
+                                                                                    autoFocus
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                                                            {filteredCountries.map((c) => (
+                                                                                <button
+                                                                                    key={c.code}
+                                                                                    type="button"
+                                                                                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                                                                                    onClick={() => {
+                                                                                        setSelectedCountry(c);
+                                                                                        setShowCountrySelector(false);
+                                                                                        setCountrySearch('');
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-center gap-3">
+                                                                                        <span className="text-lg">{c.flag}</span>
+                                                                                        <span className="text-sm font-medium text-white/80">{c.name}</span>
+                                                                                    </div>
+                                                                                    <span className="text-xs font-bold text-white/30">{c.dial}</span>
+                                                                                </button>
+                                                                            ))}
                                                                         </div>
                                                                     </div>
-                                                                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                                                                        {filteredCountries.map((c) => (
-                                                                            <button
-                                                                                key={c.code}
-                                                                                type="button"
-                                                                                className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
-                                                                                onClick={() => {
-                                                                                    setSelectedCountry(c);
-                                                                                    setShowCountrySelector(false);
-                                                                                    setCountrySearch('');
-                                                                                }}
-                                                                            >
-                                                                                <div className="flex items-center gap-3">
-                                                                                    <span className="text-lg">{c.flag}</span>
-                                                                                    <span className="text-sm font-medium text-white/80">{c.name}</span>
-                                                                                </div>
-                                                                                <span className="text-xs font-bold text-white/30">{c.dial}</span>
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            </>
-                                                        )}
-                                                    </div>
+                                                                </>
+                                                            )}
+                                                        </div>
 
-                                                    {/* Phone Input */}
-                                                    <div className="flex-1 relative">
-                                                        <input
-                                                            type="text"
-                                                            value={phoneNumber}
-                                                            onChange={(e) => setPhoneNumber(e.target.value)}
-                                                            placeholder="234 567 8900"
-                                                            className="w-full h-14 bg-white/[0.03] border border-white/10 rounded-2xl px-6 text-base font-medium text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white/[0.06] transition-all"
-                                                            required
+                                                        {/* Phone Input */}
+                                                        <div className="flex-1 relative">
+                                                            <input
+                                                                type="text"
+                                                                value={phoneNumber}
+                                                                onChange={(e) => setPhoneNumber(e.target.value)}
+                                                                placeholder="234 567 8900"
+                                                                className="w-full h-14 bg-white/[0.03] border border-white/10 rounded-2xl px-6 text-base font-medium text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white/[0.06] transition-all"
+                                                                required
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Advanced Settings Link */}
+                                                <div className="relative">
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setShowAdvanced(!showAdvanced)}
+                                                        className="text-[10px] font-black uppercase tracking-widest text-indigo-500/40 hover:text-indigo-500 transition-colors"
+                                                    >
+                                                        {showAdvanced ? '- Hide Custom API Auth' : '+ Custom API Auth (Advanced)'}
+                                                    </button>
+                                                    
+                                                    {showAdvanced && (
+                                                        <div className="grid grid-cols-2 gap-3 mt-4 animate-in slide-in-from-top-2 duration-300">
+                                                            <div className="space-y-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={apiId}
+                                                                    onChange={(e) => setApiId(e.target.value)}
+                                                                    placeholder="API ID"
+                                                                    className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
+                                                                />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={apiHash}
+                                                                    onChange={(e) => setApiHash(e.target.value)}
+                                                                    placeholder="API Hash"
+                                                                    className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <button
+                                                    type="submit"
+                                                    disabled={loading || !phoneNumber}
+                                                    className="w-full h-16 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-30 disabled:grayscale text-white rounded-[20px] text-base font-bold transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/20 active:scale-[0.98] group"
+                                                >
+                                                    {loading ? (
+                                                        <Loader2 size={24} className="animate-spin" />
+                                                    ) : (
+                                                        <>
+                                                            Send Login Code
+                                                            <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                                                        </>
+                                                    )}
+                                                </button>
+
+                                                <p className="text-center text-[10px] text-white/10 font-bold uppercase tracking-widest">
+                                                    We'll send a secure code to your Telegram app.
+                                                </p>
+                                            </form>
+                                        ) : (
+                                            <div className="space-y-8 animate-in fade-in duration-500">
+                                                <div className="relative mx-auto w-64 h-64 bg-white rounded-3xl p-4 shadow-2xl group">
+                                                    {qrUrl ? (
+                                                        <img 
+                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`} 
+                                                            alt="Telegram Login QR"
+                                                            className={`w-full h-full object-contain transition-opacity duration-1000 ${qrStatus === 'success' ? 'opacity-20' : 'opacity-100'}`}
                                                         />
+                                                    ) : (
+                                                        <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+                                                            <Loader2 size={32} className="animate-spin text-indigo-500" />
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generating QR...</span>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {qrStatus === 'success' && (
+                                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 animate-in zoom-in-95 duration-500">
+                                                            <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                                                                <CheckCircle2 size={32} className="text-white" />
+                                                            </div>
+                                                            <span className="text-sm font-bold text-emerald-600">Authorized!</span>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {qrStatus === 'expired' && (
+                                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm rounded-3xl animate-in fade-in duration-300">
+                                                            <X size={32} className="text-red-500" />
+                                                            <span className="text-sm font-bold text-white">QR Expired</span>
+                                                            <button 
+                                                                onClick={handleInitQrLogin}
+                                                                className="mt-2 text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-white/10 px-4 py-2 rounded-xl"
+                                                            >
+                                                                Regenerate
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                
+                                                <div className="space-y-4">
+                                                    <div className="flex items-center gap-4 text-left bg-white/5 p-4 rounded-2xl">
+                                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">1</div>
+                                                        <p className="text-xs text-white/60 leading-relaxed">Open <b>Telegram</b> on your phone</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-4 text-left bg-white/5 p-4 rounded-2xl">
+                                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">2</div>
+                                                        <p className="text-xs text-white/60 leading-relaxed">Go to <b>Settings</b> &gt; <b>Devices</b> &gt; <b>Link Desktop Device</b></p>
+                                                    </div>
+                                                    <div className="flex items-center gap-4 text-left bg-white/5 p-4 rounded-2xl">
+                                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">3</div>
+                                                        <p className="text-xs text-white/60 leading-relaxed">Point your phone's camera at this screen to scan the QR code</p>
                                                     </div>
                                                 </div>
                                             </div>
-
-                                            {/* Advanced Settings Link */}
-                                            <div className="relative">
-                                                <button 
-                                                    type="button"
-                                                    onClick={() => setShowAdvanced(!showAdvanced)}
-                                                    className="text-[10px] font-black uppercase tracking-widest text-indigo-500/40 hover:text-indigo-500 transition-colors"
-                                                >
-                                                    {showAdvanced ? '- Hide Custom API Auth' : '+ Custom API Auth (Advanced)'}
-                                                </button>
-                                                
-                                                {showAdvanced && (
-                                                    <div className="grid grid-cols-2 gap-3 mt-4 animate-in slide-in-from-top-2 duration-300">
-                                                        <div className="space-y-2">
-                                                            <input
-                                                                type="text"
-                                                                value={apiId}
-                                                                onChange={(e) => setApiId(e.target.value)}
-                                                                placeholder="API ID"
-                                                                className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <input
-                                                                type="text"
-                                                                value={apiHash}
-                                                                onChange={(e) => setApiHash(e.target.value)}
-                                                                placeholder="API Hash"
-                                                                className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <button
-                                                type="submit"
-                                                disabled={loading || !phoneNumber}
-                                                className="w-full h-16 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-30 disabled:grayscale text-white rounded-[20px] text-base font-bold transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/20 active:scale-[0.98] group"
-                                            >
-                                                {loading ? (
-                                                    <Loader2 size={24} className="animate-spin" />
-                                                ) : (
-                                                    <>
-                                                        Send Login Code
-                                                        <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                                                    </>
-                                                )}
-                                            </button>
-
-                                            <p className="text-center text-[10px] text-white/10 font-bold uppercase tracking-widest">
-                                                We'll send a secure code to your Telegram app.
-                                            </p>
-                                        </form>
+                                        )}
                                     </div>
                                 )}
 

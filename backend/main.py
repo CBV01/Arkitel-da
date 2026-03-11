@@ -32,7 +32,9 @@ except ImportError:
 from telethon.sync import TelegramClient  # type: ignore
 from telethon.sessions import StringSession  # type: ignore
 from telethon.tl.functions.channels import JoinChannelRequest, GetParticipantsRequest  # type: ignore
-from telethon.tl.types import ChannelParticipantsSearch  # type: ignore
+from telethon.tl.functions.messages import SearchGlobalRequest, CheckChatInviteRequest, ImportChatInviteRequest  # type: ignore
+from telethon.tl.functions.contacts import SearchRequest # type: ignore
+from telethon.tl.types import ChannelParticipantsSearch, InputMessagesFilterEmpty, InputPeerEmpty, InputPeerChannel, InputPeerChat # type: ignore
 
 from config import TELEGRAM_API_ID, TELEGRAM_API_HASH  # type: ignore
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_id  # type: ignore
@@ -94,6 +96,48 @@ async def debug_db():
         "env_file_exists": os.path.exists(".env")
     }
 
+async def resolve_tg_entity(client, target):
+    """Smarter handle resolver for Telegram joining."""
+    try:
+        # 1. Try resolving directly (ID or Username)
+        resolved_id = target
+        if str(target).lstrip('-').isdigit():
+            resolved_id = int(target)
+        entity = await client.get_entity(resolved_id)
+        return entity
+    except Exception:
+        # 2. Try cleaning username
+        if isinstance(target, str) and target.startswith('@'):
+            try:
+                username = target.replace('@', '', 1)
+                entity = await client.get_entity(username)
+                return entity
+            except: pass
+        
+        # 3. Try resolving as invite link
+        if isinstance(target, str) and ("t.me/joinchat/" in target or "t.me/+" in target):
+            hash_val = target.split('/')[-1].replace('+', '')
+            try:
+                # We can't return an entity directly from an invite link easily without joining
+                # But we can return the hash to be used in ImportChatInviteRequest
+                return ("invite", hash_val)
+            except: pass
+    return None
+
+async def smart_join(client, target):
+    """Joins a group/channel using the best available method."""
+    from telethon.tl.functions.channels import JoinChannelRequest # type: ignore
+    from telethon.tl.functions.messages import ImportChatInviteRequest # type: ignore
+    
+    res = await resolve_tg_entity(client, target)
+    if not res:
+        raise Exception(f"Could not resolve entity for {target}")
+        
+    if isinstance(res, tuple) and res[0] == "invite":
+        return await client(ImportChatInviteRequest(res[1]))
+    else:
+        return await client(JoinChannelRequest(res))
+
 from fastapi import Request  # type: ignore
 from fastapi.responses import JSONResponse  # type: ignore
 import traceback
@@ -122,6 +166,7 @@ async def health():
 # Temporary in-memory store for login sessions
 # phone -> { "client": TelegramClient, "phone_code_hash": str, "api_id": str, "api_hash": str }
 auth_sessions: Dict[str, Dict[str, Any]] = {}
+qr_sessions: Dict[str, Dict[str, Any]] = {}
 
 class UserRegister(BaseModel):
     username: str
@@ -365,6 +410,65 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
     finally:
         await client.disconnect()
 
+@app.post("/api/telegram/qr/init")
+async def qr_init(user_id: str = Depends(get_current_user_id)):
+    api_id = int(os.getenv("TELEGRAM_API_ID", "2040"))
+    api_hash = os.getenv("TELEGRAM_API_HASH", "b18441a1ed607c10e14913251fd1c390")
+    
+    client = TelegramClient(StringSession(''), api_id, api_hash)
+    await client.connect()
+    
+    qr = await client.qr_login()
+    token = str(uuid.uuid4())
+    qr_sessions[token] = {
+        "client": client,
+        "qr": qr,
+        "user_id": user_id,
+        "api_id": api_id,
+        "api_hash": api_hash,
+        "created_at": datetime.now()
+    }
+    
+    return {"token": token, "url": qr.url}
+
+@app.get("/api/telegram/qr/status/{token}")
+async def qr_status(token: str):
+    sess = qr_sessions.get(token)
+    if not sess:
+        return {"status": "expired"}
+        
+    qr = sess["qr"]
+    client = sess["client"]
+    user_id = sess["user_id"]
+    api_id = sess["api_id"]
+    api_hash = sess["api_hash"]
+    
+    try:
+        try:
+            # We use a tiny timeout to check if the background wait() coroutine has finished
+            user = await asyncio.wait_for(qr.wait(), timeout=0.1)
+            # If we reach here, login is success!
+            session_string = client.session.save()
+            me = await client.get_me()
+            phone = getattr(me, 'phone', 'Unknown')
+            
+            # Save to DB
+            conn = get_db_connection()
+            conn.execute(
+                "INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, status) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, phone, session_string, str(api_id), api_hash, "active")
+            )
+            if hasattr(conn, "commit"): conn.commit()
+            if hasattr(conn, "close"): conn.close()
+            
+            qr_sessions.pop(token, None)
+            return {"status": "success", "phone": phone}
+        except asyncio.TimeoutError:
+            return {"status": "pending"}
+    except Exception as e:
+        qr_sessions.pop(token, None)
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/telegram/accounts")
 async def get_accounts(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
@@ -477,8 +581,8 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                     links = soup.select("a[href*='t.me/']")
                     
                     found_on_page = 0
-                    for link in links:
-                        href = link.get("href", "")
+                    for link in links: # type: ignore
+                        href = link.get("href", "") # type: ignore
                         m = re.search(r'(?:t\.me|telegram\.me)/([^/?#\s]+)', href)
                         if not m:
                             continue
@@ -543,7 +647,13 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
         "official", "group", "channel", "community", "chat", "hub",
         "network", "team", "zone", "world", "global", "vip", "pro",
         "2", "3", "online", "free", "live", "top", "best", "new",
-        "real", "original", "main", "updates", "news", "info"
+        "real", "original", "main", "updates", "news", "info",
+        "global chat", "portal", "support", "service", "market",
+        "store", "shop", "deals", "premium", "lite", "backup",
+        "archive", "community hub", "discussion", "lounge",
+        "broadcast", "alerts", "notices", "leads", "clients",
+        "customers", "hq", "international", "connect", "links",
+        "services", "help", "prices", "vip access", "admin"
     ]
     for suffix in suffixes:
         search_queries.append(f"{base_query} {suffix}")
@@ -571,8 +681,14 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         if not chat:
                             continue
                         chat_id_str = str(getattr(chat, 'id', '0'))
+                        
+                        # Membership check
+                        is_member = not getattr(chat, 'left', True)
+                        
                         if chat_id_str in unique_groups:
+                            if is_member: unique_groups[chat_id_str]["is_member"] = True  # type: ignore
                             continue
+                            
                         is_private = getattr(chat, 'username', None) is None
                         title = getattr(chat, 'title', 'Unknown')
                         username = getattr(chat, 'username', None)
@@ -592,13 +708,57 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             "country": "Global",
                             "global_shows": 1,
                             "user_shows": 1,
-                            "source": "telegram"
+                            "source": "telegram",
+                            "is_member": is_member
                         }
                         unique_groups[chat_id_str] = item
                         # Fire and forget save
                         if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
+                    
+                    # Phrase-based Global Message Search (Discovery Hack)
+                    # If query has multiple words or is an intent phrase, search globally for messages
+                    if len(q.split()) > 1 or any(x in q.lower() for x in ["need", "who", "build", "looking"]):
+                        from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
+                        from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
+                        try:
+                            msg_results = await client(SearchGlobalRequest(
+                                q=q,
+                                filter=InputMessagesFilterEmpty(),
+                                min_date=None,
+                                max_date=None,
+                                offset_id=0,
+                                offset_peer=InputPeerEmpty(),
+                                limit=20
+                            ))
+                            for msg in msg_results.messages:
+                                try:
+                                    chat = await msg.get_chat()
+                                    if not chat: continue
+                                    cid = str(getattr(chat, 'id', '0'))
+                                    if cid not in unique_groups:
+                                        username = getattr(chat, 'username', None)
+                                        is_member = not getattr(chat, 'left', True)
+                                        item = {
+                                            "id": cid,
+                                            "title": getattr(chat, 'title', 'Unknown'),
+                                            "username": username,
+                                            "participants_count": getattr(chat, 'participants_count', 0),
+                                            "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
+                                            "is_private": username is None,
+                                            "country": "Global",
+                                            "global_shows": 1,
+                                            "user_shows": 1,
+                                            "source": "telegram_msg",
+                                            "is_member": is_member
+                                        }
+                                        unique_groups[cid] = item
+                                        if queue:
+                                            await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
+                                except: continue
+                        except: pass
+
                     await asyncio.sleep(0.4)
                 except Exception as q_err:
                     print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
@@ -964,11 +1124,15 @@ async def bulk_join_stream(
             for idx, g_id in enumerate(ids, start=1):
                 group_label = str(g_id)
                 try:
-                    await asyncio.sleep(random.randint(10, 15))
-                    resolved_id = int(g_id) if str(g_id).lstrip('-').isdigit() else g_id
-                    entity = await client.get_entity(resolved_id)
-                    group_label = getattr(entity, 'title', str(g_id))
-                    await client(JoinChannelRequest(entity))
+                    # Longer safety delay as requested (30-60s)
+                    wait_time = random.randint(30, 60)
+                    yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Safety delay {wait_time}s...'})}\n\n"
+                    await asyncio.sleep(wait_time)
+                    
+                    yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Joining {group_label}...'})}\n\n"
+                    # Use the new smart_join helper
+                    await smart_join(client, g_id)
+                    
                     joined = joined + 1  # type: ignore[operator]
                     yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
                     
@@ -1008,15 +1172,8 @@ async def join_single(req: JoinRequest, user_id: str = Depends(get_current_user_
     client = TelegramClient(StringSession(session_str), api_id, api_hash)
     await client.connect()
     try:
-        # Resolve entity first
-        resolved_id = req.group_id
-        if str(req.group_id).lstrip('-').isdigit():
-            resolved_id = int(req.group_id)
-        entity = await client.get_entity(resolved_id)
-
-        # pyre-ignore[21]
-        from telethon.tl.functions.channels import JoinChannelRequest # pyre-ignore[21]
-        await client(JoinChannelRequest(entity))
+        # Use smart_join for single join too
+        await smart_join(client, req.group_id)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

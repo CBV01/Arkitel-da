@@ -14,6 +14,7 @@ interface ScrapeResult {
     country: string;
     user_shows: number;
     global_shows: number;
+    is_member?: boolean;
 }
 
 export default function ScraperPage() {
@@ -30,6 +31,8 @@ export default function ScraperPage() {
     const [joining, setJoining] = useState(false);
     const [saving, setSaving] = useState(false);
     const [successMsg, setSuccessMsg] = useState('');
+    const [bulkJoinProgress, setBulkJoinProgress] = useState<{current: number, total: number, msg: string, logs: string[]}>({current: 0, total: 0, msg: '', logs: []});
+    const [isBulkJoining, setIsBulkJoining] = useState(false);
 
     // Member Extraction State
     const [isExtracting, setIsExtracting] = useState(false);
@@ -89,6 +92,10 @@ export default function ScraperPage() {
             if (res.ok) {
                 setSuccessMsg(`Successfully joined ${groupId}`);
                 setTimeout(() => setSuccessMsg(''), 5000);
+                // Mark as joined in the results list
+                setResults(prev => prev.map(r =>
+                    (r.id === groupId || r.username === groupId) ? { ...r, is_member: true } : r
+                ));
             } else {
                 setError(data.detail || `Error joining: ${data.detail}`);
             }
@@ -99,33 +106,66 @@ export default function ScraperPage() {
 
     const handleBulkJoin = async () => {
         if (selectedGroups.size === 0) return;
-        setJoining(true);
+        setIsBulkJoining(true);
+        setBulkJoinProgress({ current: 0, total: selectedGroups.size, msg: 'Initializing automation...', logs: [] });
         setError('');
+        
         try {
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
             const phoneNumber = accData.accounts?.[0]?.phone_number;
-
             if (!phoneNumber) throw new Error('No connected account found.');
 
-            const res = await apiFetch('/api/telegram/bulk-join', {
-                method: 'POST',
-                body: JSON.stringify({
-                    group_ids: Array.from(selectedGroups),
-                    phone_number: phoneNumber
-                })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                alert(`Bulk operation complete. Joined ${data.joined} entities with human intervals.`);
-                setSelectedGroups(new Set());
-            } else {
-                setError(data.detail || 'Bulk join failed');
-            }
+            const token = localStorage.getItem('tg_auth_token') || '';
+            const gIds = JSON.stringify(Array.from(selectedGroups));
+            const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+            
+            const eventSource = new EventSource(`${apiBase}/api/telegram/bulk-join/stream?group_ids=${encodeURIComponent(gIds)}&phone_number=${phoneNumber}&token=${token}`);
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'progress') {
+                    setBulkJoinProgress(prev => ({
+                        ...prev,
+                        current: data.idx,
+                        msg: data.msg,
+                        logs: [data.msg, ...prev.logs].slice(0, 10)
+                    }));
+                } else if (data.type === 'joined') {
+                    setBulkJoinProgress(prev => ({
+                        ...prev,
+                        msg: `Successfully joined ${data.name}`,
+                        logs: [`✅ Joined ${data.name}`, ...prev.logs]
+                    }));
+                    // Update result list to show joined status
+                    setResults(prev => prev.map(r => r.id === data.name || r.username === data.name ? {...r, is_member: true} : r));
+                } else if (data.type === 'failed') {
+                    setBulkJoinProgress(prev => ({
+                        ...prev,
+                        logs: [`❌ Failed ${data.name}: ${data.reason}`, ...prev.logs]
+                    }));
+                } else if (data.type === 'done') {
+                    eventSource.close();
+                    setSuccessMsg(`Bulk join complete: ${data.joined} joined, ${data.failed} failed.`);
+                    setIsBulkJoining(false);
+                    setSelectedGroups(new Set());
+                } else if (data.type === 'error' || data.type === 'flood') {
+                    setError(data.msg);
+                    eventSource.close();
+                    setIsBulkJoining(false);
+                }
+            };
+
+            eventSource.onerror = (e) => {
+                console.error("SSE Error:", e);
+                eventSource.close();
+                setIsBulkJoining(false);
+                setError("Connection lost during bulk join.");
+            };
+
         } catch (err: any) {
             setError(err.message);
-        } finally {
-            setJoining(false);
+            setIsBulkJoining(false);
         }
     };
 
@@ -247,6 +287,14 @@ export default function ScraperPage() {
         return r.type === filter;
     });
 
+    const toggleSelectAll = () => {
+        if (selectedGroups.size === filteredResults.filter(r => !r.is_member).length) {
+            setSelectedGroups(new Set());
+        } else {
+            setSelectedGroups(new Set(filteredResults.filter(r => !r.is_member).map(r => r.id)));
+        }
+    };
+
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             {successMsg && (
@@ -275,10 +323,10 @@ export default function ScraperPage() {
                     {selectedGroups.size > 0 && (
                         <button
                             onClick={handleBulkJoin}
-                            disabled={joining}
+                            disabled={isBulkJoining}
                             className="bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2 animate-in slide-in-from-right-4 duration-300 disabled:opacity-50"
                         >
-                            {joining ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                            {isBulkJoining ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
                             Bulk Join ({selectedGroups.size})
                         </button>
                     )}
@@ -303,6 +351,28 @@ export default function ScraperPage() {
                 </div>
             )}
 
+            {isBulkJoining && (
+                <div className="mb-8 p-6 bg-indigo-600/10 border border-indigo-500/20 rounded-[28px] shadow-2xl animate-in slide-in-from-top-4 duration-500 relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all duration-500" style={{ width: `${(bulkJoinProgress.current / bulkJoinProgress.total) * 100}%` }}></div>
+                    <div className="flex items-center gap-4 mb-4">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center text-indigo-500 shrink-0">
+                            <Users size={24} className="animate-pulse" />
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="font-bold text-indigo-400 text-sm uppercase tracking-wider mb-0.5">Automated Bulk Joining</h4>
+                            <p className="text-xs text-foreground/60 font-medium">
+                                Progress: {bulkJoinProgress.current} / {bulkJoinProgress.total} — <span className="text-indigo-400">{bulkJoinProgress.msg}</span>
+                            </p>
+                        </div>
+                    </div>
+                    <div className="space-y-1 max-h-24 overflow-y-auto pr-2">
+                        {bulkJoinProgress.logs.map((log, i) => (
+                            <div key={i} className={`text-[10px] font-mono ${i === 0 ? 'text-indigo-400' : 'text-foreground/30'}`}>{log}</div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {loading && (
                 <div className="mb-8 p-6 bg-amber-500/10 border border-amber-500/20 rounded-[28px] flex items-center gap-4 animate-in slide-in-from-top-4 duration-500 shadow-xl shadow-amber-500/5 relative overflow-hidden group">
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-2000"></div>
@@ -313,7 +383,7 @@ export default function ScraperPage() {
                         <h4 className="font-bold text-amber-500 text-sm uppercase tracking-wider mb-0.5">Scrape Synchronization in Progress</h4>
                         <p className="text-xs text-amber-500/60 font-medium leading-relaxed">
                             Please do <span className="text-amber-500 underline underline-offset-2">NOT</span> refresh or close this page.
-                            Interrupting the stream will cause loss of currently discovered leads that haven't been finalized in the database.
+                            Interrupting the stream will cause loss of currently discovered leads.
                         </p>
                     </div>
                 </div>
@@ -431,7 +501,19 @@ export default function ScraperPage() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-black/5 dark:border-white/5 text-foreground/50 text-[11px] uppercase tracking-wider bg-black/[0.02] dark:bg-white/[0.02]">
-                                    <th className="font-semibold p-4 pl-6 w-10">Select</th>
+                                    <th className="font-semibold p-4 pl-6 w-10">
+                                        <button
+                                            onClick={toggleSelectAll}
+                                            title={selectedGroups.size > 0 ? 'Deselect All' : 'Select All'}
+                                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
+                                                filteredResults.filter(r => !r.is_member).length > 0 && selectedGroups.size === filteredResults.filter(r => !r.is_member).length
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                    : 'border-foreground/20 hover:border-indigo-500'
+                                            }`}
+                                        >
+                                            {filteredResults.filter(r => !r.is_member).length > 0 && selectedGroups.size === filteredResults.filter(r => !r.is_member).length && <CheckCircle2 size={14} />}
+                                        </button>
+                                    </th>
                                     <th className="font-semibold p-4">Group / Channel Name</th>
                                     <th className="font-semibold p-4">Type</th>
                                     <th className="font-semibold p-4 text-center">Appearances</th>
@@ -493,18 +575,26 @@ export default function ScraperPage() {
                                             </td>
                                             <td className="p-4 pr-6">
                                                 <div className="flex items-center justify-end gap-2">
-                                                    <button
-                                                        onClick={() => handleExtractMembers(result.username || result.id.toString())}
-                                                        className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all border border-border"
-                                                    >
-                                                        Extract
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleJoin(result.username || result.id.toString())}
-                                                        className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 transition-all border border-indigo-500/20"
-                                                    >
-                                                        Join
-                                                    </button>
+                                                    {result.is_member ? (
+                                                        <span className="text-[10px] font-black uppercase tracking-widest px-6 py-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-2">
+                                                            <CheckCircle2 size={12} /> Joined
+                                                        </span>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                onClick={() => handleExtractMembers(result.username || result.id.toString())}
+                                                                className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all border border-border"
+                                                            >
+                                                                Extract
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleJoin(result.username || result.id.toString())}
+                                                                className="text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 transition-all border border-indigo-500/20"
+                                                            >
+                                                                Join
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
