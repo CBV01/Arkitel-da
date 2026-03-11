@@ -2,14 +2,17 @@ import os
 import sys
 import sqlite3
 import json
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
+
+# Add current folder to sys.path
+sys.path.append(os.path.join(os.getcwd(), 'backend'))
 
 def check_db(name, url, token=None):
     print(f"\n=== Checking {name} ===")
     print(f"URL: {url}")
     
     if url.startswith("libsql://") or url.startswith("https://"):
-        from backend.database import TursoConnection
+        from database import TursoConnection # type: ignore
         conn = TursoConnection(url, token)
     else:
         conn = sqlite3.connect(url)

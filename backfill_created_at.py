@@ -1,10 +1,10 @@
 import os
 import sys
-from dotenv import load_dotenv
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv("backend/.env")
 sys.path.append(os.path.join(os.getcwd(), 'backend'))
-from backend.database import get_db_connection
+from database import get_db_connection # type: ignore
 
 conn = get_db_connection()
 try:
