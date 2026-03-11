@@ -211,8 +211,12 @@ export default function Dashboard() {
 
               {/* Data Points / Interaction Nodes */}
               {chartData.map((val: number, i: number) => {
-                const step = 960 / (chartData.length - 1);
-                const x = 20 + i * step;
+                const width = 1000;
+                const padding = 20;
+                const chartWidth = width - padding * 2;
+                const step = chartWidth / (chartData.length - 1);
+                
+                const x = padding + i * step;
                 const y = 180 - (val / chartMax) * 160;
                 return (
                   <circle 
