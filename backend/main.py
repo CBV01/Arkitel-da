@@ -168,6 +168,56 @@ async def health():
 auth_sessions: Dict[str, Dict[str, Any]] = {}
 qr_sessions: Dict[str, Dict[str, Any]] = {}
 
+async def qr_login_worker(client: TelegramClient, qr, user_id, api_id, api_hash, token):
+    """Background task to wait for QR scan and save the session."""
+    try:
+        print(f"QR_WORKER[{token}]: Waiting for user scan...")
+        user = await qr.wait()
+        print(f"QR_WORKER[{token}]: Scan SUCCESS. Logged in as ID {user.id}")
+        
+        # Login success!
+        session_string = client.session.save()
+        me = await client.get_me()
+        phone = getattr(me, 'phone', 'Unknown')
+        
+        # If phone is still unknown, we try to use a placeholder or ID
+        if phone == 'Unknown' or not phone:
+            phone = f"ID_{user.id}"
+
+        # Save to DB
+        conn = get_db_connection()
+        # Check if already exists to avoid duplicates
+        existing = conn.execute("SELECT 1 FROM accounts WHERE phone_number = ?", (phone,)).fetchone()
+        if existing:
+             conn.execute(
+                "UPDATE accounts SET user_id = ?, session_string = ?, api_id = ?, api_hash = ?, status = 'active' WHERE phone_number = ?",
+                (user_id, session_string, str(api_id), api_hash, phone)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, status) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, phone, session_string, str(api_id), api_hash, "active")
+            )
+        if hasattr(conn, "commit"): conn.commit()
+        if hasattr(conn, "close"): conn.close()
+        
+        # Update session state
+        if token in qr_sessions:
+            qr_sessions[token]["status"] = "success"
+            qr_sessions[token]["phone"] = phone
+            print(f"QR_WORKER[{token}]: Account {phone} saved to database.")
+            
+    except Exception as e:
+        print(f"QR_WORKER[{token}]: ERROR: {str(e)}")
+        if token in qr_sessions:
+            qr_sessions[token]["status"] = "error"
+            qr_sessions[token]["error"] = str(e)
+    finally:
+        # We don't disconnect immediately because we might need the client for another second
+        # but the status poll will pop it from the dict anyway.
+        pass
+
+
 class UserRegister(BaseModel):
     username: str
     password: str
@@ -426,8 +476,12 @@ async def qr_init(user_id: str = Depends(get_current_user_id)):
             "user_id": user_id,
             "api_id": api_id,
             "api_hash": api_hash,
-            "created_at": datetime.now()
+            "created_at": datetime.now(),
+            "status": "pending"
         }
+        
+        # Trigger background waiter
+        asyncio.create_task(qr_login_worker(client, qr, user_id, api_id, api_hash, token))
         
         return {"token": token, "url": qr.url}
     except Exception as e:
@@ -439,37 +493,25 @@ async def qr_status(token: str):
     if not sess:
         return {"status": "expired"}
         
-    qr = sess["qr"]
-    client = sess["client"]
-    user_id = sess["user_id"]
-    api_id = sess["api_id"]
-    api_hash = sess["api_hash"]
+    status = sess.get("status", "pending")
     
-    try:
-        try:
-            # We use a tiny timeout to check if the background wait() coroutine has finished
-            user = await asyncio.wait_for(qr.wait(), timeout=0.1)
-            # If we reach here, login is success!
-            session_string = client.session.save()
-            me = await client.get_me()
-            phone = getattr(me, 'phone', 'Unknown')
-            
-            # Save to DB
-            conn = get_db_connection()
-            conn.execute(
-                "INSERT INTO accounts (user_id, phone_number, session_string, api_id, api_hash, status) VALUES (?, ?, ?, ?, ?, ?)",
-                (user_id, phone, session_string, str(api_id), api_hash, "active")
-            )
-            if hasattr(conn, "commit"): conn.commit()
-            if hasattr(conn, "close"): conn.close()
-            
-            qr_sessions.pop(token, None)
-            return {"status": "success", "phone": phone}
-        except asyncio.TimeoutError:
-            return {"status": "pending"}
-    except Exception as e:
+    if status == "success":
+        phone = sess.get("phone")
+        # Pop only after success is consumed
         qr_sessions.pop(token, None)
-        return {"status": "error", "message": str(e)}
+        return {"status": "success", "phone": phone}
+    
+    if status == "error":
+        err = sess.get("error", "Unknown error")
+        qr_sessions.pop(token, None)
+        return {"status": "error", "detail": err}
+        
+    # Check for timeout (5 minutes)
+    if datetime.now() - sess["created_at"] > timedelta(minutes=5):
+        qr_sessions.pop(token, None)
+        return {"status": "expired"}
+        
+    return {"status": "pending"}
 
 @app.get("/api/telegram/accounts")
 async def get_accounts(user_id: str = Depends(get_current_user_id)):
