@@ -321,6 +321,7 @@ class TelegramPool:
             return new_client
 
     async def disconnect_all(self):
+
         """Cleans up all clients on server shutdown."""
         log_debug(f"POOL: Terminating {len(self._clients)} active node sessions...")
         for client in self._clients.values():
@@ -622,8 +623,10 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
     try:
         client = await POOL.get_client(user_id, req.phone_number)
         dialogs_list = []
-        # Added limit to avoid long timeouts on large accounts (200 is usually enough for campaigns)
-        async for dialog in client.iter_dialogs(limit=200):
+        # Added limit to avoid long timeouts on large accounts (500 ensures visibility of most recent communities)
+        # Increased limit for large accounts
+        async for dialog in client.iter_dialogs(limit=1000):
+
             if dialog.is_group or dialog.is_channel:
                 name = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or str(dialog.id)
                 dialogs_list.append({
@@ -884,7 +887,10 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
         "archive", "community hub", "discussion", "lounge",
         "broadcast", "alerts", "notices", "leads", "clients",
         "customers", "hq", "international", "connect", "links",
-        "services", "help", "prices", "vip access", "admin"
+        "services", "help", "prices", "vip access", "admin",
+        "global group", "hub chat", "direct", "access", "portal hub",
+        "official group", "official channel", "community chat", "leads group"
+
     ]
     for suffix in suffixes:
         search_queries.append(f"{base_query} {suffix}")
@@ -904,7 +910,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
             for q in search_queries:
                 try:
                     if queue: await queue.put({"type": "progress", "msg": f"TG Search: Testing '{q}'..."}) # type: ignore
-                    search_result = await client(SearchRequest(q=q, limit=100))
+                    search_result = await client(SearchRequest(q=q, limit=500))
+
                     for chat in search_result.chats:
                         if not chat:
                             continue
@@ -941,7 +948,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         }
                         unique_groups[chat_id_str] = item
                         # Auto-saving disabled as per user request (manual save only)
-                        # if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
+                        if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
+
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
@@ -993,10 +1001,10 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                     continue
         except Exception as e:
             print(f"SCRAPER[telegram] account {acc_phone} connection error: {e}")
-        finally:
-            await client.disconnect()
+        # REMOVED disconnect() to keep POOL connections alive for campaigns
     
     return unique_groups
+
 
 
 async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seeds: int = 15, queue: Optional[asyncio.Queue] = None, user_id: str = "") -> List[Dict[str, Any]]:
