@@ -201,6 +201,8 @@ def init_db():
             profile_photo TEXT,
             country TEXT,
             status TEXT DEFAULT 'active',
+            status_detail TEXT,
+            last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
         """CREATE TABLE IF NOT EXISTS tasks (
@@ -247,6 +249,25 @@ def init_db():
             key TEXT PRIMARY KEY,
             value TEXT
         )""",
+        """CREATE TABLE IF NOT EXISTS broadcasts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message TEXT NOT NULL,
+            type TEXT DEFAULT 'info',
+            is_active INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS lead_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            group_id TEXT,
+            tg_id TEXT,
+            username TEXT,
+            first_name TEXT,
+            last_name TEXT,
+            phone TEXT,
+            country TEXT,
+            scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
 
     conn = cast(Any, get_db_connection())
@@ -268,6 +289,13 @@ def init_db():
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} {col_type}")
         except:
             pass # Column likely exists
+
+    # Migration for leads table
+    try:
+        conn.execute("ALTER TABLE leads ADD COLUMN type TEXT DEFAULT 'group'")
+        conn.execute("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraper'")
+    except:
+        pass
     
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")

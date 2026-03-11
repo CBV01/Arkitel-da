@@ -17,6 +17,7 @@ import {
     Search
 } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
+import { Preloader } from '@/components/Preloader';
 
 const COUNTRIES = [
     { name: 'United States', code: 'US', dial: '+1', flag: '🇺🇸' },
@@ -287,13 +288,28 @@ export default function AccountsPage() {
                     <p className="text-base text-foreground/40 font-medium tracking-tight">
                         Power up your autonomous lead generation cluster.
                     </p>
+                    {/* Fleet Stats Summary */}
+                    <div className="flex gap-4 mt-6">
+                        <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+                            <span className="text-[10px] font-black uppercase text-emerald-500/60 block tracking-widest">Active Nodes</span>
+                            <span className="text-lg font-black text-emerald-500">{accounts.filter(a => a.status === 'active').length}</span>
+                        </div>
+                        <div className="px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                            <span className="text-[10px] font-black uppercase text-amber-500/60 block tracking-widest">Resting</span>
+                            <span className="text-lg font-black text-amber-500">{accounts.filter(a => a.status === 'resting').length || 0}</span>
+                        </div>
+                        <div className="px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-xl">
+                            <span className="text-[10px] font-black uppercase text-red-500/60 block tracking-widest">Dead</span>
+                            <span className="text-lg font-black text-red-500">{accounts.filter(a => a.status === 'expired' || a.status === 'banned').length}</span>
+                        </div>
+                    </div>
                 </div>
                 <button
                     onClick={() => {
                         setStep('phone');
                         setIsConnecting(true);
                     }}
-                    className="group bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-8 py-4 rounded-2xl text-sm font-bold active:scale-95 flex items-center gap-3 relative overflow-hidden"
+                    className="group bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-8 py-4 rounded-2xl text-sm font-bold active:scale-95 flex items-center gap-3 relative overflow-hidden shadow-2xl shadow-indigo-500/20"
                 >
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
                     <Plus size={20} /> Connect New Account
@@ -301,15 +317,7 @@ export default function AccountsPage() {
             </header>
 
             {fetchingAccounts ? (
-                <div className="flex flex-col items-center justify-center py-32 gap-6">
-                    <div className="relative">
-                        <Loader2 className="animate-spin text-indigo-500" size={64} />
-                        <div className="absolute inset-0 blur-2xl bg-indigo-500/20 animate-pulse rounded-full" />
-                    </div>
-                    <p className="text-xs font-black text-foreground/30 uppercase tracking-[0.3em] animate-pulse">
-                        Synchronizing Identity Matrix...
-                    </p>
-                </div>
+                <Preloader message="Synchronizing Identity Matrix..." />
             ) : accounts.length === 0 ? (
                 <div className="bg-card/50 backdrop-blur-xl border border-border rounded-[48px] p-24 text-center group transition-all hover:border-indigo-500/20">
                     <div className="w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 text-indigo-500 transition-transform group-hover:scale-110 duration-700">
@@ -332,8 +340,16 @@ export default function AccountsPage() {
                         <div key={acc.phone_number} className="bg-card border border-border p-6 rounded-[32px] group relative hover:shadow-2xl hover:shadow-indigo-500/5 transition-all duration-500 flex flex-col">
                             {/* Status and Action Header */}
                             <div className="flex justify-between items-start mb-6">
-                                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full flex items-center gap-1.5 uppercase transition-all group-hover:bg-emerald-500/20">
-                                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                                <span className={`px-3 py-1 text-[10px] font-bold rounded-full flex items-center gap-1.5 uppercase transition-all ${
+                                    acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500' : 
+                                    (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500/10 text-amber-500' : 
+                                    'bg-red-500/10 text-red-500'
+                                }`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${
+                                        acc.status === 'active' ? 'bg-emerald-500 animate-pulse' : 
+                                        (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500' : 
+                                        'bg-red-500'
+                                    }`} />
                                     {acc.status}
                                 </span>
                                 <div className="flex gap-2">
@@ -404,13 +420,23 @@ export default function AccountsPage() {
                                 <div className="h-px bg-border/20 my-1" />
 
                                 <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
-                                        <CheckCircle2 size={12} className="text-emerald-500" />
-                                        Identity Lock
+                                    <div className="flex flex-col gap-0.5">
+                                        <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
+                                            <CheckCircle2 size={12} className="text-emerald-500" />
+                                            Identity Lock
+                                        </div>
+                                        {acc.status_detail && (
+                                            <p className="text-[8px] text-foreground/40 italic ml-4 leading-tight">{acc.status_detail}</p>
+                                        )}
                                     </div>
-                                    <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
-                                        <Rocket size={12} className="text-indigo-500" />
-                                        Neural Pulse
+                                    <div className="flex flex-col items-end gap-1">
+                                        <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
+                                            <Rocket size={12} className="text-indigo-500" />
+                                            Last Active
+                                        </div>
+                                        <span className="text-[8px] font-bold text-foreground/20">
+                                            {acc.last_active ? new Date(acc.last_active).toLocaleTimeString() : 'N/A'}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

@@ -76,6 +76,10 @@ async def lifespan(app: FastAPI):
         await poller_task
     except asyncio.CancelledError:
         print("CORE: Poller task cancelled.")
+    
+    # Close pool
+    await POOL.disconnect_all()
+    print("CORE: All clients disconnected. Shutdown complete.")
 
 app = FastAPI(title="ArkiTel Automation API", lifespan=lifespan)
 
@@ -214,6 +218,82 @@ async def health():
 # phone -> { "client": TelegramClient, "phone_code_hash": str, "api_id": str, "api_hash": str }
 auth_sessions: Dict[str, Dict[str, Any]] = {}
 qr_sessions: Dict[str, Dict[str, Any]] = {}
+
+class TelegramPool:
+    """Manages a pool of persistent Telegram clients for low-latency operations."""
+    def __init__(self):
+        # Key: (user_id, phone_number)
+        self._clients: Dict[tuple, TelegramClient] = {}
+        self._locks: Dict[tuple, asyncio.Lock] = {}
+
+    async def get_client(self, user_id: str, phone_number: str) -> TelegramClient:
+        key = (user_id, phone_number)
+        if key not in self._locks:
+            self._locks[key] = asyncio.Lock()
+            
+        async with self._locks[key]:
+            # If we already have a client, verify it's still alive
+            if key in self._clients:
+                client = self._clients[key]
+                if client.is_connected():
+                    try:
+                        # Lightweight health check
+                        await client.get_me() 
+                        return client
+                    except Exception:
+                        log_debug(f"POOL: Client for {phone_number} lost connection or died. Reconnecting...")
+                        try: await client.disconnect()
+                        except: pass
+                
+            # Create a new connection instance
+            # We don't fetch from DB here because it's expensive per check, 
+            # we only fetch when we NEED a new client object.
+            conn = get_db_connection()
+            row = conn.execute(
+                "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", 
+                (phone_number, user_id)
+            ).fetchone()
+            if hasattr(conn, "close"): conn.close()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail=f"Account {phone_number} not found.")
+                
+            session_str, api_id, api_hash = row[0], int(row[1]), row[2]
+            
+            log_debug(f"POOL: Booting new persistent node for {phone_number}")
+            new_client = TelegramClient(StringSession(session_str), int(api_id), api_hash)
+            await new_client.connect()
+            
+            if not await new_client.is_user_authorized():
+                await new_client.disconnect()
+                # Update DB status
+                conn = get_db_connection()
+                conn.execute("UPDATE accounts SET status = 'expired', status_detail = 'Auth token invalid' WHERE phone_number = ?", (phone_number,))
+                if hasattr(conn, "commit"): conn.commit()
+                if hasattr(conn, "close"): conn.close()
+                raise HTTPException(status_code=401, detail=f"Session for {phone_number} has expired.")
+                
+            # Mark as active
+            conn = get_db_connection()
+            conn.execute("UPDATE accounts SET status = 'active', status_detail = 'Pooled & Ready', last_active = ? WHERE phone_number = ?", (datetime.now(), phone_number))
+            if hasattr(conn, "commit"): conn.commit()
+            if hasattr(conn, "close"): conn.close()
+            
+            self._clients[key] = new_client
+            return new_client
+
+    async def disconnect_all(self):
+        """Cleans up all clients on server shutdown."""
+        log_debug(f"POOL: Terminating {len(self._clients)} active node sessions...")
+        for client in self._clients.values():
+            try:
+                await client.disconnect()
+            except:
+                pass
+        self._clients.clear()
+
+# Initialize Global Instance
+POOL = TelegramPool()
 
 async def qr_login_worker(client: TelegramClient, qr, user_id, api_id, api_hash, token):
     """Background task to wait for QR scan and save the session."""
@@ -501,23 +581,9 @@ class ScrapeKeywordRequest(BaseModel):
 
 @app.post("/api/telegram/dialogs")
 async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_current_user_id)):
-    # Fetch session from DB using phone_number
-    conn = get_db_connection()
-    row = conn.execute(
-        "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", 
-        (req.phone_number, user_id)
-    ).fetchone()
-    if hasattr(conn, "close"): conn.close()
-    
-    if not row:
-        raise HTTPException(status_code=404, detail="Account not found")
-        
-    session_str, api_id, api_hash = row[0], int(row[1]), row[2]
-    client = TelegramClient(StringSession(session_str), api_id, api_hash)
-    await client.connect()
-    
-    dialogs_list = []
     try:
+        client = await POOL.get_client(user_id, req.phone_number)
+        dialogs_list = []
         async for dialog in client.iter_dialogs():
             if dialog.is_group or dialog.is_channel:
                 # Use title or name, fallback to ID if both fail
@@ -532,8 +598,6 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
         return {"dialogs": dialogs_list}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        await client.disconnect()
 
 @app.post("/api/telegram/qr/init")
 async def qr_init(user_id: str = Depends(get_current_user_id)):
@@ -634,21 +698,12 @@ async def delete_account(phone_number: str, user_id: str = Depends(get_current_u
 
 @app.post("/api/telegram/accounts/{phone_number}/validate")
 async def validate_account_session(phone_number: str, user_id: str = Depends(get_current_user_id)):
-    conn = get_db_connection()
-    row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
-    if hasattr(conn, "close"): conn.close()
-    
-    if not row:
-        raise HTTPException(status_code=404, detail="Account not found")
-        
     try:
-        client = TelegramClient(StringSession(row[0]), int(row[1]), row[2])
-        await client.connect()
+        client = await POOL.get_client(user_id, phone_number)
         is_auth = await client.is_user_authorized()
-        await client.disconnect()
         return {"status": "success", "authorized": is_auth}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": f"Session verification failed: {str(e)}"}
 
 @app.get("/api/telegram/accounts/{phone_number}/session")
 async def dump_session_string(phone_number: str, user_id: str = Depends(get_current_user_id)):
@@ -804,12 +859,9 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
           f"up to {len(search_queries) * len(rows) * 100} raw results")
 
     for row in rows:
-        session_str, api_id, api_hash, acc_phone = row[0], int(row[1]), row[2], row[3]
-        client = TelegramClient(StringSession(session_str), api_id, api_hash)
+        acc_phone = row[3]
         try:
-            await client.connect()
-            if not await client.is_user_authorized():
-                continue
+            client = await POOL.get_client(user_id, acc_phone)
             for q in search_queries:
                 try:
                     if queue: await queue.put({"type": "progress", "msg": f"TG Search: Testing '{q}'..."}) # type: ignore
@@ -849,8 +901,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             "is_member": is_member
                         }
                         unique_groups[chat_id_str] = item
-                        # Fire and forget save
-                        if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
+                        # Auto-saving disabled as per user request (manual save only)
+                        # if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
@@ -994,8 +1046,8 @@ async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seed
                                     "source": "spider"
                                 }
                                 results.append(item2)
-                                # Fire and forget save
-                                if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item2))) # type: ignore
+                                # Auto-saving disabled as per user request (manual save only)
+                                # if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item2))) # type: ignore
                                 if queue:
                                     await queue.put({"type": "result", "layer": 3, "data": item2})  # pyre-ignore
                                 found_in_seed = int(found_in_seed) + 1  # type: ignore
@@ -1140,20 +1192,16 @@ async def scrape_keyword(
             
     final_list = list(unique_groups.values())
 
-    # Record all found to history and leads
+    # Auto-saving to scraped_groups disabled as per user request
+    # Manual save will be triggered via /api/telegram/leads/groups/bulk-save
+    
+    # Record only to history (discovery log)
     conn2 = get_db_connection()
     for item in final_list:
         gid = item.get('id')
         if not gid: continue
         conn2.execute("INSERT OR IGNORE INTO scrape_history (group_id, user_id) VALUES (?, ?)", (gid, user_id))
-        conn2.execute(
-            """INSERT OR REPLACE INTO scraped_groups 
-               (id, user_id, title, username, participants_count, type, is_private, country, user_shows, global_shows, source) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (str(gid), user_id, item.get('title', 'Unknown'), item.get('username'), item.get('participants_count', 0), 
-             item.get('type', 'group'), 1 if item.get('is_private') else 0, item.get('country', 'Global'), 
-             item.get('user_shows', 1), item.get('global_shows', 1), "scraper")
-        )
+    
     if hasattr(conn2, "commit"): conn2.commit()
     if hasattr(conn2, "close"): conn2.close()
 
@@ -1247,47 +1295,49 @@ async def bulk_join_stream(
     total = len(ids)
 
     async def event_generator():
-        from telethon.tl.functions.channels import JoinChannelRequest  # pyre-ignore[21]
-        client = TelegramClient(StringSession(session_str), api_id_val, api_hash_val)
-        await client.connect()
-        
-        joined: int = 0
-        failed: int = 0
-        failed_groups = []
-        
         try:
+            client = await POOL.get_client(user_id, phone_number) # type: ignore
+            
+            joined: int = 0
+            failed: int = 0
+            failed_groups = []
+            
             yield f"data: {_json.dumps({'type': 'start', 'total': total})}\n\n"
             
             for idx, g_id in enumerate(ids, start=1):
                 group_label = str(g_id)
                 try:
-                    # Longer safety delay as requested (30-60s)
-                    wait_time = random.randint(30, 60)
+                    # Optimized Human Speed (15-35s)
+                    wait_time = random.randint(15, 35)
                     yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Safety delay {wait_time}s...'})}\n\n"
                     await asyncio.sleep(wait_time)
                     
                     yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Joining {group_label}...'})}\n\n"
-                    # Use the new smart_join helper
+                    # Use pool-based client
                     await smart_join(client, g_id)
                     
-                    joined = joined + 1  # type: ignore[operator]
+                    joined = joined + 1
                     yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
-                    
                 except Exception as e:
-                    failed = failed + 1  # type: ignore[operator]
-                    err_msg = str(e)
-                    err_len = len(err_msg)
-                    err_short = err_msg[:80] + '...' if err_len > 80 else err_msg  # type: ignore[index]
-                    failed_groups.append({'name': group_label, 'reason': err_short})
-                    yield f"data: {_json.dumps({'type': 'failed', 'name': group_label, 'reason': err_short, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
-                    if "FloodWaitError" in err_msg:
+                    failed = failed + 1
+                    err_r = str(e)
+                    err_s = err_r
+                    # Extremely safe truncation to avoid indexing errors
+                    if len(err_r) > 80:
+                        err_s = ""
+                        for i, char in enumerate(err_r):
+                            if i >= 77: break
+                            err_s += char
+                        err_s += "..."
+                    failed_groups.append({'name': group_label, 'reason': err_s})
+                    yield f"data: {_json.dumps({'type': 'failed', 'name': group_label, 'reason': err_s, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
+                    if "FloodWaitError" in err_r:
                         yield f"data: {_json.dumps({'type': 'flood', 'msg': 'Flood detected. Stopping to protect your account.'})}\n\n"
                         break
             
             yield f"data: {_json.dumps({'type': 'done', 'joined': joined, 'failed': failed, 'failed_groups': failed_groups})}\n\n"
-        
-        finally:
-            await client.disconnect()
+        except Exception as global_e:
+            yield f"data: {_json.dumps({'type': 'error', 'msg': f'Stream error: {str(global_e)}'})}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -1301,21 +1351,121 @@ class JoinRequest(BaseModel):
 
 @app.post("/api/telegram/join")
 async def join_single(req: JoinRequest, user_id: str = Depends(get_current_user_id)):
-    conn = get_db_connection()
-    row = conn.execute("SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", (req.phone_number, user_id)).fetchone()
-    if not row: raise HTTPException(status_code=404, detail="Account not found")
-    
-    session_str, api_id, api_hash = row[0], int(row[1]), row[2]
-    client = TelegramClient(StringSession(session_str), api_id, api_hash)
-    await client.connect()
     try:
-        # Use smart_join for single join too
+        client = await POOL.get_client(user_id, req.phone_number)
         await smart_join(client, req.group_id)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/telegram/extract")
+async def extract_group_members(req: JoinRequest, user_id: str = Depends(get_current_user_id)):
+    """Fetches members from a group and returns them to UI for manual selection."""
+    try:
+        client = await POOL.get_client(user_id, req.phone_number)
+        
+        # Resolve entity
+        try:
+            entity = await client.get_entity(req.group_id)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not resolve group: {str(e)}")
+
+        members = []
+        try:
+            async for user in client.iter_participants(entity, limit=500):
+                if user.bot: continue
+                members.append({
+                    "id": str(user.id),
+                    "username": user.username,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "phone": getattr(user, 'phone', None),
+                    "is_bot": user.bot
+                })
+        except Exception as e:
+            log_debug(f"Extraction restricted or failed for {req.group_id}: {str(e)}")
+            raise HTTPException(status_code=403, detail="Member list restricted by admins or group privacy.")
+
+        return {"status": "success", "count": len(members), "members": members}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class MemberSaveRequest(BaseModel):
+    id: str
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    group_id: Optional[str] = None
+
+@app.post("/api/telegram/leads/members/bulk-save")
+async def bulk_save_members(req_list: List[MemberSaveRequest], user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    try:
+        for m in req_list:
+            conn.execute(
+                """INSERT INTO lead_members (user_id, group_id, tg_id, username, first_name, last_name, phone)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, m.group_id, m.id, m.username, m.first_name, m.last_name, m.phone)
+            )
+        if hasattr(conn, "commit"): conn.commit()
+        return {"status": "success", "count": len(req_list)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
-        await client.disconnect()
+        if hasattr(conn, "close"): conn.close()
+
+@app.get("/api/telegram/leads/members")
+async def get_saved_members(user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM lead_members WHERE user_id = ? ORDER BY scraped_at DESC", (user_id,)).fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {
+        "members": [
+            {
+                "id": r["id"],
+                "group_id": r["group_id"],
+                "username": r["username"],
+                "first_name": r["first_name"],
+                "last_name": r["last_name"],
+                "phone": r["phone"],
+                "scraped_at": r["scraped_at"]
+            } for r in rows
+        ]
+    }
+
+@app.delete("/api/telegram/leads/members/{member_id}")
+async def delete_saved_member(member_id: int, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM lead_members WHERE id = ? AND user_id = ?", (member_id, user_id))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
+@app.get("/api/broadcasts")
+async def get_active_broadcasts():
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM broadcasts WHERE is_active = 1 ORDER BY created_at DESC").fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"broadcasts": [dict(id=r["id"], message=r["message"], type=r["type"], created_at=r["created_at"]) for r in rows]}
+
+@app.post("/api/admin/broadcast")
+async def create_broadcast(message: str, type: str = 'info', admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute("INSERT INTO broadcasts (message, type) VALUES (?, ?)", (message, type))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
+@app.delete("/api/admin/broadcast/{broadcast_id}")
+async def delete_broadcast(broadcast_id: int, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM broadcasts WHERE id = ?", (broadcast_id,))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
 
 class SaveGroupRequest(BaseModel):
     id: str
@@ -1723,6 +1873,12 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
         FROM users u
     ''').fetchall()
     
+    # System Resource Metrics
+    pool_active = len(POOL._clients)
+    
+    # Active broadcasts
+    broadcasts = conn.execute("SELECT * FROM broadcasts ORDER BY created_at DESC").fetchall()
+    
     if hasattr(conn, "close"): conn.close()
     
     return {
@@ -1732,13 +1888,67 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
             "tasks": total_tasks,
             "leads": total_leads
         },
+        "broadcasts": [dict(id=b["id"], message=b["message"], type=b["type"], created_at=b["created_at"]) for b in broadcasts],
         "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), accounts=s[3], tasks=s[4], leads=s[5]) for s in user_stats],
         "service_health": {
              "database": "Healthy",
              "poller": "Active",
-             "api": "Operational"
+             "api": "Operational",
+             "pool_active_nodes": pool_active
         }
     }
+
+@app.delete("/api/admin/users/{user_id}/leads")
+async def admin_clear_user_leads(user_id: str, admin_id: str = Depends(get_current_admin)):
+    """Deletes all leads and scraped history for a specific user."""
+    conn = get_db_connection()
+    try:
+        # Delete from leads table
+        conn.execute("DELETE FROM leads WHERE user_id = ?", (user_id,))
+        # Delete from scraped_groups table
+        conn.execute("DELETE FROM scraped_groups WHERE user_id = ?", (user_id,))
+        # Delete from scrape_history
+        conn.execute("DELETE FROM scrape_history WHERE user_id = ?", (user_id,))
+        
+        if hasattr(conn, "commit"): conn.commit()
+        log_debug(f"ADMIN: All leads cleared for user {user_id}")
+        return {"status": "success", "message": f"All leads for user {user_id} have been purged."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
+@app.post("/api/admin/maintenance/clear-leads")
+async def admin_clear_all_leads(admin_id: str = Depends(get_current_admin)):
+    """Wipes the entire leads and scraped_groups tables for all users."""
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM leads")
+        conn.execute("DELETE FROM scraped_groups")
+        conn.execute("DELETE FROM scrape_history")
+        try: conn.execute("VACUUM")
+        except: pass
+        if hasattr(conn, "commit"): conn.commit()
+        log_debug("ADMIN: GLOBAL PURGE - All Leads Data wiped.")
+        return {"status": "success", "message": "Global leads database has been completely purged."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
+@app.post("/api/admin/maintenance/clear-tasks")
+async def admin_clear_task_history(admin_id: str = Depends(get_current_admin)):
+    """Wipes historical task data (completed/failed/cancelled)."""
+    conn = get_db_connection()
+    try:
+        conn.execute("DELETE FROM tasks WHERE status IN ('completed', 'failed', 'cancelled')")
+        if hasattr(conn, "commit"): conn.commit()
+        log_debug("ADMIN: GLOBAL PURGE - Task History purged.")
+        return {"status": "success", "message": "Historical task data has been removed."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
 
 @app.get("/api/dashboard/stats")
 async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
@@ -1769,8 +1979,9 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
             # Core counts for regular user
             total_accounts = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchone()[0]
             c_scraped = conn.execute("SELECT COUNT(*) FROM scraped_groups WHERE user_id = ?", (user_id,)).fetchone()[0]
-            c_members = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
-            total_leads = c_scraped + c_members
+            c_groups = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
+            c_members = conn.execute("SELECT COUNT(*) FROM lead_members WHERE user_id = ?", (user_id,)).fetchone()[0]
+            total_leads = c_scraped + c_groups + c_members
             pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
             messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed'", (user_id,)).fetchone()[0]
             
@@ -1845,23 +2056,15 @@ async def task_poller():
             conn.execute("UPDATE tasks SET status = 'processing' WHERE id = ?", (task_id,))
             if hasattr(conn, "commit"): conn.commit()
             
-            acc = conn.execute(
-                "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?", 
-                (phone_num, u_id)
-            ).fetchone()
-            if hasattr(conn, "close"): conn.close()
-
-            if not acc:
-                print(f"BKG: No account found for task {task_id} (User: {u_id}, Phone: {phone_num})")
+            try:
+                client = await POOL.get_client(u_id, phone_num)
+            except Exception as e:
+                print(f"BKG: Pool error for task {task_id}: {e}")
                 conn = get_db_connection()
                 conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
                 if hasattr(conn, "commit"): conn.commit()
                 if hasattr(conn, "close"): conn.close()
                 return
-
-            session_str, api_id, api_hash = acc[0], int(acc[1]), acc[2]
-            client = TelegramClient(StringSession(session_str), api_id, api_hash)
-            await client.connect()
             
             # Identity Verification
             me = await client.get_me()
@@ -1927,12 +2130,16 @@ async def task_poller():
                     final_msg = recursive_spin(final_msg_base)
                     
                     # Forensic Snapshot
-                    msg_preview = str(final_msg)
-                    if len(msg_preview) > 50:
-                        msg_preview = msg_preview[0:50] + "..."  # type: ignore
+                    msg_snapshot = str(final_msg)
+                    if len(msg_snapshot) > 50:
+                        msg_p = ""
+                        for i, char in enumerate(msg_snapshot):
+                            if i >= 47: break
+                            msg_p += char
+                        msg_snapshot = msg_p + "..."
                         
                     log_debug(f"BKG_TASK[{task_id}]: Sending to {target_id} via {sender_name}...")
-                    log_debug(f"BKG_TASK[{task_id}]: Content Snapshot: {msg_preview}")
+                    log_debug(f"BKG_TASK[{task_id}]: Content Snapshot: {msg_snapshot}")
                     
                     try:
                         await client.send_message(entity, final_msg)
@@ -1948,8 +2155,7 @@ async def task_poller():
                         log_debug(f"BKG_TASK[{task_id}]: Flood detected. Aborting sequence.")
                         break
             
-            await client.disconnect()
-
+            # Pooled clients are not disconnected manually here
             # Mark completed OR Re-schedule
             conn = get_db_connection()
             if interval > 0:

@@ -14,8 +14,10 @@ import {
     Database,
     Search,
     X,
+    Megaphone,
     Lock as MasterLock
 } from 'lucide-react';
+import { Preloader } from '@/components/Preloader';
 
 export default function AdminDashboard() {
     const [stats, setStats] = useState<any>(null);
@@ -23,46 +25,50 @@ export default function AdminDashboard() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
     const [passkey, setPasskey] = useState('');
+    const [broadcastMsg, setBroadcastMsg] = useState('');
+    const [broadcastType, setBroadcastType] = useState('info');
+    const [sendingBroadcast, setSendingBroadcast] = useState(false);
     const [selectedUser, setSelectedUser] = useState<any>(null);
     const [userDetails, setUserDetails] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
 
-    useEffect(() => {
-        const fetchAdminData = async () => {
-            try {
-                const [statsRes, usersRes] = await Promise.all([
-                    apiFetch('/api/admin/stats'),
-                    apiFetch('/api/admin/users')
-                ]);
+    const fetchAdminData = async () => {
+        try {
+            const [statsRes, usersRes] = await Promise.all([
+                apiFetch('/api/admin/stats'),
+                apiFetch('/api/admin/users')
+            ]);
 
-                if (statsRes.ok && usersRes.ok) {
-                    const statsData = await statsRes.json();
-                    const usersData = await usersRes.json();
-                    setStats(statsData);
-                    setUsers(usersData.users || []);
-                } else {
-                    const statsStatus = statsRes.status;
-                    const usersStatus = usersRes.status;
-                    let statsErr = '';
-                    let usersErr = '';
-                    try { statsErr = await statsRes.text(); } catch (e) { }
-                    try { usersErr = await usersRes.text(); } catch (e) { }
+            if (statsRes.ok && usersRes.ok) {
+                const statsData = await statsRes.json();
+                const usersData = await usersRes.json();
+                setStats(statsData);
+                setUsers(usersData.users || []);
+            } else {
+                const statsStatus = statsRes.status;
+                const usersStatus = usersRes.status;
+                let statsErr = '';
+                let usersErr = '';
+                try { statsErr = await statsRes.text(); } catch (e) { }
+                try { usersErr = await usersRes.text(); } catch (e) { }
 
-                    console.error("Admin API Error Details:", {
-                        stats: { status: statsStatus, body: statsErr },
-                        users: { status: usersStatus, body: usersErr }
-                    });
-                    setErrorMsg(`Admin API Error! Stats: ${statsStatus} | Users: ${usersStatus}`);
-                }
-            } catch (err: any) {
-                console.error("Critical fetch error in admin dashboard:", err);
-                setErrorMsg(`Connection Error: ${err.message || 'Unknown error'}`);
-            } finally {
-                setLoading(false);
+                console.error("Admin API Error Details:", {
+                    stats: { status: statsStatus, body: statsErr },
+                    users: { status: usersStatus, body: usersErr }
+                });
+                setErrorMsg(`Admin API Error! Stats: ${statsStatus} | Users: ${usersStatus}`);
             }
-        };
+        } catch (err: any) {
+            console.error("Critical fetch error in admin dashboard:", err);
+            setErrorMsg(`Connection Error: ${err.message || 'Unknown error'}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchAdminData();
     }, []);
 
@@ -109,11 +115,7 @@ export default function AdminDashboard() {
     };
 
     if (loading) {
-        return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
-            </div>
-        );
+        return <Preloader message="Synchronizing System Control Matrix..." />;
     }
 
     return (
@@ -437,10 +439,84 @@ export default function AdminDashboard() {
                                 <div className="text-sm font-bold text-indigo-500">{stats?.service_health?.poller || 'Active'}</div>
                             </div>
                             <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
-                                <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">API Node</div>
-                                <div className="text-sm font-bold text-blue-500">{stats?.service_health?.api || 'Operational'}</div>
+                                <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Pooled Nodes</div>
+                                <div className="text-sm font-bold text-amber-500">{stats?.service_health?.pool_active_nodes || 0} Open</div>
                             </div>
                         </div>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-500">
+                                <Megaphone size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-bold">System Broadcast</h3>
+                                <p className="text-sm text-foreground/40">Send alert to all user dashboards</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <textarea 
+                                value={broadcastMsg}
+                                onChange={(e) => setBroadcastMsg(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/50 min-h-[100px]"
+                                placeholder="Enter system announcement..."
+                            />
+                            <div className="flex gap-3">
+                                <select 
+                                    value={broadcastType}
+                                    onChange={(e) => setBroadcastType(e.target.value)}
+                                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm focus:outline-none"
+                                >
+                                    <option value="info">Info (Blue)</option>
+                                    <option value="warning">Warning (Amber)</option>
+                                    <option value="success">Success (Green)</option>
+                                </select>
+                                <button
+                                    onClick={async () => {
+                                        if (!broadcastMsg) return;
+                                        setSendingBroadcast(true);
+                                        const res = await apiFetch(`/api/admin/broadcast?message=${encodeURIComponent(broadcastMsg)}&type=${broadcastType}`, { method: 'POST' });
+                                        if (res.ok) {
+                                            alert("Broadcast Sent!");
+                                            setBroadcastMsg('');
+                                            fetchAdminData();
+                                        }
+                                        setSendingBroadcast(false);
+                                    }}
+                                    disabled={sendingBroadcast}
+                                    className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-bold py-2 rounded-xl text-sm transition-all disabled:opacity-50"
+                                >
+                                    {sendingBroadcast ? 'Sending...' : 'Publish Broadcast'}
+                                </button>
+                            </div>
+                        </div>
+
+                        {stats?.broadcasts && stats.broadcasts.length > 0 && (
+                            <div className="mt-8 space-y-3">
+                                <p className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest px-1">Active Broadcasts</p>
+                                {stats.broadcasts.map((b: any) => (
+                                    <div key={b.id} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-sm font-medium">{b.message}</span>
+                                            <span className="text-[10px] text-foreground/30">{new Date(b.created_at).toLocaleString()} • <span className="uppercase text-amber-500/50">{b.type}</span></span>
+                                        </div>
+                                        <button 
+                                            onClick={async () => {
+                                                if (confirm("Delete this broadcast?")) {
+                                                    await apiFetch(`/api/admin/broadcast/${b.id}`, { method: 'DELETE' });
+                                                    fetchAdminData();
+                                                }
+                                            }}
+                                            className="p-2 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 rounded-lg transition-all"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -525,6 +601,17 @@ export default function AdminDashboard() {
                         </div>
 
                         <div className="p-6 bg-white/[0.01] border-t border-white/5 flex justify-end gap-3">
+                            <button
+                                onClick={async () => {
+                                    if (confirm(`PURGE ALL LEADS for ${selectedUser.username}? This cannot be undone.`)) {
+                                        const res = await apiFetch(`/api/admin/users/${selectedUser.id}/leads`, { method: 'DELETE' });
+                                        if (res.ok) alert("User leads purged.");
+                                    }
+                                }}
+                                className="px-6 py-2.5 rounded-xl bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 text-sm font-bold transition-all"
+                            >
+                                Purge User Leads
+                            </button>
                             <button
                                 onClick={() => {
                                     toggleUserStatus(selectedUser.id);

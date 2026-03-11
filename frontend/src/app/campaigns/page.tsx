@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
+import { Preloader } from '@/components/Preloader';
 
 export default function CampaignsPage() {
     const [isCreating, setIsCreating] = useState(false);
@@ -249,10 +250,7 @@ export default function CampaignsPage() {
             </header>
 
             {loadingTasks ? (
-                <div className="flex flex-col items-center justify-center py-24 gap-4">
-                    <Loader2 className="animate-spin text-indigo-500" size={40} />
-                    <p className="text-sm font-bold text-foreground/20 uppercase tracking-widest">Reading Archive...</p>
-                </div>
+                <Preloader message="Reading Distribution Archives..." />
             ) : campaigns.length === 0 ? (
                 <div className="bg-card border border-border rounded-[24px] p-20 flex flex-col items-center justify-center text-center relative overflow-hidden">
                     <div className="w-20 h-20 rounded-2xl bg-foreground/[0.03] flex items-center justify-center text-indigo-500 mb-6 border border-border ring-8 ring-foreground/[0.01]">

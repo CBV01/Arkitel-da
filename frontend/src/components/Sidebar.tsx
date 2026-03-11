@@ -19,6 +19,7 @@ import {
     Bookmark
 } from "lucide-react";
 import { getToken, removeToken, apiFetch } from "@/lib/auth";
+import { BroadcastBanner } from "./BroadcastBanner";
 
 export function Sidebar({ children }: { children: React.ReactNode }) {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -234,6 +235,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
         ${isCollapsed ? "md:ml-20" : "md:ml-56"}
       `}>
                 <div className="p-4 md:p-8 max-w-7xl mx-auto">
+                    <BroadcastBanner />
                     {children}
                 </div>
             </main>

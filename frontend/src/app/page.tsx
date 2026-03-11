@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/auth';
 import { Megaphone, Shield, TrendingUp, Activity, Zap } from 'lucide-react';
+import { Preloader } from '@/components/Preloader';
 
 
 export default function Dashboard() {
@@ -85,6 +86,10 @@ export default function Dashboard() {
     };
     return colors[status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20';
   };
+
+  if (loading) {
+    return <Preloader message="Fetching System Metrics..." />;
+  }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">

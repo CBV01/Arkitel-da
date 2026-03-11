@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Bookmark, Loader2, Megaphone, X, Trash2, Search, UserPlus, Users, Check, CheckCircle2, XCircle, AlertTriangle, UsersRound, Shield, ChevronRight } from 'lucide-react';
 import { apiFetch, getToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import { Preloader } from '@/components/Preloader';
 
 interface SavedGroup {
     id: string;
@@ -419,28 +420,39 @@ export default function LeadsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-3">
+                    {/* Master Select All Checkbox */}
+                    <button
+                        onClick={() => toggleSelectAll(isAllVisibleSelected)}
+                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${isAllVisibleSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-foreground/5 border-border text-foreground/60 hover:border-indigo-500/50'}`}
+                    >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${isAllVisibleSelected ? 'bg-white border-white text-indigo-600' : 'border-current'}`}>
+                            {isAllVisibleSelected && <Check size={12} strokeWidth={4} />}
+                        </div>
+                        {isAllVisibleSelected ? 'Deselect All' : 'Select All'}
+                    </button>
+
                     {selectedIds.size > 0 && (
                         <>
                             <button
                                 onClick={handleBulkDelete}
                                 disabled={isDeleting}
-                                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-red-500/5"
                             >
                                 <Trash2 size={16} /> Delete Selected ({selectedIds.size})
                             </button>
                             <button
-                                onClick={handleAddToCampaign}
-                                className="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
-                            >
-                                <Megaphone size={16} /> Add to Campaign
-                            </button>
-                            <button
                                 onClick={handleBulkJoin}
                                 disabled={joining}
-                                className="bg-foreground text-background px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/40 transition-all flex items-center gap-2"
                             >
                                 {joining ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
                                 Bulk Join
+                            </button>
+                            <button
+                                onClick={handleAddToCampaign}
+                                className="bg-foreground text-background px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 hover:opacity-90"
+                            >
+                                <Megaphone size={16} /> Add to Campaign
                             </button>
                         </>
                     )}
@@ -474,10 +486,7 @@ export default function LeadsPage() {
             </div>
 
             {loading ? (
-                <div className="flex-1 flex flex-col items-center justify-center bg-card/30 rounded-[32px] border border-border border-dashed py-20 grayscale opacity-50">
-                    <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
-                    <p className="text-sm font-bold text-foreground/40 animate-pulse uppercase tracking-[0.2em]">Synchronizing database...</p>
-                </div>
+                <Preloader message="Synchronizing Lead Intelligence..." />
             ) : visibleLeads.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center bg-card/30 rounded-[32px] border border-border border-dashed py-20">
                     <div className="w-20 h-20 bg-foreground/[0.03] rounded-full flex items-center justify-center mb-6">

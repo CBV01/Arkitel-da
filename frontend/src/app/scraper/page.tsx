@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { Search, Loader2, Users, UsersRound, Megaphone, CheckCircle2, X, ExternalLink, Plus, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
+import { Preloader } from '@/components/Preloader';
 
 interface ScrapeResult {
     id: string;
@@ -38,16 +39,18 @@ export default function ScraperPage() {
     const [isExtracting, setIsExtracting] = useState(false);
     const [extractingTarget, setExtractingTarget] = useState<string | null>(null);
     const [extractedMembers, setExtractedMembers] = useState<any[]>([]);
+    const [selectedMembers, setSelectedMembers] = useState<Set<string>>(new Set());
     const [memberLoading, setMemberLoading] = useState(false);
+    const [bulkSaving, setBulkSaving] = useState(false);
 
     const handleExtractMembers = async (groupId: string) => {
         setExtractingTarget(groupId);
         setIsExtracting(true);
         setMemberLoading(true);
         setExtractedMembers([]);
+        setSelectedMembers(new Set());
         setError('');
         try {
-            // Get first available account for extraction
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
             const phoneNumber = accData.accounts?.[0]?.phone_number;
@@ -64,16 +67,51 @@ export default function ScraperPage() {
             });
             const data = await res.json();
             if (res.ok) {
-                setSuccessMsg(`Successfully extracted ${data.count} members as Leads!`);
-                setTimeout(() => setSuccessMsg(''), 5000);
-                setIsExtracting(false);
+                setExtractedMembers(data.members || []);
             } else {
                 setError(data.detail || 'Failed to extract members');
+                setIsExtracting(false);
             }
         } catch (err: any) {
             setError(err.message);
+            setIsExtracting(false);
         } finally {
             setMemberLoading(false);
+        }
+    };
+
+    const handleSaveMembers = async () => {
+        if (selectedMembers.size === 0) return;
+        setBulkSaving(true);
+        try {
+            const toSave = extractedMembers
+                .filter(m => selectedMembers.has(m.id))
+                .map(m => ({
+                    id: m.id,
+                    username: m.username,
+                    first_name: m.first_name,
+                    last_name: m.last_name,
+                    phone: m.phone,
+                    group_id: extractingTarget
+                }));
+
+            const res = await apiFetch('/api/telegram/leads/members/bulk-save', {
+                method: 'POST',
+                body: JSON.stringify(toSave)
+            });
+
+            if (res.ok) {
+                setSuccessMsg(`Successfully saved ${selectedMembers.size} members to Leads.`);
+                setTimeout(() => setSuccessMsg(''), 5000);
+                setIsExtracting(false);
+            } else {
+                const d = await res.json();
+                setError(d.detail || 'Failed to save members.');
+            }
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setBulkSaving(false);
         }
     };
 
@@ -445,22 +483,7 @@ export default function ScraperPage() {
 
             {/* Results Area */}
             {loading && results.length === 0 ? (
-                <div className="border border-dashed border-border rounded-3xl p-16 flex flex-col items-center justify-center text-center relative overflow-hidden bg-card shadow-2xl">
-                    <div className="absolute inset-0 bg-indigo-500/[0.02] animate-pulse"></div>
-                    <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6 relative z-10" />
-                    <p className="text-xl text-foreground font-black mb-3 relative z-10 tracking-tight">{scrapeStatus}</p>
-
-                    <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full mb-8 relative z-10">
-                        <AlertCircle size={14} className="text-amber-500" />
-                        <p className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">
-                            DO NOT CLOSE OR REFRESH: DISCOVERY IN PROGRESS
-                        </p>
-                    </div>
-
-                    <button onClick={handleStop} className="px-8 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-bold rounded-2xl text-xs transition-all border border-red-500/20 relative z-10 shadow-lg shadow-red-500/10 active:scale-95 uppercase tracking-widest">
-                        Abort Scan
-                    </button>
-                </div>
+                <Preloader message={scrapeStatus} />
             ) : searched && results.length === 0 && !loading ? (
                 <div className="border border-dashed border-black/10 dark:border-white/10 rounded-2xl p-16 flex flex-col items-center justify-center text-center">
                     <div className="w-16 h-16 bg-black/5 dark:bg-white/5 rounded-full flex items-center justify-center mb-4 text-foreground/40">
@@ -620,15 +643,31 @@ export default function ScraperPage() {
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-background border border-white/10 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="flex justify-between items-center p-6 border-b border-black/5 dark:border-white/5">
-                            <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
-                                <Users size={18} className="text-indigo-500" /> Member Extraction
-                            </h3>
-                            <button
-                                onClick={() => setIsExtracting(false)}
-                                className="text-foreground/50 hover:text-foreground transition-colors p-1"
-                            >
-                                <X size={20} />
-                            </button>
+                            <div>
+                                <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
+                                    <Users size={18} className="text-indigo-500" /> Member Extraction
+                                </h3>
+                                <p className="text-xs text-foreground/40">{extractedMembers.length} members found</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {extractedMembers.length > 0 && (
+                                    <button
+                                        onClick={() => {
+                                            if (selectedMembers.size === extractedMembers.length) setSelectedMembers(new Set());
+                                            else setSelectedMembers(new Set(extractedMembers.map(m => m.id)));
+                                        }}
+                                        className="text-xs font-bold text-indigo-400 hover:text-indigo-300 transition-colors"
+                                    >
+                                        {selectedMembers.size === extractedMembers.length ? 'Deselect All' : 'Select All'}
+                                    </button>
+                                )}
+                                <button
+                                    onClick={() => setIsExtracting(false)}
+                                    className="text-foreground/50 hover:text-foreground transition-colors p-1"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
                         </div>
                         <div className="p-6 max-h-[60vh] overflow-y-auto">
                             {memberLoading ? (
@@ -637,33 +676,61 @@ export default function ScraperPage() {
                                     <p className="text-sm text-foreground/60">Fetching participant list...</p>
                                 </div>
                             ) : extractedMembers.length > 0 ? (
-                                <div className="space-y-3">
-                                    {extractedMembers.map((member, idx) => (
-                                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-foreground/5 border border-border">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-500 flex items-center justify-center text-xs font-bold">
-                                                    {member.first_name?.[0] || 'U'}
+                                <div className="space-y-2">
+                                    {extractedMembers.map((member, idx) => {
+                                        const isSel = selectedMembers.has(member.id);
+                                        return (
+                                            <div 
+                                                key={idx} 
+                                                onClick={() => {
+                                                    const n = new Set(selectedMembers);
+                                                    if (n.has(member.id)) n.delete(member.id);
+                                                    else n.add(member.id);
+                                                    setSelectedMembers(n);
+                                                }}
+                                                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${isSel ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-foreground/5 border-transparent hover:border-white/10'}`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isSel ? 'bg-indigo-500 text-white' : 'bg-indigo-500/20 text-indigo-500'}`}>
+                                                        {isSel ? <CheckCircle2 size={14} /> : (member.first_name?.[0] || 'U')}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-foreground">{member.first_name} {member.last_name || ''}</div>
+                                                        {member.username && <div className="text-xs text-indigo-500">@{member.username}</div>}
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <div className="text-sm font-semibold text-foreground">{member.first_name} {member.last_name || ''}</div>
-                                                    {member.username && <div className="text-xs text-indigo-500">@{member.username}</div>}
+                                                <div className="flex items-center gap-2">
+                                                    {member.phone && <span className="text-[10px] text-foreground/30 font-mono">{member.phone}</span>}
+                                                    {member.is_bot && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold border border-amber-500/10">BOT</span>}
                                                 </div>
                                             </div>
-                                            {member.is_bot && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 font-bold border border-amber-500/10">BOT</span>}
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             ) : (
                                 <p className="text-center py-12 text-foreground/50 text-sm">No members found or access restricted.</p>
                             )}
                         </div>
-                        <div className="p-6 border-t border-black/5 dark:border-white/5 flex justify-end">
-                            <button
-                                onClick={() => setIsExtracting(false)}
-                                className="px-6 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20"
-                            >
-                                Close
-                            </button>
+                        <div className="p-6 border-t border-black/5 dark:border-white/5 flex justify-between items-center bg-black/20">
+                            <p className="text-xs text-foreground/40 font-bold uppercase tracking-wider">
+                                {selectedMembers.size} Selected
+                            </p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setIsExtracting(false)}
+                                    className="px-6 py-2 rounded-xl text-foreground/60 text-sm font-semibold hover:text-foreground transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveMembers}
+                                    disabled={selectedMembers.size === 0 || bulkSaving}
+                                    className="px-6 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {bulkSaving && <Loader2 size={14} className="animate-spin" />}
+                                    Add to Leads
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
