@@ -261,7 +261,7 @@ def init_db():
         ("username", "TEXT"),
         ("profile_photo", "TEXT"),
         ("country", "TEXT"),
-        ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")
+        ("created_at", "DATETIME")
     ]
     for col_name, col_type in needed_cols:
         try:

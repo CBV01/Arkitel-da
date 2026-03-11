@@ -42,7 +42,8 @@ export const apiFetch = async (endpoint: string, options: any = {}) => {
     if (response.status === 401) {
         removeToken();
         if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+            const isAdminPath = window.location.pathname.startsWith('/admin');
+            window.location.href = isAdminPath ? '/admin/login' : '/login';
         }
     }
 
