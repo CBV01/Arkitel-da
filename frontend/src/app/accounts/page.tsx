@@ -1,16 +1,50 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Phone, KeyRound, CheckCircle2, Loader2, X, Plus, AlertCircle, Users } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+    Phone, 
+    KeyRound, 
+    CheckCircle2, 
+    Loader2, 
+    X, 
+    Plus, 
+    AlertCircle, 
+    Users,
+    Rocket,
+    ChevronRight,
+    Globe,
+    ChevronDown,
+    Search
+} from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
+
+const COUNTRIES = [
+    { name: 'United States', code: 'US', dial: '+1', flag: '🇺🇸' },
+    { name: 'United Kingdom', code: 'GB', dial: '+44', flag: '🇬🇧' },
+    { name: 'Nigeria', code: 'NG', dial: '+234', flag: '🇳🇬' },
+    { name: 'India', code: 'IN', dial: '+91', flag: '🇮🇳' },
+    { name: 'Canada', code: 'CA', dial: '+1', flag: '🇨🇦' },
+    { name: 'Germany', code: 'DE', dial: '+49', flag: '🇩🇪' },
+    { name: 'France', code: 'FR', dial: '+33', flag: '🇫🇷' },
+    { name: 'Australia', code: 'AU', dial: '+61', flag: '🇦🇺' },
+    { name: 'Brazil', code: 'BR', dial: '+55', flag: '🇧🇷' },
+    { name: 'South Africa', code: 'ZA', dial: '+27', flag: '🇿🇦' },
+];
 
 export default function AccountsPage() {
     const [isConnecting, setIsConnecting] = useState(false);
     const [step, setStep] = useState<'phone' | 'otp' | 'success'>('phone');
     const [phoneHash, setPhoneHash] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
+    const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
+    const [showCountrySelector, setShowCountrySelector] = useState(false);
+    const [countrySearch, setCountrySearch] = useState('');
+    
+    // API Id and Hash are now optional/hidden by default
     const [apiId, setApiId] = useState('');
     const [apiHash, setApiHash] = useState('');
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    
     const [otp, setOtp] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -39,7 +73,7 @@ export default function AccountsPage() {
         }
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         fetchAccounts();
     }, []);
 
@@ -47,15 +81,21 @@ export default function AccountsPage() {
         e.preventDefault();
         setLoading(true);
         setError('');
+        
+        // Clean phone number (remove spaces, etc)
+        const cleanNumber = phoneNumber.replace(/\s+/g, '');
+        const fullPhoneNumber = selectedCountry.dial + cleanNumber;
+
         try {
+            const body: any = { phone_number: fullPhoneNumber };
+            if (apiId) body.api_id = apiId;
+            if (apiHash) body.api_hash = apiHash;
+
             const res = await apiFetch('/api/telegram/send-code', {
                 method: 'POST',
-                body: JSON.stringify({
-                    phone_number: phoneNumber,
-                    api_id: apiId,
-                    api_hash: apiHash
-                })
+                body: JSON.stringify(body)
             });
+            
             let data;
             const text = await res.text();
             try {
@@ -81,11 +121,14 @@ export default function AccountsPage() {
         e.preventDefault();
         setLoading(true);
         setError('');
+        const cleanNumber = phoneNumber.replace(/\s+/g, '');
+        const fullPhoneNumber = selectedCountry.dial + cleanNumber;
+
         try {
             const res = await apiFetch('/api/telegram/verify-code', {
                 method: 'POST',
                 body: JSON.stringify({
-                    phone_number: phoneNumber,
+                    phone_number: fullPhoneNumber,
                     phone_code_hash: phoneHash,
                     code: otp
                 })
@@ -154,22 +197,13 @@ export default function AccountsPage() {
         }
     };
 
-    const handleSessionDump = async (phone: string) => {
-        try {
-            const res = await apiFetch(`/api/telegram/accounts/${phone}/session`);
-            if (res.ok) {
-                const data = await res.json();
-                navigator.clipboard.writeText(data.session_string);
-                setSuccessMsg(`Session string for ${phone} copied to clipboard.`);
-                setTimeout(() => setSuccessMsg(''), 5000);
-            }
-        } catch (err) {
-            setError(`Failed to dump session for ${phone}.`);
-        }
-    };
+    const filteredCountries = COUNTRIES.filter(c => 
+        c.name.toLowerCase().includes(countrySearch.toLowerCase()) || 
+        c.dial.includes(countrySearch)
+    );
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-screen">
             {successMsg && (
                 <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
                     <CheckCircle2 size={20} />
@@ -177,88 +211,107 @@ export default function AccountsPage() {
                 </div>
             )}
 
-            <header className="flex justify-between items-center mb-10">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
                 <div>
-                    <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground font-sans">Telegram Fleet</h2>
-                    <p className="text-sm text-foreground/40 font-medium tracking-tight">Manage your autonomous identity cluster.</p>
+                    <h2 className="text-3xl md:text-4xl font-extrabold mb-2 tracking-tight text-foreground font-sans bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60">
+                        Telegram Fleet
+                    </h2>
+                    <p className="text-base text-foreground/40 font-medium tracking-tight">
+                        Power up your autonomous lead generation cluster.
+                    </p>
                 </div>
                 <button
                     onClick={() => {
                         setStep('phone');
                         setIsConnecting(true);
                     }}
-                    className="bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-6 py-3 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 active:scale-95 flex items-center gap-2"
+                    className="group bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-8 py-4 rounded-2xl text-sm font-bold shadow-2xl shadow-indigo-500/20 active:scale-95 flex items-center gap-3 relative overflow-hidden"
                 >
-                    <Plus size={18} /> Connect New Account
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
+                    <Plus size={20} /> Connect New Account
                 </button>
             </header>
 
             {fetchingAccounts ? (
-                <div className="flex flex-col items-center justify-center py-24 gap-4">
-                    <Loader2 className="animate-spin text-indigo-500/40" size={40} />
-                    <p className="text-[10px] font-bold text-foreground/20 uppercase tracking-widest">Accessing Fleet Data...</p>
+                <div className="flex flex-col items-center justify-center py-32 gap-6">
+                    <div className="relative">
+                        <Loader2 className="animate-spin text-indigo-500" size={64} />
+                        <div className="absolute inset-0 blur-2xl bg-indigo-500/20 animate-pulse rounded-full" />
+                    </div>
+                    <p className="text-xs font-black text-foreground/30 uppercase tracking-[0.3em] animate-pulse">
+                        Synchronizing Identity Matrix...
+                    </p>
                 </div>
             ) : accounts.length === 0 ? (
-                <div className="bg-card border border-dashed border-border rounded-[32px] p-24 text-center shadow-2xl">
-                    <div className="w-20 h-20 bg-foreground/5 rounded-full flex items-center justify-center mx-auto mb-6 text-foreground/10">
-                        <Users size={40} />
+                <div className="bg-card/50 backdrop-blur-xl border border-border rounded-[48px] p-24 text-center shadow-2xl group transition-all hover:border-indigo-500/20">
+                    <div className="w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 text-indigo-500 transition-transform group-hover:scale-110 duration-700">
+                        <Users size={48} />
                     </div>
-                    <h3 className="text-xl font-bold text-foreground mb-2">No Active Accounts</h3>
-                    <p className="text-sm text-foreground/30 max-w-xs mx-auto mb-8 font-medium italic">Your automation cluster is currently empty. Connect your first account to begin broadcasting.</p>
+                    <h3 className="text-2xl font-bold text-foreground mb-3">No Nodes Online</h3>
+                    <p className="text-base text-foreground/40 max-w-sm mx-auto mb-10 font-medium leading-relaxed">
+                        Your automation cluster is currently dormant. Connect your first account to unlock autonomous broadcasting.
+                    </p>
                     <button
                         onClick={() => setIsConnecting(true)}
-                        className="text-indigo-400 font-bold hover:text-indigo-300 transition-colors uppercase tracking-widest text-xs"
+                        className="bg-foreground/5 hover:bg-foreground/10 text-foreground/60 font-black px-10 py-5 rounded-2xl transition-all uppercase tracking-widest text-xs border border-border"
                     >
-                        + Initialize First Node
+                        + Initialize Neural Link
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
                     {accounts.map((acc, idx) => (
-                        <div key={idx} className="bg-card border border-border rounded-[28px] p-6 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/10"></div>
+                        <div key={idx} className="bg-card/60 backdrop-blur-2xl border border-border rounded-[36px] p-8 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden flex flex-col">
+                            <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-[80px] -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/20"></div>
 
-                            <div className="flex items-center gap-4 mb-6 relative z-10">
-                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-xl font-black shadow-lg shadow-indigo-500/10 transition-transform group-hover:scale-105 duration-500">
+                            <div className="flex items-center gap-6 mb-8 relative z-10">
+                                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black shadow-2xl shadow-indigo-500/30 transition-all group-hover:rotate-6 group-hover:scale-110 duration-500">
                                     {(acc.phone_number?.slice(-2) || 'N').toUpperCase()}
                                 </div>
-                                <div className="flex-1 overflow-hidden">
-                                    <h4 className="font-bold text-foreground text-lg tracking-tight truncate">{acc.phone_number}</h4>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="font-bold text-foreground text-xl tracking-tight truncate mb-1">
+                                        {acc.phone_number}
+                                    </h4>
                                     <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/70">NODE ACTIVE</span>
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-[pulse_2s_infinite]"></div>
+                                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500/80">CORE ONLINE</span>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => handleDeleteAccount(acc.phone_number)}
                                     disabled={actionLoading === acc.phone_number}
-                                    className="p-2.5 rounded-xl bg-foreground/5 text-foreground/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-border disabled:opacity-50">
-                                    {actionLoading === acc.phone_number ? <Loader2 size={16} className="animate-spin" /> : <X size={16} />}
+                                    className="p-3 rounded-2xl bg-foreground/5 text-foreground/20 hover:text-red-400 hover:bg-red-400/10 transition-all border border-border disabled:opacity-50">
+                                    {actionLoading === acc.phone_number ? <Loader2 size={20} className="animate-spin" /> : <X size={20} />}
                                 </button>
                             </div>
 
-                            <div className="space-y-4 relative z-10">
-                                <div className="flex justify-between items-center py-3 border-b border-border">
-                                    <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Identity Lock</span>
-                                    <span className="text-xs font-mono text-foreground/60">API-{acc.api_id?.slice(0, 4) || '••••'}</span>
+                            <div className="space-y-4 relative z-10 mb-8 flex-1">
+                                <div className="flex justify-between items-center py-4 border-b border-border/50">
+                                    <span className="text-[11px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Identity Lock</span>
+                                    <span className="text-xs font-mono font-medium text-foreground/60 bg-foreground/5 px-2 py-1 rounded-md">API-{acc.api_id?.slice(0, 4) || '••••'}</span>
                                 </div>
-                                <div className="flex justify-between items-center py-1">
-                                    <span className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Payload Capacity</span>
-                                    <span className="text-xs font-bold text-foreground/80">Unlimited</span>
+                                <div className="flex justify-between items-center py-2">
+                                    <span className="text-[11px] font-bold text-foreground/30 uppercase tracking-[0.1em]">Traffic Capacity</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-12 h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                            <div className="w-3/4 h-full bg-indigo-500 rounded-full" />
+                                        </div>
+                                        <span className="text-[10px] font-bold text-foreground/80">OPTIMAL</span>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="mt-6 pt-6 border-t border-border flex gap-2 relative z-10">
+                            <div className="grid grid-cols-2 gap-3 relative z-10">
                                 <button
                                     onClick={() => handleSessionDump(acc.phone_number)}
-                                    className="flex-1 bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-border">
-                                    Session Dump
+                                    className="bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground transition-all py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] border border-border">
+                                    Export Key
                                 </button>
                                 <button
                                     onClick={() => handleValidateSession(acc.phone_number)}
                                     disabled={actionLoading === acc.phone_number + '_valid'}
-                                    className="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 transition-all py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-indigo-500/10 disabled:opacity-50">
-                                    {actionLoading === acc.phone_number + '_valid' ? 'Validating...' : 'Auth Valid'}
+                                    className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 transition-all py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] border border-indigo-500/10 disabled:opacity-50">
+                                    {actionLoading === acc.phone_number + '_valid' ? 'Verifying...' : 'Pulse Check'}
                                 </button>
                             </div>
                         </div>
@@ -266,141 +319,289 @@ export default function AccountsPage() {
                 </div>
             )}
 
-            {/* Connection Modal Overlay */}
+            {/* Premium Connection Modal Overay */}
             {isConnecting && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-background border border-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-                        {/* Modal Header */}
-                        <div className="flex justify-between items-center p-6 border-b border-border">
-                            <h3 className="font-semibold text-lg text-foreground">Connect Telegram</h3>
+                <div className="fixed inset-0 bg-[#0a0a0c]/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="relative w-full max-w-lg">
+                        {/* Glow effect behind card */}
+                        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[36px] blur-xl opacity-20 animate-pulse"></div>
+                        
+                        <div className="relative bg-[#0d0e12] border border-white/5 rounded-[32px] w-full shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-500">
+                            {/* Close Button */}
                             <button
                                 onClick={() => { setIsConnecting(false); setStep('phone'); setError(''); }}
-                                className="text-foreground/50 hover:text-foreground transition-colors p-1"
+                                className="absolute top-6 right-6 z-20 text-white/20 hover:text-white transition-colors p-2 bg-white/5 rounded-full"
                             >
                                 <X size={20} />
                             </button>
-                        </div>
 
-                        {/* Modal Body */}
-                        <div className="p-6">
-                            {error && (
-                                <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm flex items-start gap-2">
-                                    <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                                    <span>{error}</span>
-                                </div>
-                            )}
-
-                            {step === 'phone' && (
-                                <form onSubmit={handleSendCode} className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium text-foreground/80">Phone Number</label>
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-foreground/40">
-                                                <Phone size={16} />
+                            {/* Modal Content */}
+                            <div className="px-8 pt-12 pb-10">
+                                {step === 'phone' && (
+                                    <div className="text-center">
+                                        {/* Icon */}
+                                        <div className="mb-8 relative inline-block">
+                                            <div className="absolute inset-0 bg-red-500/20 blur-xl rounded-full scale-150" />
+                                            <div className="relative w-16 h-16 bg-gradient-to-br from-orange-400 to-red-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-red-500/20 transform -rotate-6">
+                                                <Rocket className="text-white fill-white/20" size={32} />
                                             </div>
-                                            <input
-                                                type="tel"
-                                                value={phoneNumber}
-                                                onChange={(e) => setPhoneNumber(e.target.value)}
-                                                placeholder="+1234567890"
-                                                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                                                required
-                                                suppressHydrationWarning={true}
-                                            />
                                         </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-foreground/80">API ID</label>
-                                            <input
-                                                type="text"
-                                                value={apiId}
-                                                onChange={(e) => setApiId(e.target.value)}
-                                                placeholder="123456"
-                                                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl py-2.5 px-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                                                required
-                                                suppressHydrationWarning={true}
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-foreground/80">API Hash</label>
-                                            <input
-                                                type="text"
-                                                value={apiHash}
-                                                onChange={(e) => setApiHash(e.target.value)}
-                                                placeholder="a1b2c3..."
-                                                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl py-2.5 px-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                                                required
-                                                suppressHydrationWarning={true}
-                                            />
-                                        </div>
-                                    </div>
+                                        <h3 className="text-3xl font-bold text-white mb-3 tracking-tight">Welcome Back</h3>
+                                        <p className="text-white/40 text-sm font-medium mb-12 max-w-[280px] mx-auto leading-relaxed">
+                                            Connect your Telegram to start discovering leads automatically.
+                                        </p>
 
-                                    <p className="text-[11px] text-foreground/40 leading-relaxed">
-                                        Get your credentials from <a href="https://my.telegram.org" target="_blank" className="text-indigo-500 hover:underline">my.telegram.org</a>.
-                                    </p>
-                                    <button
-                                        type="submit"
-                                        disabled={loading || !phoneNumber}
-                                        className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Send Code'}
-                                    </button>
-                                </form>
-                            )}
-
-                            {step === 'otp' && (
-                                <form onSubmit={handleVerifyCode} className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium text-foreground/80">Verification Code</label>
-                                        <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-foreground/40">
-                                                <KeyRound size={16} />
+                                        {error && (
+                                            <div className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-3 animate-in shake duration-500">
+                                                <AlertCircle size={16} className="shrink-0" />
+                                                <span>{error}</span>
                                             </div>
-                                            <input
-                                                type="text"
-                                                value={otp}
-                                                onChange={(e) => setOtp(e.target.value)}
-                                                placeholder="12345"
-                                                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                                                required
-                                            />
-                                        </div>
-                                        <p className="text-xs text-foreground/50">Enter the code sent to your Telegram app.</p>
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => setStep('phone')}
-                                            className="w-1/3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-foreground py-2.5 rounded-xl text-sm font-semibold transition-all"
-                                        >
-                                            Back
-                                        </button>
-                                        <button
-                                            type="submit"
-                                            disabled={loading || !otp}
-                                            className="w-2/3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2"
-                                        >
-                                            {loading ? <Loader2 size={16} className="animate-spin" /> : 'Verify Code'}
-                                        </button>
-                                    </div>
-                                </form>
-                            )}
+                                        )}
 
-                            {step === 'success' && (
-                                <div className="text-center py-6 animate-in zoom-in-95 duration-300">
-                                    <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 ring-8 ring-emerald-500/5">
-                                        <CheckCircle2 size={32} />
+                                        <form onSubmit={handleSendCode} className="space-y-8 text-left">
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 flex items-center gap-2 px-1">
+                                                    <Phone size={10} className="text-indigo-500" />
+                                                    Your Telegram Number
+                                                </label>
+                                                
+                                                <div className="flex gap-3">
+                                                    {/* Country Selector */}
+                                                    <div className="relative">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowCountrySelector(!showCountrySelector)}
+                                                            className="h-14 px-4 bg-white/[0.03] border border-white/10 rounded-2xl flex items-center gap-3 hover:bg-white/[0.08] transition-all group"
+                                                        >
+                                                            <span className="text-lg">{selectedCountry.flag}</span>
+                                                            <span className="text-white font-bold text-sm">{selectedCountry.code}</span>
+                                                            <span className="text-white/40 font-medium text-sm">{selectedCountry.dial}</span>
+                                                            <ChevronDown size={14} className={`text-white/20 transition-transform duration-300 ${showCountrySelector ? 'rotate-180' : ''}`} />
+                                                        </button>
+
+                                                        {showCountrySelector && (
+                                                            <>
+                                                                <div 
+                                                                    className="fixed inset-0 z-30" 
+                                                                    onClick={() => setShowCountrySelector(false)} 
+                                                                />
+                                                                <div className="absolute top-full left-0 mt-2 w-72 bg-[#16171d] border border-white/10 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                                    <div className="p-3 border-b border-white/5">
+                                                                        <div className="relative">
+                                                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" size={14} />
+                                                                            <input 
+                                                                                type="text"
+                                                                                placeholder="Search countries..."
+                                                                                className="w-full bg-white/5 border-none rounded-xl py-2 pl-9 pr-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                                                                value={countrySearch}
+                                                                                onChange={(e) => setCountrySearch(e.target.value)}
+                                                                                autoFocus
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                                                        {filteredCountries.map((c) => (
+                                                                            <button
+                                                                                key={c.code}
+                                                                                type="button"
+                                                                                className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                                                                                onClick={() => {
+                                                                                    setSelectedCountry(c);
+                                                                                    setShowCountrySelector(false);
+                                                                                    setCountrySearch('');
+                                                                                }}
+                                                                            >
+                                                                                <div className="flex items-center gap-3">
+                                                                                    <span className="text-lg">{c.flag}</span>
+                                                                                    <span className="text-sm font-medium text-white/80">{c.name}</span>
+                                                                                </div>
+                                                                                <span className="text-xs font-bold text-white/30">{c.dial}</span>
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Phone Input */}
+                                                    <div className="flex-1 relative">
+                                                        <input
+                                                            type="text"
+                                                            value={phoneNumber}
+                                                            onChange={(e) => setPhoneNumber(e.target.value)}
+                                                            placeholder="234 567 8900"
+                                                            className="w-full h-14 bg-white/[0.03] border border-white/10 rounded-2xl px-6 text-base font-medium text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white/[0.06] transition-all"
+                                                            required
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Advanced Settings Link */}
+                                            <div className="relative">
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => setShowAdvanced(!showAdvanced)}
+                                                    className="text-[10px] font-black uppercase tracking-widest text-indigo-500/40 hover:text-indigo-500 transition-colors"
+                                                >
+                                                    {showAdvanced ? '- Hide Custom API Auth' : '+ Custom API Auth (Advanced)'}
+                                                </button>
+                                                
+                                                {showAdvanced && (
+                                                    <div className="grid grid-cols-2 gap-3 mt-4 animate-in slide-in-from-top-2 duration-300">
+                                                        <div className="space-y-2">
+                                                            <input
+                                                                type="text"
+                                                                value={apiId}
+                                                                onChange={(e) => setApiId(e.target.value)}
+                                                                placeholder="API ID"
+                                                                className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <input
+                                                                type="text"
+                                                                value={apiHash}
+                                                                onChange={(e) => setApiHash(e.target.value)}
+                                                                placeholder="API Hash"
+                                                                className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <button
+                                                type="submit"
+                                                disabled={loading || !phoneNumber}
+                                                className="w-full h-16 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-30 disabled:grayscale text-white rounded-[20px] text-base font-bold transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/20 active:scale-[0.98] group"
+                                            >
+                                                {loading ? (
+                                                    <Loader2 size={24} className="animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        Send Login Code
+                                                        <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            <p className="text-center text-[10px] text-white/10 font-bold uppercase tracking-widest">
+                                                We'll send a secure code to your Telegram app.
+                                            </p>
+                                        </form>
                                     </div>
-                                    <h4 className="text-lg font-bold text-foreground mb-2">Account Connected!</h4>
-                                    <p className="text-sm text-foreground/60 mb-6">Your Telegram session has been successfully securely stored.</p>
-                                </div>
-                            )}
+                                )}
+
+                                {step === 'otp' && (
+                                    <div className="text-center">
+                                        {/* Icon */}
+                                        <div className="mb-8 relative inline-block">
+                                            <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full scale-150" />
+                                            <div className="relative w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-indigo-500/20 transform rotate-6">
+                                                <KeyRound className="text-white fill-white/10" size={32} />
+                                            </div>
+                                        </div>
+
+                                        <h3 className="text-3xl font-bold text-white mb-3 tracking-tight">Security Code</h3>
+                                        <p className="text-white/40 text-sm font-medium mb-12 max-w-[280px] mx-auto leading-relaxed">
+                                            Enter the 5-digit verification code sent to your active Telegram session.
+                                        </p>
+
+                                        {error && (
+                                            <div className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-3 animate-in shake duration-500">
+                                                <AlertCircle size={16} className="shrink-0" />
+                                                <span>{error}</span>
+                                            </div>
+                                        )}
+
+                                        <form onSubmit={handleVerifyCode} className="space-y-10">
+                                            <div className="flex justify-center gap-4">
+                                                <input
+                                                    type="text"
+                                                    value={otp}
+                                                    onChange={(e) => setOtp(e.target.value)}
+                                                    placeholder="•••••"
+                                                    maxLength={5}
+                                                    className="w-full h-20 bg-white/[0.03] border border-white/10 rounded-[24px] text-center text-4xl font-black tracking-[0.5em] text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:bg-white/[0.06] transition-all"
+                                                    required
+                                                    autoFocus
+                                                />
+                                            </div>
+
+                                            <div className="flex flex-col gap-4">
+                                                <button
+                                                    type="submit"
+                                                    disabled={loading || otp.length < 5}
+                                                    className="w-full h-16 bg-white text-black hover:bg-white/90 disabled:opacity-30 text-base font-bold transition-all rounded-[20px] flex items-center justify-center gap-3 active:scale-[0.98]"
+                                                >
+                                                    {loading ? <Loader2 size={24} className="animate-spin" /> : 'Complete Link'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setStep('phone')}
+                                                    className="text-white/20 hover:text-white text-[11px] font-black uppercase tracking-widest transition-colors py-2"
+                                                >
+                                                    ← Change Number
+                                                </button>
+                                            </div>
+                                        </form>
+                                    </div>
+                                )}
+
+                                {step === 'success' && (
+                                    <div className="text-center py-8 animate-in zoom-in-95 duration-500">
+                                        <div className="mb-10 relative inline-block">
+                                            <div className="absolute inset-0 bg-emerald-500/30 blur-2xl rounded-full scale-150 animate-pulse" />
+                                            <div className="relative w-24 h-24 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-emerald-500/40">
+                                                <CheckCircle2 className="text-white" size={48} />
+                                            </div>
+                                        </div>
+                                        <h4 className="text-4xl font-black text-white mb-4 tracking-tighter">AUTHENTICATED</h4>
+                                        <p className="text-white/40 text-sm font-medium leading-relaxed max-w-[240px] mx-auto mb-10">
+                                            Node session established on Secure Layer 4. Syncing data now.
+                                        </p>
+                                        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                            <div className="h-full bg-emerald-500 animate-loading-bar" />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
+
+            <style jsx>{`
+                @keyframes shimmer {
+                    100% { transform: translateX(100%); }
+                }
+                @keyframes loading-bar {
+                    0% { width: 0%; }
+                    100% { width: 100%; }
+                }
+                .animate-shimmer {
+                    animation: shimmer 1.5s infinite;
+                }
+                .animate-loading-bar {
+                    animation: loading-bar 2s ease-in-out forwards;
+                }
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 6px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                }
+            `}</style>
         </div>
     );
 }
