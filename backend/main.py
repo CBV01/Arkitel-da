@@ -260,8 +260,9 @@ class TelegramPool:
                     (phone_number,)
                 ).fetchone()
             else:
+                # If a regular user tries to grab an account, check if it's theirs OR if it belongs to admin globally
                 row = conn.execute(
-                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ? AND user_id = ?", 
+                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ? AND (user_id = ? OR user_id = 'admin_virtual_id')", 
                     (phone_number, user_id)
                 ).fetchone()
             
@@ -623,23 +624,30 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
     try:
         client = await POOL.get_client(user_id, req.phone_number)
         dialogs_list = []
-        # Added limit to avoid long timeouts on large accounts (500 ensures visibility of most recent communities)
-        # Increased limit for large accounts
-        async for dialog in client.iter_dialogs(limit=1000):
-
-            if dialog.is_group or dialog.is_channel:
-                name = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or str(dialog.id)
-                dialogs_list.append({
-                    "id": str(dialog.id),
-                    "name": name,
-                    "title": name,
-                    "is_group": dialog.is_group,
-                    "is_channel": dialog.is_channel
-                })
+        
+        # Pull dialogs safely, catching flood or timeout issues at the generator level
+        try:
+            async for dialog in client.iter_dialogs(limit=1000):
+                if dialog.is_group or dialog.is_channel:
+                    name = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or str(dialog.id)
+                    dialogs_list.append({
+                        "id": str(dialog.id),
+                        "name": name,
+                        "title": name,
+                        "is_group": dialog.is_group,
+                        "is_channel": dialog.is_channel
+                    })
+        except Exception as dialog_err:
+            log_debug(f"DIALOGS_GENERATOR_ERROR for {req.phone_number}: {str(dialog_err)}")
+            # We already fetched some dialogs, just stop and return what we have instead of crashing the whole page.
+            pass
+            
         return {"dialogs": dialogs_list}
     except Exception as e:
         log_debug(f"DIALOGS_ERROR for {req.phone_number}: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Could not fetch dialogs: {str(e)}")
+        # Send empty array to avoid breaking the frontend dropdown UI state
+        return {"dialogs": []}
+
 
 @app.post("/api/telegram/qr/init")
 async def qr_init(user_id: str = Depends(get_current_user_id)):
@@ -878,6 +886,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
     # Build maximally broad variation list
     search_queries = [base_query]
     suffixes = [
+        # Generic variations
         "official", "group", "channel", "community", "chat", "hub",
         "network", "team", "zone", "world", "global", "vip", "pro",
         "2", "3", "online", "free", "live", "top", "best", "new",
@@ -889,7 +898,17 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
         "customers", "hq", "international", "connect", "links",
         "services", "help", "prices", "vip access", "admin",
         "global group", "hub chat", "direct", "access", "portal hub",
-        "official group", "official channel", "community chat", "leads group"
+        "official group", "official channel", "community chat", "leads group",
+        
+        # 25+ Hyper-Niche Targeted Words (IPTV, Crypto, Marketing, Tools)
+        "streams", "vvod", "players", "subscriptions", "servers", 
+        "resellers", "panels", "smart tv", "firestick", "movies", 
+        "series", "sports", "signals", "trading", "crypto", "bitcoin",
+        "forex", "investments", "airdrops", "nft", "web3", "calls", 
+        "pumps", "marketing", "seo", "b2b", "leads gen", "traffic",
+        "affiliate", "ecommerce", "dropshipping", "sales", "ads", 
+        "tools", "software", "development", "coders", "bots", "api",
+        "tech", "designs", "promotions", "freelancers", "gigs", "jobs"
 
     ]
     for suffix in suffixes:
