@@ -90,7 +90,7 @@ export default function Dashboard() {
           <p className="text-sm text-foreground/60">Monitor your active automation services and metrics.</p>
         </div>
         <div className="flex gap-3">
-          <Link href="/campaigns" className="bg-indigo-500 hover:bg-indigo-600 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-indigo-500/20 active:scale-95 flex items-center gap-2">
+          <Link href="/campaigns" className="bg-indigo-500 hover:bg-indigo-600 transition-all text-white px-5 py-2.5 rounded-xl text-sm font-semibold active:scale-95 flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             New Campaign
           </Link>
@@ -99,7 +99,7 @@ export default function Dashboard() {
 
       {/* Top Main Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
-        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
+        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all">
           <div className="flex justify-between items-start mb-2">
             <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Transmission Count</div>
             <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-400"><Activity size={16} /></div>
@@ -108,18 +108,18 @@ export default function Dashboard() {
           <div className="flex items-center gap-1.5 text-[10px] text-foreground/30 font-medium italic">Verified broadcast throughput</div>
         </div>
 
-        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
+        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all">
           <div className="flex justify-between items-start mb-2">
             <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Active Nodes</div>
             <div className="p-1.5 bg-indigo-500/10 rounded-lg text-indigo-500"><Zap size={16} /></div>
           </div>
           <div className="text-2xl font-bold text-foreground mb-2">{stats?.counts?.accounts ?? '...'}</div>
           <div className="flex items-center gap-1.5 text-[10px] text-emerald-400/60 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]"></span> {Number(stats?.counts?.accounts) > 0 ? 'Cluster Online' : 'Status: Isolated'}
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> {Number(stats?.counts?.accounts) > 0 ? 'Cluster Online' : 'Status: Isolated'}
           </div>
         </div>
 
-        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
+        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all">
           <div className="flex justify-between items-start mb-2">
             <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Entity Leads</div>
             <div className="p-1.5 bg-purple-500/10 rounded-lg text-purple-400"><Shield size={16} /></div>
@@ -128,7 +128,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-1.5 text-[10px] text-foreground/30 font-medium italic">Targeted leads analyzed</div>
         </div>
 
-        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all shadow-xl">
+        <div className="bg-card border border-border p-5 rounded-[20px] relative overflow-hidden group hover:border-indigo-500/30 transition-all">
           <div className="flex justify-between items-start mb-2">
             <div className="text-foreground/40 text-[11px] font-bold tracking-wider uppercase font-mono">Queue Depth</div>
             <div className="p-1.5 bg-amber-500/10 rounded-lg text-amber-500"><Activity size={16} /></div>
@@ -139,7 +139,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="lg:col-span-2 bg-card border border-border rounded-[32px] p-8 shadow-2xl relative overflow-hidden group flex flex-col min-h-[420px]">
+        <div className="lg:col-span-2 bg-card border border-border rounded-[32px] p-8 relative overflow-hidden group flex flex-col min-h-[420px]">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
                <TrendingUp size={24} />
@@ -148,24 +148,29 @@ export default function Dashboard() {
           </div>
           <p className="text-sm text-foreground/40 mb-10 font-medium">Message outreach over the last 7 days</p>
 
-          <div className="flex-1 relative mt-4">
-            {/* Grid Lines */}
-            <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between pointer-events-none opacity-20 px-10 pt-10 pb-10">
+          <div className="flex-1 mt-4 flex">
+            {/* Y-Axis Labels */}
+            <div className="flex flex-col justify-between py-10 pr-6 text-[10px] font-mono text-foreground/60 font-bold h-full w-20 shrink-0 text-right border-r border-border/30">
               {[1400, 1050, 700, 350, 0].map(val => (
-                <div key={val} className="flex items-center gap-4 w-full">
-                  <span className="text-[10px] font-mono text-foreground/50 w-8">{val}</span>
-                  <div className="flex-1 border-t border-dashed border-foreground/30" />
-                </div>
+                <span key={val}>{val}</span>
               ))}
             </div>
 
-            <div className="absolute inset-x-0 bottom-0 flex justify-between px-10 pointer-events-none">
-              {dateLabels.map(label => (
-                <span key={label} className="text-[10px] font-mono text-foreground/30 font-bold">{label}</span>
-              ))}
-            </div>
+            <div className="flex-1 relative pl-6">
+              {/* Grid Lines */}
+              <div className="absolute inset-x-0 inset-y-0 flex flex-col justify-between pointer-events-none opacity-10 py-10 ml-6">
+                {[1400, 1050, 700, 350, 0].map(val => (
+                  <div key={val} className="w-full border-t border-dashed border-foreground/50" />
+                ))}
+              </div>
 
-            <svg className="w-full h-full pb-10 px-10" viewBox="0 0 1000 200" preserveAspectRatio="none">
+              <div className="absolute inset-x-0 bottom-0 flex justify-between pointer-events-none ml-6">
+                {dateLabels.map(label => (
+                  <span key={label} className="text-[10px] font-mono text-foreground/40 font-bold">{label}</span>
+                ))}
+              </div>
+
+              <svg className="w-full h-full pb-10" viewBox="0 0 1000 200" preserveAspectRatio="none">
               <defs>
                 <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
@@ -212,10 +217,11 @@ export default function Dashboard() {
                 );
               })}
             </svg>
+            </div>
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-[32px] p-8 shadow-2xl flex flex-col relative overflow-hidden group">
+        <div className="bg-card border border-border rounded-[32px] p-8 flex flex-col relative overflow-hidden group">
           <div className="absolute -bottom-10 -right-10 opacity-[0.02] group-hover:scale-110 transition-transform duration-1000">
             <Shield size={200} />
           </div>
@@ -224,10 +230,10 @@ export default function Dashboard() {
             <div className="space-y-3">
               <div className="flex justify-between text-[11px] font-bold text-foreground/30 uppercase tracking-widest">
                 <span>Network Integrity</span>
-                <span className="text-emerald-500 tracking-tighter shadow-emerald-500/20 drop-shadow-sm">{stats?.service_health?.database || 'Stable'}</span>
+                <span className="text-emerald-500 tracking-tighter">{stats?.service_health?.database || 'Stable'}</span>
               </div>
               <div className="h-2 bg-foreground/[0.03] rounded-full overflow-hidden border border-border/10 p-[1px]">
-                <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 w-[100%] rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)]"></div>
+                <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 w-[100%] rounded-full"></div>
               </div>
             </div>
             <div className="space-y-3">
@@ -236,7 +242,7 @@ export default function Dashboard() {
                 <span className="text-indigo-500 tracking-tighter">{stats?.service_health?.poller || 'Active'}</span>
               </div>
               <div className="h-2 bg-foreground/[0.03] rounded-full overflow-hidden border border-border/10 p-[1px]">
-                <div className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 w-[85%] rounded-full shadow-[0_0_15px_rgba(99,102,241,0.3)] animate-pulse"></div>
+                <div className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 w-[85%] rounded-full animate-pulse"></div>
               </div>
             </div>
             <div className="space-y-3">
@@ -258,7 +264,7 @@ export default function Dashboard() {
 
       {/* Latest Activity Table */}
       <h3 className="text-lg font-bold mb-5 text-foreground tracking-tight">Recent Live Tasks</h3>
-      <div className="bg-card border border-border rounded-[24px] overflow-hidden shadow-2xl">
+      <div className="bg-card border border-border rounded-[24px] overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-border text-foreground/20 text-[11px] uppercase tracking-widest bg-foreground/[0.02]">

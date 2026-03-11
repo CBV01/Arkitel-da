@@ -40,11 +40,6 @@ export default function AccountsPage() {
     const [showCountrySelector, setShowCountrySelector] = useState(false);
     const [countrySearch, setCountrySearch] = useState('');
     
-    // API Id and Hash are now optional/hidden by default
-    const [apiId, setApiId] = useState('');
-    const [apiHash, setApiHash] = useState('');
-    const [showAdvanced, setShowAdvanced] = useState(false);
-    
     // QR Login State
     const [loginMode, setLoginMode] = useState<'phone' | 'qr'>('phone');
     const [qrUrl, setQrUrl] = useState('');
@@ -94,8 +89,6 @@ export default function AccountsPage() {
 
         try {
             const body: any = { phone_number: fullPhoneNumber };
-            if (apiId) body.api_id = apiId;
-            if (apiHash) body.api_hash = apiHash;
 
             const res = await apiFetch('/api/telegram/send-code', {
                 method: 'POST',
@@ -280,7 +273,7 @@ export default function AccountsPage() {
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-screen">
             {successMsg && (
-                <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+                <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
                     <CheckCircle2 size={20} />
                     <span className="font-bold text-sm tracking-tight">{successMsg}</span>
                 </div>
@@ -300,7 +293,7 @@ export default function AccountsPage() {
                         setStep('phone');
                         setIsConnecting(true);
                     }}
-                    className="group bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-8 py-4 rounded-2xl text-sm font-bold shadow-2xl shadow-indigo-500/20 active:scale-95 flex items-center gap-3 relative overflow-hidden"
+                    className="group bg-indigo-600 hover:bg-indigo-500 transition-all text-white px-8 py-4 rounded-2xl text-sm font-bold active:scale-95 flex items-center gap-3 relative overflow-hidden"
                 >
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shimmer" />
                     <Plus size={20} /> Connect New Account
@@ -318,7 +311,7 @@ export default function AccountsPage() {
                     </p>
                 </div>
             ) : accounts.length === 0 ? (
-                <div className="bg-card/50 backdrop-blur-xl border border-border rounded-[48px] p-24 text-center shadow-2xl group transition-all hover:border-indigo-500/20">
+                <div className="bg-card/50 backdrop-blur-xl border border-border rounded-[48px] p-24 text-center group transition-all hover:border-indigo-500/20">
                     <div className="w-24 h-24 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-[32px] flex items-center justify-center mx-auto mb-8 text-indigo-500 transition-transform group-hover:scale-110 duration-700">
                         <Users size={48} />
                     </div>
@@ -336,11 +329,11 @@ export default function AccountsPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-1000">
                     {accounts.map((acc, idx) => (
-                        <div key={idx} className="bg-card/60 backdrop-blur-2xl border border-border rounded-[36px] p-8 group hover:border-indigo-500/30 transition-all shadow-2xl relative overflow-hidden flex flex-col">
+                        <div key={idx} className="bg-card/60 backdrop-blur-2xl border border-border rounded-[36px] p-8 group hover:border-indigo-500/30 transition-all relative overflow-hidden flex flex-col">
                             <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-[80px] -mr-16 -mt-16 transition-all group-hover:bg-indigo-500/20"></div>
 
                             <div className="flex items-center gap-6 mb-8 relative z-10">
-                                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black shadow-2xl shadow-indigo-500/30 transition-all group-hover:rotate-6 group-hover:scale-110 duration-500">
+                                <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black transition-all group-hover:rotate-6 group-hover:scale-110 duration-500">
                                     {(acc.phone_number?.slice(-2) || 'N').toUpperCase()}
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -396,79 +389,77 @@ export default function AccountsPage() {
 
             {/* Premium Connection Modal Overay */}
             {isConnecting && (
-                <div className="fixed inset-0 bg-[#0a0a0c]/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
-                    <div className="relative w-full max-w-lg">
-                        {/* Glow effect behind card */}
-                        <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[36px] blur-xl opacity-20 animate-pulse"></div>
+                <div className="fixed inset-0 bg-background/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="relative w-full max-w-[380px]">
                         
-                        <div className="relative bg-[#0d0e12] border border-white/5 rounded-[32px] w-full shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-500">
+                        <div className="relative bg-card border border-border rounded-[32px] w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-2 duration-400">
                             {/* Close Button */}
                             <button
                                 onClick={() => { setIsConnecting(false); setStep('phone'); setError(''); }}
-                                className="absolute top-6 right-6 z-20 text-white/20 hover:text-white transition-colors p-2 bg-white/5 rounded-full"
+                                className="absolute top-5 right-5 z-20 text-foreground/40 hover:text-foreground transition-colors p-2 bg-foreground/5 rounded-full"
                             >
-                                <X size={20} />
+                                <X size={18} />
                             </button>
 
                             {/* Modal Content */}
-                            <div className="px-8 pt-12 pb-10">
+                            <div className="p-8">
                                 {step === 'phone' && (
                                     <div className="text-center">
                                         {/* Icon */}
-                                        <div className="mb-8 relative inline-block">
-                                            <div className="absolute inset-0 bg-red-500/20 blur-xl rounded-full scale-150" />
-                                            <div className="relative w-16 h-16 bg-gradient-to-br from-orange-400 to-red-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-red-500/20 transform -rotate-6">
-                                                <Rocket className="text-white fill-white/20" size={32} />
+                                        <div className="mb-6 relative inline-block">
+                                            <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full scale-150" />
+                                            <div className="relative w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center transform -rotate-6">
+                                                <Rocket className="text-white" size={28} />
                                             </div>
                                         </div>
 
-                                        <h3 className="text-3xl font-bold text-white mb-3 tracking-tight">Connect Account</h3>
-                                        <p className="text-white/40 text-sm font-medium mb-8 max-w-[280px] mx-auto leading-relaxed">
+                                        <h3 className="text-2xl font-bold text-foreground mb-2 tracking-tight">Connect Account</h3>
+                                        <p className="text-foreground/50 text-xs font-medium mb-6 max-w-[280px] mx-auto leading-relaxed">
                                             Choose your preferred method to link your Telegram node.
                                         </p>
 
-                                        <div className="flex bg-white/5 p-1 rounded-2xl mb-8">
+                                        <div className="flex bg-foreground/5 p-1 rounded-xl mb-6">
                                             <button 
                                                 onClick={() => setLoginMode('phone')}
-                                                className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${loginMode === 'phone' ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                                                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${loginMode === 'phone' ? 'bg-indigo-600 text-white' : 'text-foreground/50 hover:text-foreground/80'}`}
                                             >
                                                 Phone Number
                                             </button>
                                             <button 
                                                 onClick={handleInitQrLogin}
-                                                className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all ${loginMode === 'qr' ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white/60'}`}
+                                                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${loginMode === 'qr' ? 'bg-indigo-600 text-white' : 'text-foreground/50 hover:text-foreground/80'}`}
                                             >
                                                 QR Code
                                             </button>
                                         </div>
 
                                         {error && (
-                                            <div className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-3 animate-in shake duration-500">
-                                                <AlertCircle size={16} className="shrink-0" />
+                                            <div className="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold flex items-center gap-2 animate-in shake duration-500 text-left">
+                                                <AlertCircle size={14} className="shrink-0" />
                                                 <span>{error}</span>
                                             </div>
                                         )}
 
                                         {loginMode === 'phone' ? (
-                                            <form onSubmit={handleSendCode} className="space-y-8 text-left">
-                                                <div className="space-y-3">
-                                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 flex items-center gap-2 px-1">
+                                            <form onSubmit={handleSendCode} className="space-y-6 text-left">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-foreground/40 flex items-center gap-2 px-1">
                                                         <Phone size={10} className="text-indigo-500" />
                                                         Your Telegram Number
                                                     </label>
                                                     
-                                                    <div className="flex gap-3">
+                                                    <div className="flex gap-2">
                                                         {/* Country Selector */}
                                                         <div className="relative">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setShowCountrySelector(!showCountrySelector)}
-                                                                className="h-14 px-4 bg-white/[0.03] border border-white/10 rounded-2xl flex items-center gap-3 hover:bg-white/[0.08] transition-all group"
+                                                                className="h-12 px-3 bg-foreground/5 border border-border rounded-xl flex items-center gap-2 hover:bg-foreground/10 transition-all group"
                                                             >
-                                                                <span className="text-lg">{selectedCountry.flag}</span>
-                                                                <span className="text-white font-bold text-sm">{selectedCountry.code}</span>
-                                                                <span className="text-white/40 font-medium text-sm">{selectedCountry.dial}</span>
-                                                                <ChevronDown size={14} className={`text-white/20 transition-transform duration-300 ${showCountrySelector ? 'rotate-180' : ''}`} />
+                                                                <span className="text-base">{selectedCountry.flag}</span>
+                                                                <span className="text-foreground font-bold text-xs">{selectedCountry.code}</span>
+                                                                <span className="text-foreground/50 font-medium text-xs">{selectedCountry.dial}</span>
+                                                                <ChevronDown size={14} className={`text-foreground/30 transition-transform duration-300 ${showCountrySelector ? 'rotate-180' : ''}`} />
                                                             </button>
 
                                                             {showCountrySelector && (
@@ -477,37 +468,37 @@ export default function AccountsPage() {
                                                                         className="fixed inset-0 z-30" 
                                                                         onClick={() => setShowCountrySelector(false)} 
                                                                     />
-                                                                    <div className="absolute top-full left-0 mt-2 w-72 bg-[#16171d] border border-white/10 rounded-2xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                                                        <div className="p-3 border-b border-white/5">
+                                                                    <div className="absolute top-full left-0 mt-2 w-64 bg-card border border-border rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                                        <div className="p-2 border-b border-border">
                                                                             <div className="relative">
-                                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" size={14} />
+                                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/30" size={12} />
                                                                                 <input 
                                                                                     type="text"
                                                                                     placeholder="Search countries..."
-                                                                                    className="w-full bg-white/5 border-none rounded-xl py-2 pl-9 pr-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                                                                                    className="w-full bg-foreground/5 border-none rounded-lg py-1.5 pl-8 pr-3 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
                                                                                     value={countrySearch}
                                                                                     onChange={(e) => setCountrySearch(e.target.value)}
                                                                                     autoFocus
                                                                                 />
                                                                             </div>
                                                                         </div>
-                                                                        <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                                                        <div className="max-h-52 overflow-y-auto custom-scrollbar bg-card">
                                                                             {filteredCountries.map((c) => (
                                                                                 <button
                                                                                     key={c.code}
                                                                                     type="button"
-                                                                                    className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 transition-colors"
+                                                                                    className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-foreground/5 transition-colors"
                                                                                     onClick={() => {
                                                                                         setSelectedCountry(c);
                                                                                         setShowCountrySelector(false);
                                                                                         setCountrySearch('');
                                                                                     }}
                                                                                 >
-                                                                                    <div className="flex items-center gap-3">
-                                                                                        <span className="text-lg">{c.flag}</span>
-                                                                                        <span className="text-sm font-medium text-white/80">{c.name}</span>
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span className="text-base">{c.flag}</span>
+                                                                                        <span className="text-xs font-medium text-foreground/80">{c.name}</span>
                                                                                     </div>
-                                                                                    <span className="text-xs font-bold text-white/30">{c.dial}</span>
+                                                                                    <span className="text-[10px] font-bold text-foreground/40">{c.dial}</span>
                                                                                 </button>
                                                                             ))}
                                                                         </div>
@@ -523,69 +514,35 @@ export default function AccountsPage() {
                                                                 value={phoneNumber}
                                                                 onChange={(e) => setPhoneNumber(e.target.value)}
                                                                 placeholder="234 567 8900"
-                                                                className="w-full h-14 bg-white/[0.03] border border-white/10 rounded-2xl px-6 text-base font-medium text-white placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-white/[0.06] transition-all"
+                                                                className="w-full h-12 bg-foreground/5 border border-border rounded-xl px-4 text-sm font-medium text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:bg-background transition-all"
                                                                 required
                                                             />
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                {/* Advanced Settings Link */}
-                                                <div className="relative">
-                                                    <button 
-                                                        type="button"
-                                                        onClick={() => setShowAdvanced(!showAdvanced)}
-                                                        className="text-[10px] font-black uppercase tracking-widest text-indigo-500/40 hover:text-indigo-500 transition-colors"
-                                                    >
-                                                        {showAdvanced ? '- Hide Custom API Auth' : '+ Custom API Auth (Advanced)'}
-                                                    </button>
-                                                    
-                                                    {showAdvanced && (
-                                                        <div className="grid grid-cols-2 gap-3 mt-4 animate-in slide-in-from-top-2 duration-300">
-                                                            <div className="space-y-2">
-                                                                <input
-                                                                    type="text"
-                                                                    value={apiId}
-                                                                    onChange={(e) => setApiId(e.target.value)}
-                                                                    placeholder="API ID"
-                                                                    className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
-                                                                />
-                                                            </div>
-                                                            <div className="space-y-2">
-                                                                <input
-                                                                    type="text"
-                                                                    value={apiHash}
-                                                                    onChange={(e) => setApiHash(e.target.value)}
-                                                                    placeholder="API Hash"
-                                                                    className="w-full h-12 bg-white/[0.02] border border-white/5 rounded-xl px-4 text-xs font-mono text-white/60 focus:outline-none focus:border-indigo-500/30"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
                                                 <button
                                                     type="submit"
                                                     disabled={loading || !phoneNumber}
-                                                    className="w-full h-16 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-30 disabled:grayscale text-white rounded-[20px] text-base font-bold transition-all flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/20 active:scale-[0.98] group"
+                                                    className="w-full h-12 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 disabled:opacity-50 disabled:grayscale text-white rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 active:scale-[0.98] group"
                                                 >
                                                     {loading ? (
-                                                        <Loader2 size={24} className="animate-spin" />
+                                                        <Loader2 size={20} className="animate-spin" />
                                                     ) : (
                                                         <>
                                                             Send Login Code
-                                                            <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                                                            <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
                                                         </>
                                                     )}
                                                 </button>
 
-                                                <p className="text-center text-[10px] text-white/10 font-bold uppercase tracking-widest">
+                                                <p className="text-center text-[9px] text-foreground/20 font-bold uppercase tracking-widest mt-6">
                                                     We'll send a secure code to your Telegram app.
                                                 </p>
                                             </form>
                                         ) : (
-                                            <div className="space-y-8 animate-in fade-in duration-500">
-                                                <div className="relative mx-auto w-64 h-64 bg-white rounded-3xl p-4 shadow-2xl group">
+                                            <div className="space-y-6 animate-in fade-in duration-500">
+                                                <div className="relative mx-auto w-56 h-56 bg-foreground/[0.03] border border-border rounded-3xl p-4 group">
                                                     {qrUrl ? (
                                                         <img 
                                                             src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}`} 
@@ -600,11 +557,11 @@ export default function AccountsPage() {
                                                     )}
                                                     
                                                     {qrStatus === 'success' && (
-                                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 animate-in zoom-in-95 duration-500">
-                                                            <div className="w-16 h-16 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg">
-                                                                <CheckCircle2 size={32} className="text-white" />
+                                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 animate-in zoom-in-95 duration-500 bg-background/80 backdrop-blur-sm rounded-3xl">
+                                                            <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-500/30 rounded-full flex items-center justify-center">
+                                                                <CheckCircle2 size={32} className="text-emerald-500" />
                                                             </div>
-                                                            <span className="text-sm font-bold text-emerald-600">Authorized!</span>
+                                                            <span className="text-sm font-bold text-emerald-500">Authorized!</span>
                                                         </div>
                                                     )}
                                                     
@@ -614,7 +571,7 @@ export default function AccountsPage() {
                                                             <span className="text-sm font-bold text-white">QR Expired</span>
                                                             <button 
                                                                 onClick={handleInitQrLogin}
-                                                                className="mt-2 text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-white/10 px-4 py-2 rounded-xl"
+                                                                className="mt-2 text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-foreground/10 px-4 py-2 rounded-xl"
                                                             >
                                                                 Regenerate
                                                             </button>
@@ -623,17 +580,17 @@ export default function AccountsPage() {
                                                 </div>
                                                 
                                                 <div className="space-y-4">
-                                                    <div className="flex items-center gap-4 text-left bg-white/5 p-4 rounded-2xl">
-                                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">1</div>
-                                                        <p className="text-xs text-white/60 leading-relaxed">Open <b>Telegram</b> on your phone</p>
+                                                    <div className="flex items-center gap-4 text-left bg-foreground/5 p-4 rounded-2xl">
+                                                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-bold shrink-0 text-foreground">1</div>
+                                                        <p className="text-xs text-foreground/60 leading-relaxed">Open <b className="text-foreground">Telegram</b> on your phone</p>
                                                     </div>
-                                                    <div className="flex items-center gap-4 text-left bg-white/5 p-4 rounded-2xl">
-                                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">2</div>
-                                                        <p className="text-xs text-white/60 leading-relaxed">Go to <b>Settings</b> &gt; <b>Devices</b> &gt; <b>Link Desktop Device</b></p>
+                                                    <div className="flex items-center gap-4 text-left bg-foreground/5 p-4 rounded-2xl">
+                                                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-bold shrink-0 text-foreground">2</div>
+                                                        <p className="text-xs text-foreground/60 leading-relaxed">Go to <b className="text-foreground">Settings</b> &gt; <b className="text-foreground">Devices</b> &gt; <b className="text-foreground">Link Desktop Device</b></p>
                                                     </div>
-                                                    <div className="flex items-center gap-4 text-left bg-white/5 p-4 rounded-2xl">
-                                                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">3</div>
-                                                        <p className="text-xs text-white/60 leading-relaxed">Point your phone's camera at this screen to scan the QR code</p>
+                                                    <div className="flex items-center gap-4 text-left bg-foreground/5 p-4 rounded-2xl">
+                                                        <div className="w-8 h-8 rounded-full bg-foreground/10 flex items-center justify-center text-xs font-bold shrink-0 text-foreground">3</div>
+                                                        <p className="text-xs text-foreground/60 leading-relaxed">Point your phone's camera at this screen to scan the QR code</p>
                                                     </div>
                                                 </div>
                                             </div>
@@ -646,13 +603,13 @@ export default function AccountsPage() {
                                         {/* Icon */}
                                         <div className="mb-8 relative inline-block">
                                             <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full scale-150" />
-                                            <div className="relative w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl shadow-indigo-500/20 transform rotate-6">
+                                            <div className="relative w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center transform rotate-6">
                                                 <KeyRound className="text-white fill-white/10" size={32} />
                                             </div>
                                         </div>
 
-                                        <h3 className="text-3xl font-bold text-white mb-3 tracking-tight">Security Code</h3>
-                                        <p className="text-white/40 text-sm font-medium mb-12 max-w-[280px] mx-auto leading-relaxed">
+                                        <h3 className="text-3xl font-bold text-foreground mb-3 tracking-tight">Security Code</h3>
+                                        <p className="text-foreground/40 text-sm font-medium mb-12 max-w-[280px] mx-auto leading-relaxed">
                                             Enter the 5-digit verification code sent to your active Telegram session.
                                         </p>
 
@@ -671,7 +628,7 @@ export default function AccountsPage() {
                                                     onChange={(e) => setOtp(e.target.value)}
                                                     placeholder="•••••"
                                                     maxLength={5}
-                                                    className="w-full h-20 bg-white/[0.03] border border-white/10 rounded-[24px] text-center text-4xl font-black tracking-[0.5em] text-white focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:bg-white/[0.06] transition-all"
+                                                    className="w-full h-20 bg-foreground/5 border border-border rounded-[24px] text-center text-4xl font-black tracking-[0.5em] text-foreground focus:outline-none focus:ring-4 focus:ring-indigo-500/20 focus:bg-foreground/10 transition-all"
                                                     required
                                                     autoFocus
                                                 />
@@ -681,14 +638,14 @@ export default function AccountsPage() {
                                                 <button
                                                     type="submit"
                                                     disabled={loading || otp.length < 5}
-                                                    className="w-full h-16 bg-white text-black hover:bg-white/90 disabled:opacity-30 text-base font-bold transition-all rounded-[20px] flex items-center justify-center gap-3 active:scale-[0.98]"
+                                                    className="w-full h-16 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 text-base font-bold transition-all rounded-[20px] flex items-center justify-center gap-3 active:scale-[0.98]"
                                                 >
                                                     {loading ? <Loader2 size={24} className="animate-spin" /> : 'Complete Link'}
                                                 </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setStep('phone')}
-                                                    className="text-white/20 hover:text-white text-[11px] font-black uppercase tracking-widest transition-colors py-2"
+                                                    className="text-foreground/40 hover:text-foreground text-[11px] font-black uppercase tracking-widest transition-colors py-2"
                                                 >
                                                     ← Change Number
                                                 </button>
@@ -705,12 +662,12 @@ export default function AccountsPage() {
                                                 <CheckCircle2 className="text-white" size={48} />
                                             </div>
                                         </div>
-                                        <h4 className="text-4xl font-black text-white mb-4 tracking-tighter">AUTHENTICATED</h4>
-                                        <p className="text-white/40 text-sm font-medium leading-relaxed max-w-[240px] mx-auto mb-10">
-                                            Node session established on Secure Layer 4. Syncing data now.
+                                        <h4 className="text-2xl font-black text-foreground mb-4 tracking-tighter uppercase">Authorized</h4>
+                                        <p className="text-foreground/40 text-[11px] font-medium leading-relaxed max-w-[240px] mx-auto mb-10">
+                                            Neural Link Established. Synchronizing Cluster Data...
                                         </p>
-                                        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                                            <div className="h-full bg-emerald-500 animate-loading-bar" />
+                                        <div className="w-full h-1 bg-foreground/5 rounded-full overflow-hidden">
+                                            <div className="h-full bg-indigo-500 animate-loading-bar" />
                                         </div>
                                     </div>
                                 )}

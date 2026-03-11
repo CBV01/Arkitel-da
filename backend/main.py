@@ -294,10 +294,9 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
     api_hash = req.api_hash or TELEGRAM_API_HASH
 
     if not api_id or not api_hash:
-        # Use common official credentials as a desperate fallback if nothing is set
-        # This allows the "just works" experience user requested
-        api_id = "2040" # Example official or common ID
-        api_hash = "b18441a1ed607c10e14913251fd1c390"
+        # Telegram iOS credentials - more stable than Android ones
+        api_id = "2040"
+        api_hash = "b18441a1ff607e10a989891a5462e627"
         
     try:
         # Each login can use its own API ID and Hash
@@ -412,24 +411,27 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
 
 @app.post("/api/telegram/qr/init")
 async def qr_init(user_id: str = Depends(get_current_user_id)):
-    api_id = int(os.getenv("TELEGRAM_API_ID", "2040"))
-    api_hash = os.getenv("TELEGRAM_API_HASH", "b18441a1ed607c10e14913251fd1c390")
-    
-    client = TelegramClient(StringSession(''), api_id, api_hash)
-    await client.connect()
-    
-    qr = await client.qr_login()
-    token = str(uuid.uuid4())
-    qr_sessions[token] = {
-        "client": client,
-        "qr": qr,
-        "user_id": user_id,
-        "api_id": api_id,
-        "api_hash": api_hash,
-        "created_at": datetime.now()
-    }
-    
-    return {"token": token, "url": qr.url}
+    try:
+        api_id = int(os.getenv("TELEGRAM_API_ID", "2040"))
+        api_hash = os.getenv("TELEGRAM_API_HASH", "b18441a1ff607e10a989891a5462e627")
+        
+        client = TelegramClient(StringSession(''), api_id, api_hash)
+        await client.connect()
+        
+        qr = await client.qr_login()
+        token = str(uuid.uuid4())
+        qr_sessions[token] = {
+            "client": client,
+            "qr": qr,
+            "user_id": user_id,
+            "api_id": api_id,
+            "api_hash": api_hash,
+            "created_at": datetime.now()
+        }
+        
+        return {"token": token, "url": qr.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"QR init failed: {str(e)}")
 
 @app.get("/api/telegram/qr/status/{token}")
 async def qr_status(token: str):
