@@ -246,32 +246,14 @@ qr_sessions: Dict[str, Dict[str, Any]] = {}
 class TelegramPool:
     """Manages a pool of persistent Telegram clients for low-latency operations."""
     def __init__(self):
-        # Key: (user_id, phone_number)
-        self._clients: Dict[tuple, TelegramClient] = {}
-        self._locks: Dict[tuple, asyncio.Lock] = {}
+        # Key: phone_number (Each account has exactly one session regardless of who uses it)
+        self._clients: Dict[str, TelegramClient] = {}
+        self._locks: Dict[str, asyncio.Lock] = {}
 
     async def get_client(self, user_id: str, phone_number: str) -> TelegramClient:
-        key = (user_id, phone_number)
-        if key not in self._locks:
-            self._locks[key] = asyncio.Lock()
-            
-        async with self._locks[key]:
-            # If we already have a client, verify it's still alive
-            if key in self._clients:
-                client = self._clients[key]
-                if client.is_connected():
-                    try:
-                        # Lightweight health check
-                        await client.get_me() 
-                        return client
-                    except Exception:
-                        log_debug(f"POOL: Client for {phone_number} lost connection or died. Reconnecting...")
-                        try: await client.disconnect()
-                        except: pass
-                
-            # Create a new connection instance
-            conn = get_db_connection()
-            # Admins can access ANY account. Regular users only their own.
+        # 1. Resolve ownership first to prevent duplicate sessions
+        conn = get_db_connection()
+        try:
             if user_id == "admin_virtual_id":
                 row = conn.execute(
                     "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ?", 
@@ -283,18 +265,36 @@ class TelegramPool:
                     (phone_number, user_id)
                 ).fetchone()
             
-            if hasattr(conn, "close"): conn.close()
-            
             if not row:
-                raise HTTPException(status_code=404, detail=f"Account {phone_number} not found or unauthorized.")
+                print(f"POOL_ERROR: Account {phone_number} not found for user {user_id}")
+                raise HTTPException(status_code=404, detail="Account not found.")
                 
-            session_str, api_id, api_hash, actual_owner_id = row[0], int(row[1]), row[2], row[3]
+            session_str, api_id, api_hash, owner_id = row[0], int(row[1]), row[2], row[3]
+        finally:
+            if hasattr(conn, "close"): conn.close()
+
+        # Session-unique key (Phone number is the unique axis)
+        session_key = phone_number
+        
+        if session_key not in self._locks:
+            self._locks[session_key] = asyncio.Lock()
             
-            # Map back to the ACTUAL owner to avoid duplicate client instances in pool
-            key = (actual_owner_id, phone_number)
-            
-            log_debug(f"POOL: Booting new persistent node for {phone_number}")
-            new_client = TelegramClient(StringSession(session_str), int(api_id), api_hash)
+        async with self._locks[session_key]:
+            # Use a separate key type for cache to avoid tuple confusion
+            # We map the session object to the phone number
+            if session_key in self._clients:
+                client = self._clients[session_key]
+                if client.is_connected():
+                    try:
+                        await client.get_me() 
+                        return client
+                    except Exception:
+                        print(f"POOL: Node {phone_number} stale. Disconnecting...")
+                        try: await client.disconnect()
+                        except: pass
+                
+            log_debug(f"POOL: Deploying persistent kernel for {phone_number} (Owner: {owner_id})")
+            new_client = TelegramClient(StringSession(session_str), api_id, api_hash)
             await new_client.connect()
             
             if not await new_client.is_user_authorized():
@@ -306,13 +306,18 @@ class TelegramPool:
                 if hasattr(conn, "close"): conn.close()
                 raise HTTPException(status_code=401, detail=f"Session for {phone_number} has expired.")
                 
-            # Mark as active
+            # Success check & Mark active
+            try:
+                me = await new_client.get_me()
+                log_debug(f"POOL: Node {phone_number} ( @{getattr(me,'username','?')} ) online.")
+            except: pass
+            
             conn = get_db_connection()
-            conn.execute("UPDATE accounts SET status = 'active', status_detail = 'Pooled & Ready', last_active = ? WHERE phone_number = ?", (datetime.now(), phone_number))
+            conn.execute("UPDATE accounts SET status = 'active', last_active = ? WHERE phone_number = ?", (datetime.now(), phone_number))
             if hasattr(conn, "commit"): conn.commit()
             if hasattr(conn, "close"): conn.close()
             
-            self._clients[key] = new_client
+            self._clients[session_key] = new_client
             return new_client
 
     async def disconnect_all(self):
@@ -1111,7 +1116,12 @@ async def scrape_keyword_stream(
     user_id: str = Depends(get_current_user_id)
 ):
     conn = get_db_connection()
-    if phone_number:
+    if user_id == "admin_virtual_id":
+        if phone_number:
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
+        else:
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
+    elif phone_number:
         rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
     else:
         rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchall()
@@ -1178,7 +1188,12 @@ async def scrape_keyword(
     user_id: str = Depends(get_current_user_id)
 ):
     conn = get_db_connection()
-    if phone_number:
+    if user_id == "admin_virtual_id":
+        if phone_number:
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
+        else:
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
+    elif phone_number:
         rows = conn.execute(
             "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?",
             (phone_number, user_id)
