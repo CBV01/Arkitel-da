@@ -1,4 +1,10 @@
+"use client";
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { apiFetch } from '@/lib/auth';
 import { Megaphone, Shield, TrendingUp, Activity, Zap } from 'lucide-react';
+
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
