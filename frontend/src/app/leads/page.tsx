@@ -18,6 +18,7 @@ interface SavedGroup {
     global_shows: number;
     source: string;
     created_at: string;
+    is_joined?: boolean;
 }
 
 interface MemberLead {
@@ -43,6 +44,7 @@ export default function LeadsPage() {
 
     // Actions state
     const [joining, setJoining] = useState(false);
+    const [joinedIds, setJoinedIds] = useState<Set<string>>(new Set()); // Tracks which groups have been joined this session
     const [isDeleting, setIsDeleting] = useState(false);
     const [isExtracting, setIsExtracting] = useState(false);
     const [extractingGroup, setExtractingGroup] = useState<string | null>(null);
@@ -133,6 +135,8 @@ export default function LeadsPage() {
                             ...p, joined: data.joined, failed: data.failed,
                             log: [{ type: 'joined', name: data.name }, ...p.log.slice(0, 49)]
                         }));
+                        // Mark this group as joined in local state so the badge appears
+                        setJoinedIds(prev => new Set([...prev, data.name]));
                     } else if (data.type === 'failed') {
                         setJoinProgress(p => ({
                             ...p, joined: data.joined, failed: data.failed,
@@ -222,13 +226,14 @@ export default function LeadsPage() {
                 body: JSON.stringify({ group_id: username || id, phone_number: phoneNumber })
             });
             if (res.ok) {
-                alert(`Successfully joined!`);
+                // Mark as joined immediately in UI so the button changes to a badge
+                setJoinedIds(prev => new Set([...prev, id, username || id]));
             } else {
                 const d = await res.json();
-                alert(d.detail || 'Join failed');
+                setError(d.detail || 'Join failed');
             }
         } catch (e: any) {
-            alert(e.message);
+            setError(e.message);
         }
     };
 
@@ -510,13 +515,22 @@ export default function LeadsPage() {
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {l.itemType === 'community' && (
                                         <>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleSingleJoin(l.id, l.username); }}
-                                                className="p-1.5 bg-foreground/5 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-lg text-foreground/30 transition-all"
-                                                title="Join"
-                                            >
-                                                <UserPlus size={14} />
-                                            </button>
+                                            {joinedIds.has(l.id) || (l.username && joinedIds.has(l.username)) ? (
+                                                <div
+                                                    className="px-2 py-1 h-7 bg-emerald-500/10 text-emerald-500 rounded-lg text-[10px] font-bold tracking-wider uppercase flex items-center justify-center border border-emerald-500/20 shadow-sm"
+                                                    title="Joined"
+                                                >
+                                                    Joined
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleSingleJoin(l.id, l.username); }}
+                                                    className="p-1.5 bg-foreground/5 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-lg text-foreground/30 transition-all"
+                                                    title="Join"
+                                                >
+                                                    <UserPlus size={14} />
+                                                </button>
+                                            )}
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); setExtractingGroup(l.username || l.id); }}
                                                 className="p-1.5 bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 rounded-lg text-foreground/30 transition-all"

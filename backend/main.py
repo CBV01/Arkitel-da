@@ -966,8 +966,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             "is_member": is_member
                         }
                         unique_groups[chat_id_str] = item
-                        # Auto-saving disabled as per user request (manual save only)
-                        if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
+                        # Auto-saving disabled - user must manually select and save to leads
+                        # if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item)))
 
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
