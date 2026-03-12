@@ -577,6 +577,7 @@ export default function AdminDashboard() {
                                                         <option value="basic">Basic (50c)</option>
                                                         <option value="standard">Standard (150c)</option>
                                                         <option value="premium">Premium (300c)</option>
+                                                        <option value="unlimited">Unlimited (Admin Only)</option>
                                                     </select>
                                                 </td>
                                                 <td className="px-6 py-4">

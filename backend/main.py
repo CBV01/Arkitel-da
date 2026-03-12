@@ -81,6 +81,13 @@ PLAN_CONFIGS = {
         "max_daily_keywords": 30,
         "scrape_limit": 350,
         "has_premium_access": True
+    },
+    "unlimited": {
+        "max_daily_campaigns": 999999,
+        "max_accounts": 99,
+        "max_daily_keywords": 999999,
+        "scrape_limit": 1000,
+        "has_premium_access": True
     }
 }
 
@@ -629,15 +636,17 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
 async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_user_id)):
     # Limit check
     conn = get_db_connection()
-    user = conn.execute("SELECT max_accounts FROM users WHERE id = ?", (user_id,)).fetchone()
+    user = conn.execute("SELECT max_accounts, plan FROM users WHERE id = ?", (user_id,)).fetchone()
     count_row = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
     if hasattr(conn, "close"): conn.close()
     
+    plan = user["plan"] if user else "free"
     max_acc = user["max_accounts"] if user else 1
     current_count = count_row[0] if count_row else 0
     
-    if current_count >= max_acc and user_id != "admin_virtual_id":
-        raise HTTPException(status_code=403, detail=f"Account limit reached ({max_acc}). Please upgrade to Premium to link more accounts.")
+    if plan != "unlimited" and current_count >= max_acc and user_id != "admin_virtual_id":
+        plan_limits = {"free": 1, "basic": 1, "standard": 2, "premium": 3}
+        raise HTTPException(status_code=403, detail=f"Account limit reached ({max_acc}). Upgrade your plan to link more accounts.")
 
     # Fallback to defaults from environment/config
     api_id = req.api_id or TELEGRAM_API_ID
@@ -1320,13 +1329,14 @@ async def scrape_keyword_stream(
         max_keywords = user_row["max_daily_keywords"] or plan_cfg["max_daily_keywords"]
         current_keywords = user_row["daily_keyword_count"] or 0
         
-        if current_keywords >= max_keywords:
+        if current_keywords >= max_keywords and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
             raise HTTPException(status_code=403, detail=f"Daily keyword limit reached ({max_keywords}). Reset at Midnight UTC.")
 
         # Increment keyword use
-        conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
-        if hasattr(conn, "commit"): conn.commit()
+        if plan != "unlimited":
+            conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
+            if hasattr(conn, "commit"): conn.commit()
 
     # Cap requested limit by allowed limit
     limit = min(limit, allowed_limit)
@@ -1863,11 +1873,12 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
 
 @app.post("/api/monetization/apply-coupon")
 async def apply_coupon(code: str, user_id: str = Depends(get_current_user_id)):
+    code = code.strip().upper()
     conn = get_db_connection()
     try:
-        coupon = conn.execute("SELECT * FROM coupons WHERE code = ? AND is_active = 1", (code,)).fetchone()
+        coupon = conn.execute("SELECT * FROM coupons WHERE UPPER(code) = ? AND is_active = 1", (code,)).fetchone()
         if not coupon:
-            raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+            raise HTTPException(status_code=400, detail="Invalid or expired coupon code. Please check and try again.")
         
         price = int(coupon["price"])
         if price == 0:
@@ -1881,13 +1892,15 @@ async def apply_coupon(code: str, user_id: str = Depends(get_current_user_id)):
                    WHERE id = ?""",
                 (cfg["max_accounts"], cfg["scrape_limit"], cfg["max_daily_campaigns"], cfg["max_daily_keywords"], user_id)
             )
-            # Use coupon once
-            conn.execute("UPDATE coupons SET is_active = 0 WHERE code = ?", (code,))
+            # Deactivate coupon after single use
+            conn.execute("UPDATE coupons SET is_active = 0 WHERE UPPER(code) = ?", (code,))
             if hasattr(conn, "commit"): conn.commit()
             return {"status": "success", "message": "Premium plan activated successfully!", "discount": "free"}
         else:
-            # Discount code - user still needs to pay 'price'
-            return {"status": "success", "message": f"Coupon applied! New price: #{price}", "discount": "partial", "new_price": price}
+            # Discount code - deactivate so it can't be reused, user still needs to pay 'price'
+            conn.execute("UPDATE coupons SET is_active = 0 WHERE UPPER(code) = ?", (code,))
+            if hasattr(conn, "commit"): conn.commit()
+            return {"status": "success", "message": f"Coupon applied! Pay only \u20a6{price:,} instead.", "discount": "partial", "new_price": price}
     finally:
         if hasattr(conn, "close"): conn.close()
 
@@ -2161,13 +2174,14 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         max_daily = user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"]
         current_daily = user_row["daily_campaign_count"] or 0
         
-        if current_daily >= max_daily:
+        if current_daily >= max_daily and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
             raise HTTPException(status_code=403, detail=f"Daily campaign limit reached ({max_daily}). Upgrade your plan to increase limits.")
         
         # Increment usage
-        conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + 1 WHERE id = ?", (user_id,))
-        if hasattr(conn, "commit"): conn.commit()
+        if plan != "unlimited":
+            conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + 1 WHERE id = ?", (user_id,))
+            if hasattr(conn, "commit"): conn.commit()
 
     try:
         # The schedule_time sent by the frontend must already be in UTC.

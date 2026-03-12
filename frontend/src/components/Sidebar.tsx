@@ -228,6 +228,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                             <div className="flex items-center justify-between">
                                 <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">System Status</div>
                                 <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border border-current uppercase ${
+                                    status?.plan === 'unlimited' ? 'text-rose-400 bg-rose-500/10' :
                                     status?.plan === 'premium' ? 'text-indigo-400 bg-indigo-500/10' : 
                                     status?.plan === 'standard' ? 'text-amber-400 bg-amber-500/10' :
                                     status?.plan === 'basic' ? 'text-emerald-400 bg-emerald-500/10' :
