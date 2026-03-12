@@ -29,6 +29,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
     const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
     const [user, setUser] = useState<any>(null);
+    const [status, setStatus] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -47,18 +48,20 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
             }
 
             try {
-                const res = await apiFetch('/api/auth/me');
-                if (res.ok) {
-                    const text = await res.text();
-                    let data;
-                    try {
-                        data = JSON.parse(text);
-                    } catch (e) {
-                        console.error("Failed to parse auth data", text);
-                        return;
-                    }
+                const [meRes, statusRes] = await Promise.all([
+                    apiFetch('/api/auth/me'),
+                    apiFetch('/api/monetization/status')
+                ]);
+
+                if (meRes.ok) {
+                    const data = await meRes.json();
                     setUser(data);
                     
+                    if (statusRes.ok) {
+                        const sData = await statusRes.json();
+                        setStatus(sData);
+                    }
+
                     // Admin route protection
                     if (isAdminRoute && data.role !== 'admin' && pathname !== '/admin/login') {
                         router.push('/');
@@ -67,7 +70,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                     if (!data.passkey_verified && pathname !== '/verify-passkey' && !isAdminRoute) {
                         router.push('/verify-passkey');
                     }
-                } else if (res.status === 401) {
+                } else if (meRes.status === 401) {
                     removeToken();
                     router.push(isAdminRoute ? '/admin/login' : '/login');
                 }
@@ -221,9 +224,38 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                     </button>
 
                     {!isCollapsed && user && (
-                        <div className="px-4 py-2 mt-2">
-                            <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">Authenticated as</div>
-                            <div className="text-xs text-foreground/60 font-medium truncate">{user.username}</div>
+                        <div className="px-4 py-2 mt-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">User Plan</div>
+                                {status?.plan === 'premium' ? (
+                                    <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">PREMIUM</span>
+                                ) : (
+                                    <span className="text-[9px] font-bold text-foreground/40 bg-foreground/5 px-2 py-0.5 rounded-full">FREE</span>
+                                )}
+                            </div>
+                            
+                            {status?.plan === 'free' && (
+                                <Link href="/scraper" className="block w-full text-center py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-500 hover:text-white text-[10px] font-bold rounded-lg transition-all border border-indigo-500/20">
+                                    UPGRADE NOW
+                                </Link>
+                            )}
+
+                            <div className="pt-2">
+                                <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase mb-1">
+                                    <span>Extraction Power</span>
+                                    <span>{status?.scrape_limit || 100}</span>
+                                </div>
+                                <div className="h-1.5 w-full bg-foreground/5 rounded-full overflow-hidden">
+                                    <div 
+                                        className={`h-full bg-indigo-500 transition-all duration-1000 ${status?.plan === 'premium' ? 'w-full shadow-lg shadow-indigo-500/50' : 'w-1/4'}`}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2 border-t border-border/50">
+                                <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">Authenticated as</div>
+                                <div className="text-xs text-foreground/60 font-semibold truncate mt-0.5">{user.username}</div>
+                            </div>
                         </div>
                     )}
                 </div>

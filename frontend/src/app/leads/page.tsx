@@ -5,6 +5,7 @@ import { Bookmark, Loader2, Megaphone, X, Trash2, Search, UserPlus, Users, Check
 import { apiFetch, getToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Preloader } from '@/components/Preloader';
+import { MonetizationOverlay } from '@/components/MonetizationOverlay';
 
 interface SavedGroup {
     id: string;
@@ -330,7 +331,8 @@ export default function LeadsPage() {
     const isAllVisibleSelected = visibleLeads.length > 0 && visibleLeads.every(l => selectedIds.has(l.id));
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-[calc(100vh-100px)] flex flex-col pt-2">
+        <MonetizationOverlay featureName="Vault Leads">
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 min-h-[calc(100vh-100px)] flex flex-col pt-2">
 
             {/* ---- Bulk Join Progress Modal ---- */}
             {joinProgress.open && (
@@ -714,6 +716,7 @@ export default function LeadsPage() {
                     </div>
                 </div>
             )}
-        </div>
+            </div>
+        </MonetizationOverlay>
     );
 }

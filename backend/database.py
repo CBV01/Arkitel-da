@@ -280,6 +280,23 @@ def init_db():
             joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(phone_number, group_id)
         )""",
+        """CREATE TABLE IF NOT EXISTS coupons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT UNIQUE NOT NULL,
+            price INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1,
+            expires_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            amount INTEGER,
+            payment_method TEXT,
+            proof_details TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
 
     conn = cast(Any, get_db_connection())
@@ -308,6 +325,21 @@ def init_db():
         conn.execute("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraper'")
     except:
         pass
+
+    # Migration for users table (Premium Features)
+    user_cols = [
+        ("plan", "TEXT DEFAULT 'free'"),
+        ("scrape_limit", "INTEGER DEFAULT 100"),
+        ("max_accounts", "INTEGER DEFAULT 1"),
+        ("total_scraped", "INTEGER DEFAULT 0"),
+        ("is_approved", "INTEGER DEFAULT 0"),
+        ("payment_proof", "TEXT")
+    ]
+    for col_name, col_def in user_cols:
+        try:
+            conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+        except:
+            pass
     
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")

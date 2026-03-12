@@ -15,7 +15,11 @@ import {
     Search,
     X,
     Megaphone,
-    Lock as MasterLock
+    Lock as MasterLock,
+    CreditCard,
+    Ticket,
+    CheckCircle2,
+    AlertCircle
 } from 'lucide-react';
 import { Preloader } from '@/components/Preloader';
 
@@ -33,6 +37,10 @@ export default function AdminDashboard() {
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
     const [successMsg, setSuccessMsg] = useState('');
+    const [coupons, setCoupons] = useState<any[]>([]);
+    const [monetizationUsers, setMonetizationUsers] = useState<any[]>([]);
+    const [loadingMonetization, setLoadingMonetization] = useState(false);
+    const [newCoupon, setNewCoupon] = useState({ code: '', price: 5000 });
 
     const fetchAdminData = async () => {
         try {
@@ -68,9 +76,35 @@ export default function AdminDashboard() {
         }
     };
 
+    const fetchMonetizationData = async () => {
+        setLoadingMonetization(true);
+        try {
+            const [couponsRes, monoUsersRes] = await Promise.all([
+                apiFetch('/api/admin/monetization/coupons'),
+                apiFetch('/api/admin/monetization/users')
+            ]);
+            if (couponsRes.ok && monoUsersRes.ok) {
+                const cData = await couponsRes.json();
+                const uData = await monoUsersRes.json();
+                setCoupons(cData.coupons || []);
+                setMonetizationUsers(uData.users || []);
+            }
+        } catch (err) {
+            console.error("Monetization fetch error", err);
+        } finally {
+            setLoadingMonetization(false);
+        }
+    };
+
     useEffect(() => {
         fetchAdminData();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'monetization') {
+            fetchMonetizationData();
+        }
+    }, [activeTab]);
 
     const updatePasskey = async () => {
         if (!passkey) return;
@@ -165,12 +199,12 @@ export default function AdminDashboard() {
                     <p className="text-foreground/50 text-sm mt-2 font-medium">Global management of multi-tenant infrastructure and secure gateways</p>
                 </div>
 
-                <div className="flex bg-white/[0.03] backdrop-blur-3xl p-1.5 rounded-2xl border border-white/5">
-                    {['overview', 'users', 'settings', 'maintenance'].map((tab) => (
+                <div className="flex bg-white/[0.03] backdrop-blur-3xl p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
+                    {['overview', 'users', 'monetization', 'settings', 'maintenance'].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`px-8 py-2.5 rounded-xl text-sm font-bold capitalize transition-all duration-300 ${activeTab === tab
+                            className={`px-8 py-2.5 rounded-xl text-sm font-bold capitalize transition-all duration-300 shrink-0 ${activeTab === tab
                                 ? 'bg-red-500 text-white shadow-xl shadow-red-500/20 active:scale-95'
                                 : 'text-foreground/40 hover:text-foreground hover:bg-white/5'
                                 }`}
@@ -187,9 +221,9 @@ export default function AdminDashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         {[
                             { label: 'Total Users', value: stats?.global?.users ?? '...', icon: Users, color: 'text-blue-400' },
-                            { label: 'Connected Accounts', value: stats?.global?.accounts ?? '...', icon: Activity, color: 'text-green-400' },
-                            { label: 'Messages Sent', value: stats?.global?.tasks ?? '...', icon: MessageSquare, color: 'text-purple-400' },
-                            { label: 'Total Leads', value: stats?.global?.leads ?? '...', icon: Database, color: 'text-orange-400' },
+                            { label: 'System Revenue', value: stats?.global?.revenue ? `#${stats.global.revenue}` : '#0', icon: CreditCard, color: 'text-emerald-400' },
+                            { label: 'Pending Approvals', value: stats?.global?.pending ?? '0', icon: AlertCircle, color: 'text-orange-400' },
+                            { label: 'Total Leads', value: stats?.global?.leads ?? '...', icon: Database, color: 'text-indigo-400' },
                         ].map((stat, i) => (
                             <div key={i} className="bg-white/5 backdrop-blur-xl border border-white/5 p-6 rounded-3xl relative overflow-hidden group">
                                 <div className={`p-3 rounded-2xl bg-white/5 w-fit mb-4 ${stat.color}`}>
@@ -406,6 +440,198 @@ export default function AdminDashboard() {
                         </div>
                         <div className="py-10 text-center text-sm text-foreground/20 italic">
                             Module locked. Manual database update required for master password changes.
+                        </div>
+                    </div>
+                </div>
+            )}
+            {activeTab === 'monetization' && (
+                <div className="space-y-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Coupon Creation */}
+                        <div className="lg:col-span-1 bg-white/5 border border-white/5 p-8 rounded-[32px] space-y-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
+                                    <Ticket size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-xl">Create Coupon</h3>
+                                    <p className="text-xs text-foreground/40 uppercase font-bold tracking-widest mt-1">Generate access keys</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest px-1">Coupon Code</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="ARKITEL_VIP_FREE"
+                                        value={newCoupon.code}
+                                        onChange={(e) => setNewCoupon({...newCoupon, code: e.target.value.toUpperCase()})}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest px-1">Set Price (#)</label>
+                                    <input 
+                                        type="number" 
+                                        placeholder="0"
+                                        value={newCoupon.price}
+                                        onChange={(e) => setNewCoupon({...newCoupon, price: parseInt(e.target.value) || 0})}
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                    />
+                                    <p className="text-[10px] text-foreground/30 px-1 font-medium italic">* Set to 0 for a free automatic unlock code.</p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!newCoupon.code) return;
+                                        const res = await apiFetch('/api/admin/monetization/coupons', {
+                                            method: 'POST',
+                                            body: JSON.stringify(newCoupon)
+                                        });
+                                        if (res.ok) {
+                                            setSuccessMsg("Coupon created successfully!");
+                                            setNewCoupon({ code: '', price: 5000 });
+                                            fetchMonetizationData();
+                                        }
+                                    }}
+                                    className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+                                >
+                                    Generate Access Key
+                                </button>
+                            </div>
+
+                            {/* Active Coupons List */}
+                            <div className="space-y-3 pt-6 border-t border-white/5">
+                                <h4 className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest px-1">Live Codes</h4>
+                                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                                    {coupons.map((c) => (
+                                        <div key={c.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group">
+                                            <div>
+                                                <div className="text-xs font-bold text-foreground">{c.code}</div>
+                                                <div className="text-[10px] text-foreground/40 font-bold">{c.price === 0 ? 'FREE ACCESS' : `#${c.price}`} • {c.is_active ? 'Active' : 'Used'}</div>
+                                            </div>
+                                            <button 
+                                                onClick={async () => {
+                                                    await apiFetch(`/api/admin/monetization/coupons/${c.code}`, { method: 'DELETE' });
+                                                    fetchMonetizationData();
+                                                }}
+                                                className="p-1.5 hover:bg-red-500/10 text-red-500/40 hover:text-red-500 rounded-lg transition-all"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {coupons.length === 0 && <div className="text-[10px] text-center text-foreground/20 italic py-4">No active coupons</div>}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* User Plan Management */}
+                        <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] overflow-hidden flex flex-col">
+                            <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-red-500/10 rounded-2xl text-red-400">
+                                        <CreditCard size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-xl">Monetization Registry</h3>
+                                        <p className="text-xs text-foreground/40 uppercase font-bold tracking-widest mt-1">Manage user plans & limits</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="overflow-x-auto flex-1">
+                                <table className="w-full text-left">
+                                    <thead className="text-[10px] uppercase tracking-[0.2em] text-foreground/30 border-b border-white/5">
+                                        <tr>
+                                            <th className="px-6 py-4 font-bold">User</th>
+                                            <th className="px-6 py-4 font-bold">Plan</th>
+                                            <th className="px-6 py-4 font-bold">Limit / Acc</th>
+                                            <th className="px-6 py-4 font-bold">Payment Proof</th>
+                                            <th className="px-6 py-4 font-bold">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {monetizationUsers.map((u) => (
+                                            <tr key={u.id} className="hover:bg-white/[0.02] transition-colors group/row">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-bold text-foreground text-sm">{u.username}</div>
+                                                    <div className="text-[10px] text-foreground/30 font-mono">ID: {u.id}</div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <select 
+                                                        value={u.plan} 
+                                                        onChange={async (e) => {
+                                                            const newPlan = e.target.value;
+                                                            const isAppr = newPlan === 'premium' ? 1 : 0;
+                                                            const maxAcc = newPlan === 'premium' ? 3 : 1;
+                                                            const sLimit = newPlan === 'premium' ? 500 : 100;
+
+                                                            await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                method: 'POST',
+                                                                body: JSON.stringify({ plan: newPlan, scrape_limit: sLimit, max_accounts: maxAcc, is_approved: isAppr })
+                                                            });
+                                                            fetchMonetizationData();
+                                                        }}
+                                                        className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold uppercase transition-all ${u.plan === 'premium' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/40'}`}
+                                                    >
+                                                        <option value="free">Free</option>
+                                                        <option value="premium">Premium</option>
+                                                    </select>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] text-foreground/30 uppercase font-bold">Limit:</span>
+                                                            <input 
+                                                                type="number"
+                                                                defaultValue={u.scrape_limit}
+                                                                onBlur={async (e) => {
+                                                                    const val = parseInt(e.target.value);
+                                                                    await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                        method: 'POST',
+                                                                        body: JSON.stringify({ ...u, scrape_limit: val })
+                                                                    });
+                                                                }}
+                                                                className="bg-transparent border-none text-xs font-bold text-foreground w-12 focus:ring-0 p-0"
+                                                            />
+                                                        </div>
+                                                        <div className="text-[10px] text-foreground/30 font-bold uppercase">Acc: {u.max_accounts}</div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {u.payment_proof ? (
+                                                        <div className="max-w-[150px]">
+                                                            <div className="text-[10px] font-medium text-emerald-400 truncate bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20" title={u.payment_proof}>
+                                                                {u.payment_proof}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-[10px] text-foreground/20 italic">No proof</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    {u.payment_proof && u.plan === 'free' && (
+                                                        <button 
+                                                            onClick={async () => {
+                                                                await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                    method: 'POST',
+                                                                    body: JSON.stringify({ plan: 'premium', scrape_limit: 500, max_accounts: 3, is_approved: 1 })
+                                                                });
+                                                                setSuccessMsg(`Approved ${u.username}!`);
+                                                                fetchMonetizationData();
+                                                            }}
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-[10px] font-bold uppercase transition-all hover:bg-emerald-400 active:scale-95"
+                                                        >
+                                                            <CheckCircle2 size={12} /> Approve
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>

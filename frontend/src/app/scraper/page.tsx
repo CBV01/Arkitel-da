@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import { Search, Loader2, Users, UsersRound, Megaphone, CheckCircle2, X, ExternalLink, Plus, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
+import { MonetizationOverlay } from '@/components/MonetizationOverlay';
 
 interface ScrapeResult {
     id: string;
@@ -337,7 +338,8 @@ export default function ScraperPage() {
     };
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <MonetizationOverlay featureName="Group Scraper">
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
             {successMsg && (
                 <div className="fixed top-8 right-8 z-[100] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
                     <CheckCircle2 size={20} />
@@ -738,6 +740,7 @@ export default function ScraperPage() {
                     </div>
                 </div>
             )}
-        </div>
+            </div>
+        </MonetizationOverlay>
     );
 }

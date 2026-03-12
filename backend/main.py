@@ -581,6 +581,18 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
 
 @app.post("/api/telegram/send-code")
 async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_user_id)):
+    # Limit check
+    conn = get_db_connection()
+    user = conn.execute("SELECT max_accounts FROM users WHERE id = ?", (user_id,)).fetchone()
+    count_row = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
+    if hasattr(conn, "close"): conn.close()
+    
+    max_acc = user["max_accounts"] if user else 1
+    current_count = count_row[0] if count_row else 0
+    
+    if current_count >= max_acc and user_id != "admin_virtual_id":
+        raise HTTPException(status_code=403, detail=f"Account limit reached ({max_acc}). Please upgrade to Premium to link more accounts.")
+
     # Fallback to defaults from environment/config
     api_id = req.api_id or TELEGRAM_API_ID
     api_hash = req.api_hash or TELEGRAM_API_HASH
@@ -1234,6 +1246,22 @@ async def scrape_keyword_stream(
     user_id: str = Depends(get_current_user_id)
 ):
     conn = get_db_connection()
+    # Premium check
+    user_row = conn.execute("SELECT plan, scrape_limit FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user_row and user_id != "admin_virtual_id":
+        if hasattr(conn, "close"): conn.close()
+        raise HTTPException(status_code=404, detail="User profile not found.")
+    
+    plan = user_row["plan"] if user_row else "free"
+    allowed_limit = user_row["scrape_limit"] if user_row else 50
+    
+    if plan == "free" and user_id != "admin_virtual_id":
+        if hasattr(conn, "close"): conn.close()
+        raise HTTPException(status_code=403, detail="Scraping is a Premium feature. Please upgrade to unlock.")
+
+    # Cap requested limit by allowed limit
+    limit = min(limit, allowed_limit)
+
     if user_id == "admin_virtual_id":
         if phone_number:
             rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
@@ -1610,6 +1638,11 @@ async def bulk_save_members(req_list: List[MemberSaveRequest], user_id: str = De
 @app.get("/api/telegram/leads/members")
 async def get_saved_members(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
+    user = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
+    if (not user or user["plan"] == "free") and user_id != "admin_virtual_id":
+        if hasattr(conn, "close"): conn.close()
+        return {"members": [], "locked": True}
+
     rows = conn.execute("SELECT * FROM lead_members WHERE user_id = ? ORDER BY scraped_at DESC", (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     return {
@@ -1649,6 +1682,124 @@ async def create_broadcast(message: str, type: str = 'info', admin_id: str = Dep
     if hasattr(conn, "close"): conn.close()
     return {"status": "success"}
 
+# --- Monetization & Plans ---
+
+class UserVitalsUpdateRequest(BaseModel):
+    plan: str
+    scrape_limit: int
+    max_accounts: int
+    is_approved: int
+
+@app.get("/api/admin/monetization/users")
+async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT id, username, plan, scrape_limit, max_accounts, is_approved, total_scraped, payment_proof FROM users").fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"users": [dict(id=r["id"], username=r["username"], plan=r["plan"], scrape_limit=r["scrape_limit"], max_accounts=r["max_accounts"], is_approved=r["is_approved"], total_scraped=r["total_scraped"], payment_proof=r["payment_proof"]) for r in rows]}
+
+@app.post("/api/admin/monetization/users/{uid}/vitals")
+async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE users SET plan = ?, scrape_limit = ?, max_accounts = ?, is_approved = ? WHERE id = ?",
+        (req.plan, req.scrape_limit, req.max_accounts, req.is_approved, uid)
+    )
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
+@app.get("/api/admin/monetization/coupons")
+async def get_coupons_admin(admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"coupons": [dict(id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"], created_at=r["created_at"]) for r in rows]}
+
+class CouponCreateRequest(BaseModel):
+    code: str
+    price: int
+
+@app.post("/api/admin/monetization/coupons")
+async def create_coupon_admin(req: CouponCreateRequest, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    try:
+        conn.execute("INSERT INTO coupons (code, price) VALUES (?, ?)", (req.code, req.price))
+        if hasattr(conn, "commit"): conn.commit()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
+@app.delete("/api/admin/monetization/coupons/{code}")
+async def delete_coupon_admin(code: str, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM coupons WHERE code = ?", (code,))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
+# --- User Side Monetization ---
+
+@app.get("/api/monetization/status")
+async def get_user_status(user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    row = conn.execute("SELECT plan, scrape_limit, max_accounts, is_approved, payment_proof FROM users WHERE id = ?", (user_id,)).fetchone()
+    if hasattr(conn, "close"): conn.close()
+    if not row: raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "plan": row["plan"],
+        "scrape_limit": row["scrape_limit"],
+        "max_accounts": row["max_accounts"],
+        "is_approved": row["is_approved"],
+        "has_proof": bool(row["payment_proof"])
+    }
+
+@app.post("/api/monetization/apply-coupon")
+async def apply_coupon(code: str, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    try:
+        coupon = conn.execute("SELECT * FROM coupons WHERE code = ? AND is_active = 1", (code,)).fetchone()
+        if not coupon:
+            raise HTTPException(status_code=400, detail="Invalid or inactive coupon code")
+        
+        price = int(coupon["price"])
+        if price == 0:
+            # FREE access code - unlock immediately
+            conn.execute(
+                "UPDATE users SET plan = 'premium', is_approved = 1, max_accounts = 3, scrape_limit = 500 WHERE id = ?",
+                (user_id,)
+            )
+            # Use coupon once
+            conn.execute("UPDATE coupons SET is_active = 0 WHERE code = ?", (code,))
+            if hasattr(conn, "commit"): conn.commit()
+            return {"status": "success", "message": "Premium plan activated successfully!", "discount": "free"}
+        else:
+            # Discount code - user still needs to pay 'price'
+            return {"status": "success", "message": f"Coupon applied! New price: #{price}", "discount": "partial", "new_price": price}
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
+class PaymentProofRequest(BaseModel):
+    proof_details: str
+    amount: int
+
+@app.post("/api/monetization/submit-proof")
+async def submit_proof(req: PaymentProofRequest, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    try:
+        # Update user record with proof string
+        conn.execute("UPDATE users SET payment_proof = ? WHERE id = ?", (req.proof_details, user_id))
+        # Record in payments table
+        conn.execute(
+            "INSERT INTO payments (user_id, amount, proof_details, status) VALUES (?, ?, ?, ?)",
+            (user_id, req.amount, req.proof_details, 'pending')
+        )
+        if hasattr(conn, "commit"): conn.commit()
+        return {"status": "success", "message": "Proof submitted. Admin will verify shortly."}
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
 @app.delete("/api/admin/broadcast/{broadcast_id}")
 async def delete_broadcast(broadcast_id: int, admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
@@ -1686,6 +1837,12 @@ async def bulk_save_groups(groups: List[SaveGroupRequest], user_id: str = Depend
 @app.get("/api/telegram/leads/groups")
 async def get_saved_groups(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
+    # Premium check
+    user = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
+    if (not user or user["plan"] == "free") and user_id != "admin_virtual_id":
+        if hasattr(conn, "close"): conn.close()
+        return {"groups": [], "locked": True}
+
     rows = conn.execute("SELECT * FROM scraped_groups WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     
@@ -1820,15 +1977,7 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
         log_debug(f"EXTRACT_ERROR for {req.phone_number}: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Extraction failed: {str(e)}")
 
-@app.get("/api/telegram/leads/members")
-async def get_member_leads(user_id: str = Depends(get_current_user_id)):
-    conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM leads WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
-    if hasattr(conn, "close"): conn.close()
-    return {"members": [
-        dict(id=r[0], user_id=r[1], group_id=r[2], username=r[3], first_name=r[4], last_name=r[5], created_at=r[6]) 
-        for r in rows
-    ]}
+# Redundant endpoint removed (get_member_leads was a duplicate of get_saved_members)
 
 @app.delete("/api/telegram/leads/members/{member_id}")
 async def delete_member_lead(member_id: int, user_id: str = Depends(get_current_user_id)):
@@ -2080,9 +2229,13 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
     total_tasks = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
     total_leads = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
     
+    # Monetization stats
+    total_rev = conn.execute("SELECT SUM(amount) FROM payments WHERE status = 'approved'").fetchone()[0] or 0
+    pending_approvals = conn.execute("SELECT COUNT(*) FROM users WHERE payment_proof IS NOT NULL AND plan = 'free'").fetchone()[0]
+
     # Per user stats
     user_stats = conn.execute('''
-        SELECT u.id, u.username, u.is_active,
+        SELECT u.id, u.username, u.is_active, u.plan,
                (SELECT COUNT(*) FROM accounts WHERE user_id = u.id) as accounts,
                (SELECT COUNT(*) FROM tasks WHERE user_id = u.id) as tasks,
                (SELECT COUNT(*) FROM leads WHERE user_id = u.id) as leads
@@ -2102,10 +2255,12 @@ async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
             "users": total_users,
             "accounts": total_accounts,
             "tasks": total_tasks,
-            "leads": total_leads
+            "leads": total_leads,
+            "revenue": total_rev,
+            "pending": pending_approvals
         },
         "broadcasts": [dict(id=b["id"], message=b["message"], type=b["type"], created_at=b["created_at"]) for b in broadcasts],
-        "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), accounts=s[3], tasks=s[4], leads=s[5]) for s in user_stats],
+        "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), plan=s[3], accounts=s[4], tasks=s[5], leads=s[6]) for s in user_stats],
         "service_health": {
              "database": "Healthy",
              "poller": "Active",
