@@ -114,6 +114,25 @@ export default function AdminDashboard() {
         }
     };
 
+    const deleteUser = async (userId: string) => {
+        if (!confirm("CRITICAL WARNING: Are you sure you want to completely delete this user and ALL of their connected accounts, campaigns, and scraped leads? This cannot be undone.")) return;
+        try {
+            const res = await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+            if (res.ok) {
+                setSuccessMsg("User and all data permanently deleted.");
+                setTimeout(() => setSuccessMsg(''), 5000);
+                fetchAdminData();
+            } else {
+                const data = await res.json();
+                setErrorMsg(data.detail || "Failed to delete user");
+                setTimeout(() => setErrorMsg(''), 5000);
+            }
+        } catch (e: any) {
+             setErrorMsg(e.message || "Failed to delete user");
+             setTimeout(() => setErrorMsg(''), 5000);
+        }
+    };
+
     if (loading) {
         return <Preloader message="Synchronizing System Control Matrix..." />;
     }
@@ -288,11 +307,14 @@ export default function AdminDashboard() {
                                                 </button>
                                                 <button
                                                     onClick={() => toggleUserStatus(u.id)}
-                                                    className={`p-2 rounded-lg bg-white/5 transition-all ${u.is_active ? 'text-orange-400 hover:bg-orange-400/10' : 'text-green-400 hover:bg-green-400/10'}`}
+                                                    className={`p-2 rounded-lg bg-green-500/5 hover:bg-green-500/10 transition-all ${u.is_active ? 'text-orange-400 hover:text-orange-500 hover:bg-orange-500/10' : 'text-green-500 hover:bg-green-500/10'}`}
                                                 >
                                                     {u.is_active ? <Pause size={16} /> : <Play size={16} />}
                                                 </button>
-                                                <button className="p-2 rounded-lg bg-white/5 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 transition-all">
+                                                <button
+                                                    onClick={() => deleteUser(u.id)}
+                                                    className="p-2 rounded-lg bg-red-500/5 hover:bg-red-500/10 text-red-500/50 hover:text-red-500 transition-all"
+                                                >
                                                     <Trash2 size={16} />
                                                 </button>
                                             </div>
@@ -523,21 +545,21 @@ export default function AdminDashboard() {
 
             {/* User Detail Overlay */}
             {selectedUser && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-[#0f0f0f] border border-white/10 rounded-[32px] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                        <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-background/80 backdrop-blur-3xl animate-in fade-in duration-300">
+                    <div className="bg-card border border-border rounded-[32px] w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="p-8 border-b border-border flex items-center justify-between bg-foreground/[0.02]">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-500">
                                     <Users size={24} />
                                 </div>
                                 <div>
-                                    <h3 className="text-xl font-bold">{selectedUser.username}</h3>
+                                    <h3 className="text-xl font-bold text-foreground">{selectedUser.username}</h3>
                                     <p className="text-xs text-foreground/40 font-mono mt-0.5">{selectedUser.id}</p>
                                 </div>
                             </div>
                             <button
                                 onClick={() => setSelectedUser(null)}
-                                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                                className="p-2 rounded-xl bg-foreground/5 hover:bg-foreground/10 text-foreground/50 transition-colors"
                             >
                                 <X size={20} />
                                 <span className="sr-only">Close</span>
@@ -552,16 +574,16 @@ export default function AdminDashboard() {
                             ) : (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
-                                            <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Accounts</div>
-                                            <div className="text-2xl font-bold">{userDetails?.accounts?.length || 0}</div>
+                                        <div className="bg-foreground/[0.03] p-5 rounded-2xl border border-border/50">
+                                            <div className="text-[10px] text-foreground/50 uppercase font-bold tracking-wider mb-1">Accounts</div>
+                                            <div className="text-2xl font-bold text-foreground">{userDetails?.accounts?.length || 0}</div>
                                         </div>
-                                        <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
-                                            <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Total Scrapes</div>
-                                            <div className="text-2xl font-bold">{userDetails?.total_scrapes || 0}</div>
+                                        <div className="bg-foreground/[0.03] p-5 rounded-2xl border border-border/50">
+                                            <div className="text-[10px] text-foreground/50 uppercase font-bold tracking-wider mb-1">Total Scrapes</div>
+                                            <div className="text-2xl font-bold text-foreground">{userDetails?.total_scrapes || 0}</div>
                                         </div>
-                                        <div className="bg-white/5 p-5 rounded-2xl border border-white/5">
-                                            <div className="text-[10px] text-foreground/30 uppercase font-bold tracking-wider mb-1">Active Status</div>
+                                        <div className="bg-foreground/[0.03] p-5 rounded-2xl border border-border/50">
+                                            <div className="text-[10px] text-foreground/50 uppercase font-bold tracking-wider mb-1">Active Status</div>
                                             <div className={`text-lg font-bold ${selectedUser.is_active ? 'text-green-500' : 'text-red-500'}`}>
                                                 {selectedUser.is_active ? 'Healthy' : 'Suspended'}
                                             </div>
@@ -572,8 +594,8 @@ export default function AdminDashboard() {
                                         <h4 className="text-sm font-bold text-foreground/60 uppercase tracking-widest">Connected Phone Numbers</h4>
                                         <div className="grid grid-cols-1 gap-2">
                                             {userDetails?.accounts?.map((acc: any, idx: number) => (
-                                                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
-                                                    <span className="font-mono text-sm">{acc.phone_number}</span>
+                                                <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-foreground/[0.03] border border-border/50">
+                                                    <span className="font-mono text-sm text-foreground">{acc.phone_number}</span>
                                                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${acc.status === 'active' ? 'bg-green-500/20 text-green-500' : 'bg-red-500/20 text-red-500'}`}>
                                                         {acc.status}
                                                     </span>
@@ -586,9 +608,9 @@ export default function AdminDashboard() {
                                         <h4 className="text-sm font-bold text-foreground/60 uppercase tracking-widest">Campaign Overview</h4>
                                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                             {userDetails?.campaign_summary && Object.entries(userDetails.campaign_summary).map(([status, count]: [any, any]) => (
-                                                <div key={status} className="bg-white/5 p-3 rounded-xl border border-white/5">
-                                                    <div className="text-[9px] text-foreground/40 uppercase font-bold mb-1">{status}</div>
-                                                    <div className="text-lg font-bold">{count}</div>
+                                                <div key={status} className="bg-foreground/[0.03] p-3 rounded-xl border border-border/50">
+                                                    <div className="text-[9px] text-foreground/50 uppercase font-bold mb-1">{status}</div>
+                                                    <div className="text-lg font-bold text-foreground">{count}</div>
                                                 </div>
                                             ))}
                                             {(!userDetails?.campaign_summary || Object.keys(userDetails.campaign_summary).length === 0) && (

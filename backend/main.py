@@ -1907,6 +1907,38 @@ async def admin_get_users(admin_id: str = Depends(get_current_admin)):
     if hasattr(conn, "close"): conn.close()
     return {"users": [dict(id=u[0], username=u[1], role=u[2], is_active=u[3]) for u in users]}
 
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, admin_id: str = Depends(get_current_admin)):
+    """Deletes a user and all their associated data from the system."""
+    if user_id == "admin_virtual_id":
+        raise HTTPException(status_code=400, detail="Cannot delete the global virtual admin.")
+        
+    conn = get_db_connection()
+    try:
+        # Check if user is an admin - prevent deleting real admins as a safety measure
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if user and user[0] == 'admin':
+            raise HTTPException(status_code=400, detail="Cannot delete another admin account.")
+            
+        # Delete user
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        # Cascade manually for SQLite/Turso:
+        conn.execute("DELETE FROM accounts WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM tasks WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM leads WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM scraped_groups WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM scrape_history WHERE user_id = ?", (user_id,))
+        
+        if hasattr(conn, "commit"): conn.commit()
+        log_debug(f"ADMIN: Completely deleted user {user_id}")
+        return {"status": "success", "message": f"User {user_id} and all their data deleted."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
 @app.get("/api/admin/debug-logs")
 async def get_debug_logs(admin_id: str = Depends(get_current_admin)):
     return {"logs": list(LOG_BUFFER)}
