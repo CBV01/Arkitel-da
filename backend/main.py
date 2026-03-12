@@ -52,6 +52,52 @@ def log_debug(msg: str):
     print(formatted)
     LOG_BUFFER.append(formatted)
 
+# --- Tiered Plan Configurations ---
+PLAN_CONFIGS = {
+    "free": {
+        "max_daily_campaigns": 20,
+        "max_accounts": 1,
+        "max_daily_keywords": 5,
+        "scrape_limit": 50,
+        "has_premium_access": False
+    },
+    "basic": {
+        "max_daily_campaigns": 50,
+        "max_accounts": 1,
+        "max_daily_keywords": 10,
+        "scrape_limit": 50,
+        "has_premium_access": True
+    },
+    "standard": {
+        "max_daily_campaigns": 150,
+        "max_accounts": 2,
+        "max_daily_keywords": 15,
+        "scrape_limit": 150,
+        "has_premium_access": True
+    },
+    "premium": {
+        "max_daily_campaigns": 300,
+        "max_accounts": 3,
+        "max_daily_keywords": 30,
+        "scrape_limit": 350,
+        "has_premium_access": True
+    }
+}
+
+def check_and_reset_daily_limits(conn, user_id, user_row):
+    """Resets daily counts if the day has changed."""
+    last_reset = user_row.get("last_reset_date")
+    now_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    
+    if last_reset != now_date:
+        conn.execute(
+            "UPDATE users SET daily_campaign_count = 0, daily_keyword_count = 0, last_reset_date = ? WHERE id = ?",
+            (now_date, user_id)
+        )
+        if hasattr(conn, "commit"): conn.commit()
+        return True
+    return False
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup logic
@@ -1247,17 +1293,40 @@ async def scrape_keyword_stream(
 ):
     conn = get_db_connection()
     # Premium check
-    user_row = conn.execute("SELECT plan, scrape_limit FROM users WHERE id = ?", (user_id,)).fetchone()
+    user_row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if not user_row and user_id != "admin_virtual_id":
         if hasattr(conn, "close"): conn.close()
         raise HTTPException(status_code=404, detail="User profile not found.")
     
-    plan = user_row["plan"] if user_row else "free"
-    allowed_limit = user_row["scrape_limit"] if user_row else 50
-    
-    if plan == "free" and user_id != "admin_virtual_id":
-        if hasattr(conn, "close"): conn.close()
-        raise HTTPException(status_code=403, detail="Scraping is a Premium feature. Please upgrade to unlock.")
+    # Handle Virtual Admin
+    if user_id == "admin_virtual_id":
+        plan = "premium"
+        allowed_limit = 1000
+        max_keywords = 9999
+        current_keywords = 0
+    else:
+        # Reset daily counts if needed
+        check_and_reset_daily_limits(conn, user_id, user_row)
+        
+        plan = user_row["plan"] or "free"
+        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        
+        # Check Premium Access
+        if not plan_cfg["has_premium_access"]:
+            if hasattr(conn, "close"): conn.close()
+            raise HTTPException(status_code=403, detail=f"Access Denied: The {plan.capitalize()} plan does not include Scraper access. Upgrade to UNLOCK.")
+        
+        allowed_limit = user_row["scrape_limit"] or plan_cfg["scrape_limit"]
+        max_keywords = user_row["max_daily_keywords"] or plan_cfg["max_daily_keywords"]
+        current_keywords = user_row["daily_keyword_count"] or 0
+        
+        if current_keywords >= max_keywords:
+            if hasattr(conn, "close"): conn.close()
+            raise HTTPException(status_code=403, detail=f"Daily keyword limit reached ({max_keywords}). Reset at Midnight UTC.")
+
+        # Increment keyword use
+        conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
+        if hasattr(conn, "commit"): conn.commit()
 
     # Cap requested limit by allowed limit
     limit = min(limit, allowed_limit)
@@ -1638,8 +1707,11 @@ async def bulk_save_members(req_list: List[MemberSaveRequest], user_id: str = De
 @app.get("/api/telegram/leads/members")
 async def get_saved_members(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    user = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
-    if (not user or user["plan"] == "free") and user_id != "admin_virtual_id":
+    user_row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
+    plan = user_row["plan"] if user_row else "free"
+    plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+    
+    if not plan_cfg["has_premium_access"] and user_id != "admin_virtual_id":
         if hasattr(conn, "close"): conn.close()
         return {"members": [], "locked": True}
 
@@ -1686,23 +1758,49 @@ async def create_broadcast(message: str, type: str = 'info', admin_id: str = Dep
 
 class UserVitalsUpdateRequest(BaseModel):
     plan: str
-    scrape_limit: int
-    max_accounts: int
+    scrape_limit: Optional[int] = None
+    max_accounts: Optional[int] = None
+    max_daily_campaigns: Optional[int] = None
+    max_daily_keywords: Optional[int] = None
     is_approved: int
 
 @app.get("/api/admin/monetization/users")
 async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    rows = conn.execute("SELECT id, username, plan, scrape_limit, max_accounts, is_approved, total_scraped, payment_proof FROM users").fetchall()
+    rows = conn.execute("SELECT * FROM users").fetchall()
     if hasattr(conn, "close"): conn.close()
-    return {"users": [dict(id=r["id"], username=r["username"], plan=r["plan"], scrape_limit=r["scrape_limit"], max_accounts=r["max_accounts"], is_approved=r["is_approved"], total_scraped=r["total_scraped"], payment_proof=r["payment_proof"]) for r in rows]}
+    return {"users": [dict(
+        id=r["id"], 
+        username=r["username"], 
+        plan=r["plan"], 
+        scrape_limit=r["scrape_limit"], 
+        max_accounts=r["max_accounts"], 
+        max_daily_campaigns=r["max_daily_campaigns"],
+        daily_campaign_count=r["daily_campaign_count"],
+        max_daily_keywords=r["max_daily_keywords"],
+        daily_keyword_count=r["daily_keyword_count"],
+        is_approved=r["is_approved"], 
+        total_scraped=r["total_scraped"], 
+        payment_proof=r["payment_proof"]
+    ) for r in rows]}
 
 @app.post("/api/admin/monetization/users/{uid}/vitals")
 async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
+    plan_cfg = PLAN_CONFIGS.get(req.plan, PLAN_CONFIGS["free"])
+    
+    # Use provided values or defaults from plan
+    s_limit = req.scrape_limit if req.scrape_limit is not None else plan_cfg["scrape_limit"]
+    m_acc = req.max_accounts if req.max_accounts is not None else plan_cfg["max_accounts"]
+    m_camp = req.max_daily_campaigns if req.max_daily_campaigns is not None else plan_cfg["max_daily_campaigns"]
+    m_key = req.max_daily_keywords if req.max_daily_keywords is not None else plan_cfg["max_daily_keywords"]
+
     conn.execute(
-        "UPDATE users SET plan = ?, scrape_limit = ?, max_accounts = ?, is_approved = ? WHERE id = ?",
-        (req.plan, req.scrape_limit, req.max_accounts, req.is_approved, uid)
+        """UPDATE users SET 
+           plan = ?, scrape_limit = ?, max_accounts = ?, 
+           max_daily_campaigns = ?, max_daily_keywords = ?, 
+           is_approved = ? WHERE id = ?""",
+        (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, uid)
     )
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
@@ -1744,13 +1842,21 @@ async def delete_coupon_admin(code: str, admin_id: str = Depends(get_current_adm
 @app.get("/api/monetization/status")
 async def get_user_status(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    row = conn.execute("SELECT plan, scrape_limit, max_accounts, is_approved, payment_proof FROM users WHERE id = ?", (user_id,)).fetchone()
+    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if hasattr(conn, "close"): conn.close()
     if not row: raise HTTPException(status_code=404, detail="User not found")
+    
+    # Calculate usage percentages for UI
+    p_cfg = PLAN_CONFIGS.get(row["plan"] or "free", PLAN_CONFIGS["free"])
+    
     return {
         "plan": row["plan"],
-        "scrape_limit": row["scrape_limit"],
-        "max_accounts": row["max_accounts"],
+        "scrape_limit": row["scrape_limit"] or p_cfg["scrape_limit"],
+        "max_accounts": row["max_accounts"] or p_cfg["max_accounts"],
+        "max_daily_campaigns": row["max_daily_campaigns"] or p_cfg["max_daily_campaigns"],
+        "daily_campaign_count": row["daily_campaign_count"] or 0,
+        "max_daily_keywords": row["max_daily_keywords"] or p_cfg["max_daily_keywords"],
+        "daily_keyword_count": row["daily_keyword_count"] or 0,
         "is_approved": row["is_approved"],
         "has_proof": bool(row["payment_proof"])
     }
@@ -1765,10 +1871,15 @@ async def apply_coupon(code: str, user_id: str = Depends(get_current_user_id)):
         
         price = int(coupon["price"])
         if price == 0:
-            # FREE access code - unlock immediately
+            # FREE access code - unlock Premium immediately (highest plan)
+            cfg = PLAN_CONFIGS["premium"]
             conn.execute(
-                "UPDATE users SET plan = 'premium', is_approved = 1, max_accounts = 3, scrape_limit = 500 WHERE id = ?",
-                (user_id,)
+                """UPDATE users SET 
+                   plan = 'premium', is_approved = 1, 
+                   max_accounts = ?, scrape_limit = ?,
+                   max_daily_campaigns = ?, max_daily_keywords = ?
+                   WHERE id = ?""",
+                (cfg["max_accounts"], cfg["scrape_limit"], cfg["max_daily_campaigns"], cfg["max_daily_keywords"], user_id)
             )
             # Use coupon once
             conn.execute("UPDATE coupons SET is_active = 0 WHERE code = ?", (code,))
@@ -1838,8 +1949,11 @@ async def bulk_save_groups(groups: List[SaveGroupRequest], user_id: str = Depend
 async def get_saved_groups(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     # Premium check
-    user = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
-    if (not user or user["plan"] == "free") and user_id != "admin_virtual_id":
+    user_row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
+    plan = user_row["plan"] if user_row else "free"
+    plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+    
+    if not plan_cfg["has_premium_access"] and user_id != "admin_virtual_id":
         if hasattr(conn, "close"): conn.close()
         return {"groups": [], "locked": True}
 
@@ -2031,6 +2145,30 @@ async def get_campaigns(user_id: str = Depends(get_current_user_id)):
 @app.post("/api/telegram/campaigns")
 async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
+    # Plan Limit Check
+    if user_id != "admin_virtual_id":
+        user_row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user_row:
+            if hasattr(conn, "close"): conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Reset daily counts if needed
+        check_and_reset_daily_limits(conn, user_id, user_row)
+        
+        plan = user_row["plan"] or "free"
+        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        
+        max_daily = user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"]
+        current_daily = user_row["daily_campaign_count"] or 0
+        
+        if current_daily >= max_daily:
+            if hasattr(conn, "close"): conn.close()
+            raise HTTPException(status_code=403, detail=f"Daily campaign limit reached ({max_daily}). Upgrade your plan to increase limits.")
+        
+        # Increment usage
+        conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + 1 WHERE id = ?", (user_id,))
+        if hasattr(conn, "commit"): conn.commit()
+
     try:
         # The schedule_time sent by the frontend must already be in UTC.
         # Frontend converts datetime-local (local time) -> UTC before sending.

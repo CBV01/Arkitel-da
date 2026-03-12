@@ -224,36 +224,63 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                     </button>
 
                     {!isCollapsed && user && (
-                        <div className="px-4 py-2 mt-4 space-y-3">
+                        <div className="px-4 py-2 mt-4 space-y-4">
                             <div className="flex items-center justify-between">
-                                <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">User Plan</div>
-                                {status?.plan === 'premium' ? (
-                                    <span className="text-[9px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">PREMIUM</span>
-                                ) : (
-                                    <span className="text-[9px] font-bold text-foreground/40 bg-foreground/5 px-2 py-0.5 rounded-full">FREE</span>
-                                )}
+                                <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">System Status</div>
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border border-current uppercase ${
+                                    status?.plan === 'premium' ? 'text-indigo-400 bg-indigo-500/10' : 
+                                    status?.plan === 'standard' ? 'text-amber-400 bg-amber-500/10' :
+                                    status?.plan === 'basic' ? 'text-emerald-400 bg-emerald-500/10' :
+                                    'text-foreground/40 bg-foreground/5'
+                                }`}>
+                                    {status?.plan || 'Free'}
+                                </span>
                             </div>
                             
                             {status?.plan === 'free' && (
-                                <Link href="/scraper" className="block w-full text-center py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-500 hover:text-white text-[10px] font-bold rounded-lg transition-all border border-indigo-500/20">
+                                <Link href="/scraper" className="block w-full text-center py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-500 hover:text-white text-[10px] font-black tracking-widest rounded-lg transition-all border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
                                     UPGRADE NOW
                                 </Link>
                             )}
 
-                            <div className="pt-2">
-                                <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase mb-1">
-                                    <span>Extraction Power</span>
-                                    <span>{status?.scrape_limit || 100}</span>
+                            <div className="space-y-3 pt-2">
+                                {/* Campaigns Limit */}
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
+                                        <span>Daily Campaigns</span>
+                                        <span>{status?.daily_campaign_count || 0} / {status?.max_daily_campaigns || 20}</span>
+                                    </div>
+                                    <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-indigo-500 transition-all duration-1000"
+                                            style={{ width: `${Math.min(100, ((status?.daily_campaign_count || 0) / (status?.max_daily_campaigns || 20)) * 100)}%` }}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="h-1.5 w-full bg-foreground/5 rounded-full overflow-hidden">
-                                    <div 
-                                        className={`h-full bg-indigo-500 transition-all duration-1000 ${status?.plan === 'premium' ? 'w-full shadow-lg shadow-indigo-500/50' : 'w-1/4'}`}
-                                    />
+
+                                {/* Keyword Limit */}
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
+                                        <span>Keywords Searched</span>
+                                        <span>{status?.daily_keyword_count || 0} / {status?.max_daily_keywords || 5}</span>
+                                    </div>
+                                    <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-emerald-500 transition-all duration-1000"
+                                            style={{ width: `${Math.min(100, ((status?.daily_keyword_count || 0) / (status?.max_daily_keywords || 5)) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Scrape Power */}
+                                <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
+                                    <span>Scrape Limit</span>
+                                    <span className="text-foreground/60">{status?.scrape_limit || 50} / search</span>
                                 </div>
                             </div>
 
                             <div className="pt-2 border-t border-border/50">
-                                <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">Authenticated as</div>
+                                <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">Session</div>
                                 <div className="text-xs text-foreground/60 font-semibold truncate mt-0.5">{user.username}</div>
                             </div>
                         </div>

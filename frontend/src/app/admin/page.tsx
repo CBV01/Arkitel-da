@@ -563,48 +563,46 @@ export default function AdminDashboard() {
                                                         value={u.plan} 
                                                         onChange={async (e) => {
                                                             const newPlan = e.target.value;
-                                                            const isAppr = newPlan === 'premium' ? 1 : 0;
-                                                            const maxAcc = newPlan === 'premium' ? 3 : 1;
-                                                            const sLimit = newPlan === 'premium' ? 500 : 100;
-
+                                                            // For manual plan changes, we let the backend handle the defaults
                                                             await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
                                                                 method: 'POST',
-                                                                body: JSON.stringify({ plan: newPlan, scrape_limit: sLimit, max_accounts: maxAcc, is_approved: isAppr })
+                                                                body: JSON.stringify({ plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 })
+                                                                // Pass is_approved=1 for any paid plan
                                                             });
                                                             fetchMonetizationData();
                                                         }}
-                                                        className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold uppercase transition-all ${u.plan === 'premium' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/40'}`}
+                                                        className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition-all ${u.plan !== 'free' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/20'}`}
                                                     >
                                                         <option value="free">Free</option>
-                                                        <option value="premium">Premium</option>
+                                                        <option value="basic">Basic (50c)</option>
+                                                        <option value="standard">Standard (150c)</option>
+                                                        <option value="premium">Premium (300c)</option>
                                                     </select>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="flex flex-col gap-1">
+                                                    <div className="flex flex-col gap-1.5">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-[10px] text-foreground/30 uppercase font-bold">Limit:</span>
-                                                            <input 
-                                                                type="number"
-                                                                defaultValue={u.scrape_limit}
-                                                                onBlur={async (e) => {
-                                                                    const val = parseInt(e.target.value);
-                                                                    await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
-                                                                        method: 'POST',
-                                                                        body: JSON.stringify({ ...u, scrape_limit: val })
-                                                                    });
-                                                                }}
-                                                                className="bg-transparent border-none text-xs font-bold text-foreground w-12 focus:ring-0 p-0"
-                                                            />
+                                                            <span className="text-[9px] text-foreground/30 font-black uppercase">CAMPAIGNS:</span>
+                                                            <span className="text-[10px] font-mono text-foreground">{u.daily_campaign_count} / {u.max_daily_campaigns}</span>
                                                         </div>
-                                                        <div className="text-[10px] text-foreground/30 font-bold uppercase">Acc: {u.max_accounts}</div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[9px] text-foreground/30 font-black uppercase">KEYWORDS:</span>
+                                                            <span className="text-[10px] font-mono text-foreground">{u.daily_keyword_count} / {u.max_daily_keywords}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[9px] text-foreground/30 font-black uppercase">SCRAPE:</span>
+                                                            <span className="text-[10px] font-mono text-foreground">{u.scrape_limit}</span>
+                                                        </div>
+                                                        <div className="text-[9px] text-foreground/30 font-black uppercase">ACCOUNTS: {u.max_accounts}</div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     {u.payment_proof ? (
-                                                        <div className="max-w-[150px]">
+                                                        <div className="max-w-[150px] space-y-1">
                                                             <div className="text-[10px] font-medium text-emerald-400 truncate bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20" title={u.payment_proof}>
                                                                 {u.payment_proof}
                                                             </div>
+                                                            <div className="text-[8px] text-foreground/30 uppercase font-bold text-center">Submitted</div>
                                                         </div>
                                                     ) : (
                                                         <span className="text-[10px] text-foreground/20 italic">No proof</span>
@@ -614,14 +612,15 @@ export default function AdminDashboard() {
                                                     {u.payment_proof && u.plan === 'free' && (
                                                         <button 
                                                             onClick={async () => {
+                                                                // Default to premium on manual approval unless specified
                                                                 await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
                                                                     method: 'POST',
-                                                                    body: JSON.stringify({ plan: 'premium', scrape_limit: 500, max_accounts: 3, is_approved: 1 })
+                                                                    body: JSON.stringify({ plan: 'premium', is_approved: 1 })
                                                                 });
                                                                 setSuccessMsg(`Approved ${u.username}!`);
                                                                 fetchMonetizationData();
                                                             }}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-[10px] font-bold uppercase transition-all hover:bg-emerald-400 active:scale-95"
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-[10px] font-bold uppercase transition-all hover:bg-emerald-400 active:scale-95 shadow-lg shadow-emerald-500/20"
                                                         >
                                                             <CheckCircle2 size={12} /> Approve
                                                         </button>

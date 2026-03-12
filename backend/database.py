@@ -326,14 +326,19 @@ def init_db():
     except:
         pass
 
-    # Migration for users table (Premium Features)
+    # Migration for users table (Premium Features & Plan Limits)
     user_cols = [
         ("plan", "TEXT DEFAULT 'free'"),
         ("scrape_limit", "INTEGER DEFAULT 100"),
         ("max_accounts", "INTEGER DEFAULT 1"),
         ("total_scraped", "INTEGER DEFAULT 0"),
         ("is_approved", "INTEGER DEFAULT 0"),
-        ("payment_proof", "TEXT")
+        ("payment_proof", "TEXT"),
+        ("max_daily_campaigns", "INTEGER DEFAULT 20"),
+        ("daily_campaign_count", "INTEGER DEFAULT 0"),
+        ("max_daily_keywords", "INTEGER DEFAULT 5"),
+        ("daily_keyword_count", "INTEGER DEFAULT 0"),
+        ("last_reset_date", "TEXT")
     ]
     for col_name, col_def in user_cols:
         try:
