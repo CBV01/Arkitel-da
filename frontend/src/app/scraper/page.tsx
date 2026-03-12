@@ -326,10 +326,13 @@ export default function ScraperPage() {
     });
 
     const toggleSelectAll = () => {
-        if (selectedGroups.size === filteredResults.filter(r => !r.is_member).length) {
+        // Treat is_member as false if it's undefined (Layer 2/3 results don't always set it)
+        const selectable = filteredResults.filter(r => !r.is_member);
+        const allSelected = selectable.length > 0 && selectedGroups.size === selectable.length;
+        if (allSelected) {
             setSelectedGroups(new Set());
         } else {
-            setSelectedGroups(new Set(filteredResults.filter(r => !r.is_member).map(r => r.id)));
+            setSelectedGroups(new Set(selectable.map(r => r.id)));
         }
     };
 
