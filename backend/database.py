@@ -272,6 +272,14 @@ def init_db():
             country TEXT,
             scraped_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS account_joins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            phone_number TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(phone_number, group_id)
+        )""",
     ]
 
     conn = cast(Any, get_db_connection())

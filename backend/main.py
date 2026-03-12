@@ -234,8 +234,8 @@ async def resolve_tg_entity(client, target):
 
     return None
 
-async def smart_join(client, target):
-    """Joins a group/channel using the best available method."""
+async def smart_join(client, target, user_id: str, phone_number: str):
+    """Joins a group/channel and records it in the persistence layer."""
     from telethon.tl.functions.channels import JoinChannelRequest # type: ignore
     from telethon.tl.functions.messages import ImportChatInviteRequest # type: ignore
     
@@ -244,9 +244,41 @@ async def smart_join(client, target):
         raise Exception(f"Could not resolve entity for {target}")
         
     if isinstance(res, tuple) and res[0] == "invite":
-        return await client(ImportChatInviteRequest(res[1]))
+        result = await client(ImportChatInviteRequest(res[1]))
+        target_id = str(target) # For invite links, we use the link as ID or the hash
     else:
-        return await client(JoinChannelRequest(res))
+        result = await client(JoinChannelRequest(res))
+        target_id = str(getattr(res, 'id', target))
+
+    # Record Persistence (Multi-mapping for robust UI matching)
+    try:
+        conn = get_db_connection()
+        # 1. Record the exact identifier used for the join request (e.g. @username or numeric ID)
+        conn.execute(
+            "INSERT OR IGNORE INTO account_joins (user_id, phone_number, group_id) VALUES (?, ?, ?)",
+            (user_id, phone_number, str(target))
+        )
+        if not isinstance(res, tuple):
+            # 2. Record the resolved numeric ID (The most stable reference)
+            res_id = str(getattr(res, 'id', ''))
+            if res_id:
+                conn.execute(
+                    "INSERT OR IGNORE INTO account_joins (user_id, phone_number, group_id) VALUES (?, ?, ?)",
+                    (user_id, phone_number, res_id)
+                )
+            # 3. Record the username if it exists
+            username = getattr(res, 'username', None)
+            if username:
+                conn.execute(
+                    "INSERT OR IGNORE INTO account_joins (user_id, phone_number, group_id) VALUES (?, ?, ?)",
+                    (user_id, phone_number, str(username))
+                )
+        if hasattr(conn, "commit"): conn.commit()
+        if hasattr(conn, "close"): conn.close()
+    except Exception as db_e:
+        log_debug(f"DB_JOIN_REC_ERR: {str(db_e)}")
+
+    return result
 
 from fastapi import Request  # type: ignore
 from fastapi.responses import JSONResponse  # type: ignore
@@ -1443,20 +1475,45 @@ async def bulk_join_stream(
                 group_label = str(g_id)
 
                 try:
-                    # Optimized Human Speed (15-35s)
-                    wait_time = random.randint(15, 35)
+                    # Human Rhythms: Longer randomized intervals (45-120s)
+                    wait_time = random.randint(45, 120)
+                    
+                    # Micro-Rest: Pause for 2 mins every 5 joins to avoid account flagging
+                    if idx > 1 and (idx - 1) % 5 == 0:
+                        yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': 'Applying 2-minute Micro-Rest for account safety...'})}\n\n"
+                        await asyncio.sleep(120)
+
                     yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Safety delay {wait_time}s...'})}\n\n"
                     await asyncio.sleep(wait_time)
                     
                     yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Joining {group_label}...'})}\n\n"
                     # Use pool-based client
-                    await smart_join(client, g_id)
+                    await smart_join(client, g_id, str(user_id), str(phone_number))
                     
                     joined = joined + 1
                     yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
                 except Exception as e:
-                    failed = failed + 1
+                    from telethon.errors import FloodWaitError # type: ignore
                     err_r = str(e)
+                    
+                    if isinstance(e, FloodWaitError):
+                        wait_seconds: int = cast(int, getattr(e, 'seconds', 0))
+                        if wait_seconds <= 300: # Wait up to 5 mins automatically
+                            yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Rate limit: Staying quiet for {wait_seconds}s...'})}\n\n"
+                            await asyncio.sleep(wait_seconds + 2)
+                            # Retry this same index once
+                            try:
+                                await smart_join(client, g_id, str(user_id), str(phone_number))
+                                joined = joined + 1
+                                yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
+                                continue
+                            except Exception as retry_e:
+                                err_r = str(retry_e)
+                        else:
+                            yield f"data: {_json.dumps({'type': 'flood', 'msg': f'Telegram Rate Limit: Please wait {wait_seconds} seconds before joining more groups.'})}\n\n"
+                            break
+
+                    failed = failed + 1
                     err_s = err_r
                     # Extremely safe truncation to avoid indexing errors
                     if len(err_r) > 80:
@@ -1467,9 +1524,6 @@ async def bulk_join_stream(
                         err_s += "..."
                     failed_groups.append({'name': group_label, 'reason': err_s})
                     yield f"data: {_json.dumps({'type': 'failed', 'name': group_label, 'reason': err_s, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
-                    if "FloodWaitError" in err_r:
-                        yield f"data: {_json.dumps({'type': 'flood', 'msg': 'Telegram Rate Limit: Your account is resting. Please wait 1-2 hours before joining more groups.'})}\n\n"
-                        break
             
             yield f"data: {_json.dumps({'type': 'done', 'joined': joined, 'failed': failed, 'failed_groups': failed_groups})}\n\n"
         except Exception as global_e:
@@ -1489,7 +1543,7 @@ class JoinRequest(BaseModel):
 async def join_single(req: JoinRequest, user_id: str = Depends(get_current_user_id)):
     try:
         client = await POOL.get_client(user_id, req.phone_number)
-        await smart_join(client, req.group_id)
+        await smart_join(client, req.group_id, user_id, req.phone_number)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1652,6 +1706,13 @@ async def get_saved_groups(user_id: str = Depends(get_current_user_id)):
             } for r in rows
         ]
     }
+
+@app.get("/api/telegram/leads/joined-status")
+async def get_joined_status(user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT group_id FROM account_joins WHERE user_id = ?", (user_id,)).fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"joined_ids": [r[0] for r in rows]}
 
 @app.delete("/api/telegram/leads/groups/{group_id}")
 async def delete_saved_group(group_id: str, user_id: str = Depends(get_current_user_id)):
@@ -1827,9 +1888,17 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         # We store it as-is and the poller compares against datetime.now(timezone.utc).
         now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M')
         print(f"CAMPAIGN: New campaign '{req.name}' | Scheduled(UTC): {req.schedule_time} | Server UTC now: {now_utc}")
+        # Truncate to minutes to match poller format exactly
+        clean_time = req.schedule_time
+        if 'T' in clean_time:
+            # If it has seconds, drop them
+            parts = clean_time.split(':')
+            if len(parts) > 2:
+                clean_time = f"{parts[0]}:{parts[1]}"
+
         conn.execute(
             "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count, batch_number, failed_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, req.name, req.phone_number, req.schedule_time, req.message, str(req.groups), "pending", req.interval_hours, len(req.groups), 0, 1, "[]")
+            (user_id, req.name, req.phone_number, clean_time, req.message, str(req.groups), "pending", req.interval_hours, len(req.groups), 0, 1, "[]")
         )
         if hasattr(conn, "commit"): conn.commit()
         return {"status": "success", "message": f"Campaign scheduled for {req.schedule_time} UTC."}
@@ -2278,8 +2347,17 @@ async def task_poller():
 
                     # Personalization Merging & STRIP WHITESPACE (Fixes Code Block bug)
                     final_msg_base = str(message).strip()
-                    final_msg_base = final_msg_base.replace('{{Group Name}}', getattr(entity, 'title', 'Our Group'))
-                    final_msg_base = final_msg_base.replace('{{First Name}}', '').replace('{{Username}}', '')
+                    
+                    # Smart Variable Replacement
+                    if hasattr(entity, 'title'): # It's a Group or Channel
+                        final_msg_base = final_msg_base.replace('{{Group Name}}', getattr(entity, 'title', 'Our Group'))
+                        final_msg_base = final_msg_base.replace('{{First Name}}', 'everyone').replace('{{Username}}', 'group')
+                    else: # It's a User
+                        f_name = getattr(entity, 'first_name', 'there')
+                        u_name = getattr(entity, 'username', f_name)
+                        final_msg_base = final_msg_base.replace('{{First Name}}', f_name)
+                        final_msg_base = final_msg_base.replace('{{Username}}', f_name)
+                        final_msg_base = final_msg_base.replace('{{Group Name}}', 'this chat')
 
                     # Final Spintax processing
                     final_msg = recursive_spin(final_msg_base).strip()
@@ -2291,12 +2369,17 @@ async def task_poller():
                         log_debug(f"BKG_TASK[{task_id}]: TRANSMITTED successfully.")
                         sent_ok_stats[0] += 1 # type: ignore
                         
-                        # Background count update (Less frequent to avoid choke)
+                        # INSTANT COUNT UPDATE (Every message)
+                        u_conn = get_db_connection()
+                        u_conn.execute("UPDATE tasks SET sent_count = ? WHERE id = ?", (sent_ok_stats[0], task_id))
+                        if hasattr(u_conn, "commit"): u_conn.commit()
+                        
+                        # BATCH LOG UPDATE (Every 5 messages - prevents DB choking)
                         if sent_ok_stats[0] % 5 == 0:
-                            u_conn = get_db_connection()
-                            u_conn.execute("UPDATE tasks SET sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
+                            u_conn.execute("UPDATE tasks SET failed_groups = ? WHERE id = ?", (json.dumps(failed_list), task_id))
                             if hasattr(u_conn, "commit"): u_conn.commit()
-                            if hasattr(u_conn, "close"): u_conn.close()
+                        
+                        if hasattr(u_conn, "close"): u_conn.close()
                             
                     except Exception as send_e:
                         err_str = str(send_e)
@@ -2319,11 +2402,12 @@ async def task_poller():
             
             # Final Batch Update (One Connection)
             conn = get_db_connection()
-            if interval > 0:
-                new_time = (datetime.now(timezone.utc) + timedelta(hours=interval)).isoformat()
+            if int(interval) > 0:
+                new_time = (datetime.now(timezone.utc) + timedelta(hours=int(interval))).strftime('%Y-%m-%dT%H:%M')
+                # RESET sent_count TO 0 for next batch cycle
                 conn.execute(
-                    "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = ?, failed_groups = ? WHERE id = ?", 
-                    (new_time, sent_ok_stats[0], json.dumps(failed_list), task_id)
+                    "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 
+                    (new_time, json.dumps(failed_list), task_id)
                 )
                 print(f"BKG: Task {task_id} rescheduled for {new_time} (Successful: {sent_ok_stats[0]})")
             else:

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Bookmark, Loader2, Megaphone, X, Trash2, Search, UserPlus, Users, Check, CheckCircle2, XCircle, AlertTriangle, UsersRound, Shield, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bookmark, Loader2, Megaphone, X, Trash2, Search, UserPlus, Users, Check, CheckCircle2, XCircle, AlertTriangle, UsersRound, Shield, ChevronRight, Minus, Maximize2 } from 'lucide-react';
 import { apiFetch, getToken } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
 import { Preloader } from '@/components/Preloader';
@@ -60,9 +60,11 @@ export default function LeadsPage() {
         done: boolean;
         log: { type: 'joined' | 'failed' | 'flood'; name: string; reason?: string }[];
         failedGroups: { name: string; reason: string }[];
+        minimized: boolean;
     }>({
-        open: false, total: 0, joined: 0, failed: 0, done: false, log: [], failedGroups: []
+        open: false, total: 0, joined: 0, failed: 0, done: false, log: [], failedGroups: [], minimized: false
     });
+    const evtSourceRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
         fetchAllLeads();
@@ -72,16 +74,19 @@ export default function LeadsPage() {
     const fetchAllLeads = async () => {
         setLoading(true);
         try {
-            const [groupsRes, membersRes] = await Promise.all([
+            const [groupsRes, membersRes, joinedRes] = await Promise.all([
                 apiFetch('/api/telegram/leads/groups'),
-                apiFetch('/api/telegram/leads/members')
+                apiFetch('/api/telegram/leads/members'),
+                apiFetch('/api/telegram/leads/joined-status')
             ]);
 
             const groupsData = await groupsRes.json();
             const membersData = await membersRes.json();
+            const joinedData = joinedRes.ok ? await joinedRes.json() : { joined_ids: [] };
 
             if (groupsRes.ok) setGroups(groupsData.groups || []);
             if (membersRes.ok) setMembers(membersData.members || []);
+            if (joinedRes.ok) setJoinedIds(new Set(joinedData.joined_ids || []));
 
             if (!groupsRes.ok || !membersRes.ok) {
                 setError('Some data failed to load.');
@@ -112,7 +117,7 @@ export default function LeadsPage() {
         if (!phoneNumber) { setError('No connected account found.'); return; }
 
         // Reset and open the progress modal
-        setJoinProgress({ open: true, total: groupIds.length, joined: 0, failed: 0, done: false, log: [], failedGroups: [] });
+        setJoinProgress({ open: true, total: groupIds.length, joined: 0, failed: 0, done: false, log: [], failedGroups: [], minimized: false });
         setJoining(true);
 
         try {
@@ -124,6 +129,7 @@ export default function LeadsPage() {
             });
             const apiBase = process.env.NEXT_PUBLIC_API_URL || 'https://arkitel.onrender.com';
             const evtSource = new EventSource(`${apiBase}/api/telegram/bulk-join/stream?${params.toString()}`);
+            evtSourceRef.current = evtSource;
 
             evtSource.onmessage = (e) => {
                 try {
@@ -158,6 +164,10 @@ export default function LeadsPage() {
                         setError(data.msg);
                         evtSource.close();
                         setJoining(false);
+                    } else if (data.type === 'progress') {
+                        setJoinProgress(p => ({
+                            ...p, log: [{ type: 'joined', name: data.msg }, ...p.log.slice(0, 49)]
+                        }));
                     }
                 } catch { }
             };
@@ -324,8 +334,53 @@ export default function LeadsPage() {
 
             {/* ---- Bulk Join Progress Modal ---- */}
             {joinProgress.open && (
-                <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                    <div className="bg-card border border-border rounded-[28px] w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                <div className={`fixed z-[200] transition-all duration-500 ease-in-out ${joinProgress.minimized ? 'bottom-8 right-8 left-auto top-auto' : 'inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4'}`}>
+                    <div className={`bg-card border border-border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 ${joinProgress.minimized ? 'w-80 rounded-2xl p-4' : 'w-full max-w-lg rounded-[28px]'}`}>
+                        
+                        {joinProgress.minimized ? (
+                            /* MINIMIZED VIEW */
+                            <div className="flex flex-col gap-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                        <span className="text-xs font-bold text-foreground">Joining Progress</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => setJoinProgress(p => ({ ...p, minimized: false }))} className="p-1.5 hover:bg-foreground/5 rounded-lg text-foreground/40 transition-all">
+                                            <Maximize2 size={14} />
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if (!confirm("Stop joining process?")) return;
+                                                evtSourceRef.current?.close();
+                                                setJoinProgress(p => ({ ...p, open: false }));
+                                                setJoining(false);
+                                            }}
+                                            className="p-1.5 hover:bg-red-500/10 hover:text-red-500 rounded-lg text-foreground/40 transition-all"
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-foreground/30">
+                                        <span>{joinProgress.joined + joinProgress.failed}/{joinProgress.total}</span>
+                                        <span>{Math.round(((joinProgress.joined + joinProgress.failed) / joinProgress.total) * 100)}%</span>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-indigo-500 transition-all duration-500" 
+                                            style={{ width: `${((joinProgress.joined + joinProgress.failed) / joinProgress.total) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="text-[10px] font-medium text-indigo-500/80 truncate">
+                                    {joinProgress.log[0]?.name || "Waiting..."}
+                                </div>
+                            </div>
+                        ) : (
+                            /* FULL MODAL VIEW */
+                            <>
                         {/* Header */}
                         <div className="flex items-center justify-between p-6 border-b border-border">
                             <div className="flex items-center gap-3">
@@ -337,11 +392,29 @@ export default function LeadsPage() {
                                     <p className="text-xs text-foreground/40">Live tracking — {joinProgress.total} groups queued</p>
                                 </div>
                             </div>
-                            {joinProgress.done && (
-                                <button onClick={() => setJoinProgress(p => ({ ...p, open: false }))} className="text-foreground/30 hover:text-foreground p-1 rounded-lg">
+                            <div className="flex items-center gap-2">
+                                {!joinProgress.done && (
+                                    <button 
+                                        onClick={() => setJoinProgress(p => ({ ...p, minimized: true }))}
+                                        className="text-foreground/30 hover:text-indigo-500 p-1.5 hover:bg-indigo-500/10 rounded-lg transition-all"
+                                        title="Minimize"
+                                    >
+                                        <Minus size={18} />
+                                    </button>
+                                )}
+                                <button 
+                                    onClick={() => {
+                                        if (!joinProgress.done && !confirm("Closing will stop the current joining process. Use Minimize to keep it running in the background. Stop anyway?")) return;
+                                        evtSourceRef.current?.close();
+                                        setJoinProgress(p => ({ ...p, open: false }));
+                                        setJoining(false);
+                                    }} 
+                                    className="text-foreground/30 hover:text-red-500 p-1.5 hover:bg-red-500/10 rounded-lg transition-all"
+                                    title="Close"
+                                >
                                     <X size={18} />
                                 </button>
-                            )}
+                            </div>
                         </div>
 
                         {/* Progress Bar */}
@@ -413,6 +486,8 @@ export default function LeadsPage() {
                                 </button>
                             </div>
                         )}
+                        </>
+                    )}
                     </div>
                 </div>
             )}
