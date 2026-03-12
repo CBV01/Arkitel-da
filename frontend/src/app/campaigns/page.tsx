@@ -11,6 +11,7 @@ export default function CampaignsPage() {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [dialogs, setDialogs] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
+    const [filterType, setFilterType] = useState<'all' | 'groups' | 'channels'>('all');
     const [fetchingDialogs, setFetchingDialogs] = useState(false);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
 
@@ -229,10 +230,13 @@ export default function CampaignsPage() {
         }
     };
 
-    const filteredDialogs = dialogs.filter(d =>
-        d.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        d.id?.toString().includes(searchTerm)
-    );
+    const filteredDialogs = dialogs.filter((d: any) => {
+        const matchesSearch = d.title?.toLowerCase().includes(searchTerm.toLowerCase()) || d.id?.toString().includes(searchTerm);
+        if (!matchesSearch) return false;
+        if (filterType === 'groups') return d.is_group;
+        if (filterType === 'channels') return d.is_channel && !d.is_group;
+        return true;
+    });
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -440,9 +444,49 @@ export default function CampaignsPage() {
                                         </div>
 
                                         <div className="space-y-3 flex flex-col h-full">
-                                            <div className="flex justify-between items-end">
+                                            <div className="flex justify-between items-end mt-4">
                                                 <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
                                                 <span className="text-[10px] font-bold text-indigo-500">{selectedGroups.length} Selected</span>
+                                            </div>
+
+                                            {/* Filters & Toggles */}
+                                            <div className="flex items-center justify-between gap-4 mb-2">
+                                                <div className="flex bg-foreground/5 p-1 rounded-xl w-fit">
+                                                    {(['all', 'groups', 'channels'] as const).map(t => (
+                                                        <button 
+                                                            key={t}
+                                                            type="button" 
+                                                            onClick={() => { setFilterType(t); setCurrentPage(1); }} 
+                                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${filterType === t ? 'bg-indigo-500 text-white shadow-md' : 'text-foreground/40 hover:text-foreground'}`}
+                                                        >
+                                                            {t}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const visibleIds = filteredDialogs.map((d: any) => d.id);
+                                                        const allSelected = visibleIds.length > 0 && visibleIds.every((id: any) => selectedGroups.includes(id));
+                                                        
+                                                        if (allSelected) {
+                                                            setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                        } else {
+                                                            setSelectedGroups(prev => Array.from(new Set([...prev, ...visibleIds])));
+                                                        }
+                                                    }}
+                                                    className={`text-[10px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-foreground/10 transition-all rounded-xl border flex items-center gap-2
+                                                        ${filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id)) 
+                                                            ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' 
+                                                            : 'bg-foreground/5 text-foreground border-transparent'
+                                                        }`}
+                                                >
+                                                    {filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id)) 
+                                                        ? <><Check size={12} strokeWidth={4} /> Deselect Visible</> 
+                                                        : 'Select All Visible'
+                                                    }
+                                                </button>
                                             </div>
 
                                             <div className="relative">
