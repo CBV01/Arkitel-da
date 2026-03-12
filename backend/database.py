@@ -214,7 +214,9 @@ def init_db():
             message_text TEXT NOT NULL,
             target_groups TEXT NOT NULL,
             status TEXT DEFAULT 'pending',
-            interval_hours INTEGER DEFAULT 0
+            interval_hours INTEGER DEFAULT 0,
+            total_targets INTEGER DEFAULT 0,
+            sent_count INTEGER DEFAULT 0
         )""",
         """CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

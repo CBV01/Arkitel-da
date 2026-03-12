@@ -416,12 +416,21 @@ export default function LeadsPage() {
                     </div>
                 </div>
             )}
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
                 <div>
                     <h2 className="text-3xl font-semibold mb-2 tracking-tight text-foreground flex items-center gap-3">
                         <Bookmark className="text-indigo-500 w-8 h-8" /> Target Leads
                     </h2>
-                    <p className="text-sm text-foreground/50 font-medium">Manage discovered communities and extracted target members.</p>
+                    <p className="text-sm text-foreground/50 font-medium mb-4">Manage discovered communities and extracted target members.</p>
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-2xl flex items-start gap-3 max-w-xl">
+                        <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
+                        <div>
+                            <h4 className="text-amber-500 font-bold text-xs uppercase tracking-widest mb-1">Account Safety Limit</h4>
+                            <p className="text-xs text-amber-500/80 font-medium leading-relaxed">
+                                To prevent Telegram flood bans, we strongly recommend joining a maximum of <strong className="text-amber-500">40-50 groups per day</strong> per connected account.
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="flex flex-wrap gap-3">

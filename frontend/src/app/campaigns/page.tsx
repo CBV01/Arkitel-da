@@ -292,31 +292,46 @@ export default function CampaignsPage() {
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-8">
-                                <div className="hidden lg:block">
+                            <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8 mt-4 md:mt-0">
+                                <div className="flex-1 w-full md:w-48">
+                                    <div className="flex justify-between items-center mb-1.5">
+                                        <p className="text-[9px] uppercase tracking-widest text-foreground/40 font-bold">Delivery Progress</p>
+                                        <p className="text-[10px] font-bold text-indigo-400">{camp.sent_count || 0} / {camp.total_targets || 0}</p>
+                                    </div>
+                                    <div className="w-full h-1.5 bg-foreground/5 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out" 
+                                            style={{ width: `${Math.min(100, ((camp.sent_count || 0) / Math.max(1, camp.total_targets || 1)) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="hidden lg:block w-32 shrink-0">
                                     <p className="text-[9px] uppercase tracking-widest text-foreground/20 font-bold mb-1">Preview</p>
-                                    <p className="text-[11px] text-foreground/40 max-w-[150px] truncate font-medium">"{camp.message_text || camp.message || '...'}"</p>
+                                    <p className="text-[11px] text-foreground/40 truncate font-medium">"{camp.message_text || camp.message || '...'}"</p>
                                 </div>
 
-                                <div className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
-                                    {camp.status}
-                                </div>
+                                <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto">
+                                    <div className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
+                                        {camp.status}
+                                    </div>
 
-                                <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={() => handleEdit(camp)}
-                                        className="p-2 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-lg transition-all"
-                                        title="Edit Campaign"
-                                    >
-                                        <Search size={16} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(camp.id)}
-                                        className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                                        title="Delete Campaign"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
+                                    <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => handleEdit(camp)}
+                                            className="p-2 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-lg transition-all"
+                                            title="Edit Campaign"
+                                        >
+                                            <Search size={16} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(camp.id)}
+                                            className="p-2 text-foreground/40 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                            title="Delete Campaign"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
