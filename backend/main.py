@@ -179,31 +179,59 @@ async def debug_db():
     }
 
 async def resolve_tg_entity(client, target):
-    """Smarter handle resolver for Telegram joining."""
+    """Smarter handle resolver for Telegram joining & Campaigns."""
     try:
         # 1. Try resolving directly (ID or Username)
         resolved_id = target
-        if str(target).lstrip('-').isdigit():
-            resolved_id = int(target)
-        entity = await client.get_entity(resolved_id)
-        return entity
-    except Exception:
+        target_str = str(target).strip()
+        
+        if target_str.lstrip('-').isdigit():
+            resolved_id = int(target_str)
+            
+        # Optional: DB lookup by ID to find username (much more stable)
+        try:
+            conn = get_db_connection()
+            row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (target_str,)).fetchone()
+            if row and row[0]:
+                resolved_id = row[0]
+            if hasattr(conn, "close"): conn.close()
+        except: pass
+
+        try:
+            entity = await client.get_entity(resolved_id)
+            return entity
+        except Exception as e:
+            # If it's a positive number, try adding -100 prefix (common for Channels/Supergroups)
+            if isinstance(resolved_id, int) and resolved_id > 0:
+                try:
+                    alt_id = int(f"-100{resolved_id}")
+                    entity = await client.get_entity(alt_id)
+                    return entity
+                except: pass
+            pass
+
         # 2. Try cleaning username
-        if isinstance(target, str) and target.startswith('@'):
+        if target_str.startswith('@') or not target_str.replace('-','').isdigit():
+            username = target_str.replace('@', '', 1)
             try:
-                username = target.replace('@', '', 1)
                 entity = await client.get_entity(username)
                 return entity
             except: pass
         
         # 3. Try resolving as invite link
-        if isinstance(target, str) and ("t.me/joinchat/" in target or "t.me/+" in target):
-            hash_val = target.split('/')[-1].replace('+', '')
-            try:
-                # We can't return an entity directly from an invite link easily without joining
-                # But we can return the hash to be used in ImportChatInviteRequest
+        if "t.me/" in target_str:
+            if "joinchat/" in target_str or "t.me/+" in target_str:
+                hash_val = target_str.split('/')[-1].replace('+', '')
                 return ("invite", hash_val)
-            except: pass
+            else:
+                username = target_str.split('/')[-1]
+                try:
+                    entity = await client.get_entity(username)
+                    return entity
+                except: pass
+    except Exception as gl_e:
+        log_debug(f"RESOLVE_GL_ERR for {target}: {str(gl_e)}")
+
     return None
 
 async def smart_join(client, target):
@@ -1413,6 +1441,7 @@ async def bulk_join_stream(
             
             for idx, g_id in enumerate(ids, start=1):
                 group_label = str(g_id)
+
                 try:
                     # Optimized Human Speed (15-35s)
                     wait_time = random.randint(15, 35)
@@ -2220,10 +2249,16 @@ async def task_poller():
 
                     await asyncio.sleep(random.uniform(3.0, 7.0)) # Safety delay
                     
-                    # Resolve Target Entity
+                    # Resolve Target Entity (Smart Resolution)
                     try:
-                        entity = await client.get_entity(target_id)
-                        res_title = getattr(entity, 'title', str(target_id))
+                        entity = await resolve_tg_entity(client, group)
+                        if not entity or (isinstance(entity, tuple) and entity[0] == "invite"):
+                            # If it's an invite, campaign can't send unless joined
+                            log_debug(f"BKG_TASK[{task_id}]: Mapping Error for {group}: Need to Join first.")
+                            failed_list.append({"id": group, "name": group, "reason": "Not a Member"})
+                            continue
+                            
+                        res_title = getattr(entity, 'title', str(group))
                         log_debug(f"BKG_TASK[{task_id}]: Target resolved -> {res_title}")
                     except Exception as e:
                         log_debug(f"BKG_TASK[{task_id}]: Mapping Error for {group}: {str(e)}")
