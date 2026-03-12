@@ -216,7 +216,9 @@ def init_db():
             status TEXT DEFAULT 'pending',
             interval_hours INTEGER DEFAULT 0,
             total_targets INTEGER DEFAULT 0,
-            sent_count INTEGER DEFAULT 0
+            sent_count INTEGER DEFAULT 0,
+            batch_number INTEGER DEFAULT 1,
+            failed_groups TEXT DEFAULT '[]'
         )""",
         """CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

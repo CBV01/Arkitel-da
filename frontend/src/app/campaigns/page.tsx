@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle } from 'lucide-react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle, AlertCircle } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
 
@@ -281,11 +281,22 @@ export default function CampaignsPage() {
                                     <h4 className="font-bold text-foreground text-sm tracking-tight">{camp.phone_number}</h4>
                                     <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-1.5 text-[10px] text-foreground/40 font-bold uppercase tracking-wider">
-                                            <Calendar size={12} className="text-indigo-500/50" /> {new Date(camp.scheduled_time + (camp.scheduled_time.includes('Z') ? '' : 'Z')).toLocaleString()}
+                                            <Calendar size={12} className="text-indigo-500/50" /> 
+                                            {(() => {
+                                                try {
+                                                    const dateStr = camp.scheduled_time;
+                                                    if (!dateStr) return 'No Date';
+                                                    // Handle various ISO formats including those with offsets
+                                                    const cleanDate = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z';
+                                                    return new Date(cleanDate).toLocaleString();
+                                                } catch (e) {
+                                                    return 'Invalid Date';
+                                                }
+                                            })()}
                                         </div>
                                         {camp.interval_hours > 0 && (
                                             <div className="flex items-center gap-1 text-[10px] text-amber-500/50 font-bold uppercase tracking-wider">
-                                                <Clock size={12} /> {camp.interval_hours}h Repeat
+                                                <Clock size={12} /> {camp.interval_hours}h Repeat • Batch {camp.batch_number || 1}
                                             </div>
                                         )}
                                     </div>
@@ -295,7 +306,18 @@ export default function CampaignsPage() {
                             <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8 mt-4 md:mt-0">
                                 <div className="flex-1 w-full md:w-48">
                                     <div className="flex justify-between items-center mb-1.5">
-                                        <p className="text-[9px] uppercase tracking-widest text-foreground/40 font-bold">Delivery Progress</p>
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-[9px] uppercase tracking-widest text-foreground/40 font-bold">Delivery Progress</p>
+                                            {(() => {
+                                                try {
+                                                    const failed = JSON.parse(camp.failed_groups || '[]');
+                                                    if (failed.length > 0) {
+                                                        return <span className="text-[9px] font-bold text-red-400 uppercase tracking-widest bg-red-400/10 px-1.5 py-0.5 rounded-md">{failed.length} Failed</span>
+                                                    }
+                                                } catch (e) {}
+                                                return null;
+                                            })()}
+                                        </div>
                                         <p className="text-[10px] font-bold text-indigo-400">{camp.sent_count || 0} / {camp.total_targets || 0}</p>
                                     </div>
                                     <div className="w-full h-1.5 bg-foreground/5 rounded-full overflow-hidden">
@@ -317,6 +339,23 @@ export default function CampaignsPage() {
                                     </div>
 
                                     <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                        {(() => {
+                                            try {
+                                                const failed = JSON.parse(camp.failed_groups || '[]');
+                                                if (failed.length > 0) {
+                                                    return (
+                                                        <button
+                                                            onClick={() => alert(`Failures:\n\n${failed.map((f: any) => `${f.name}: ${f.reason}`).join('\n')}`)}
+                                                            className="p-2 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                                                            title="View Failures"
+                                                        >
+                                                            <AlertCircle size={16} />
+                                                        </button>
+                                                    )
+                                                }
+                                            } catch (e) {}
+                                            return null;
+                                        })()}
                                         <button
                                             onClick={() => handleEdit(camp)}
                                             className="p-2 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-lg transition-all"

@@ -425,9 +425,10 @@ export default function LeadsPage() {
                     <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-2xl flex items-start gap-3 max-w-xl">
                         <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
                         <div>
-                            <h4 className="text-amber-500 font-bold text-xs uppercase tracking-widest mb-1">Account Safety Limit</h4>
+                            <h4 className="text-amber-500 font-bold text-xs uppercase tracking-widest mb-1">Account Safety & Stability</h4>
                             <p className="text-xs text-amber-500/80 font-medium leading-relaxed">
-                                To prevent Telegram flood bans, we strongly recommend joining a maximum of <strong className="text-amber-500">40-50 groups per day</strong> per connected account.
+                                • Recommend joining <strong>40-50 groups max per day</strong> per account.<br/>
+                                • Keep this tab <strong>open and active</strong> during bulk joining to prevent timeouts.
                             </p>
                         </div>
                     </div>

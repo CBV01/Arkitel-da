@@ -60,6 +60,13 @@ async def lifespan(app: FastAPI):
         from database import init_db  # type: ignore
         init_db()
         print("CORE: Database Schema Initialized.")
+        
+        # Cleanup stuck tasks
+        conn = get_db_connection()
+        conn.execute("UPDATE tasks SET status = 'pending' WHERE status = 'processing'")
+        if hasattr(conn, "commit"): conn.commit()
+        if hasattr(conn, "close"): conn.close()
+        print("CORE: Stuck tasks reset to pending.")
     except Exception as e:
         print(f"CORE: Database Initialization ERROR: {e}")
 
@@ -1746,14 +1753,14 @@ async def bulk_delete_members(req: BulkDeleteRequest, user_id: str = Depends(get
 async def get_campaigns(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     tasks = conn.execute(
-        "SELECT id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC", 
+        "SELECT id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count, batch_number, failed_groups FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC", 
         (user_id,)
     ).fetchall()
     if hasattr(conn, "close"): conn.close()
     
     return {
         "campaigns": [
-            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5], interval_hours=t[6], total_targets=t[7], sent_count=t[8]) 
+            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5], interval_hours=t[6], total_targets=t[7], sent_count=t[8], batch_number=t[9], failed_groups=t[10]) 
             for t in tasks
         ]
     }
@@ -1768,8 +1775,8 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         now_utc = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M')
         print(f"CAMPAIGN: New campaign '{req.name}' | Scheduled(UTC): {req.schedule_time} | Server UTC now: {now_utc}")
         conn.execute(
-            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, req.name, req.phone_number, req.schedule_time, req.message, str(req.groups), "pending", req.interval_hours, len(req.groups), 0)
+            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count, batch_number, failed_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, req.name, req.phone_number, req.schedule_time, req.message, str(req.groups), "pending", req.interval_hours, len(req.groups), 0, 1, "[]")
         )
         if hasattr(conn, "commit"): conn.commit()
         return {"status": "success", "message": f"Campaign scheduled for {req.schedule_time} UTC."}
@@ -2140,7 +2147,7 @@ async def task_poller():
         try:
             # Update status to 'processing'
             conn = get_db_connection()
-            conn.execute("UPDATE tasks SET status = 'processing' WHERE id = ?", (task_id,))
+            conn.execute("UPDATE tasks SET status = 'processing', failed_groups = '[]' WHERE id = ?", (task_id,))
             if hasattr(conn, "commit"): conn.commit()
             
             try:
@@ -2174,6 +2181,7 @@ async def task_poller():
                     text_obj = re.sub(r'\{([^{}]*)\}', lambda m: random.choice(m.group(1).split('|')), text_obj)
                 return str(text_obj)
 
+            failed_list = []
             # High Fidelity Extraction Loop
             for raw_group in target_groups:
                 try:
@@ -2194,6 +2202,7 @@ async def task_poller():
                         log_debug(f"BKG_TASK[{task_id}]: Target resolved -> {res_title}")
                     except Exception as e:
                         log_debug(f"BKG_TASK[{task_id}]: Mapping Error for {group}: {str(e)}")
+                        failed_list.append({"id": group, "name": group, "reason": "Mapping Error"})
                         continue
 
                     # High-Fidelity Authorization Check
@@ -2237,7 +2246,20 @@ async def task_poller():
                         if hasattr(inc_conn, "commit"): inc_conn.commit()
                         if hasattr(inc_conn, "close"): inc_conn.close()
                     except Exception as send_e:
-                        log_debug(f"BKG_TASK[{task_id}]: SEND ERROR to {target_id}: {str(send_e)}")
+                        err_str = str(send_e)
+                        log_debug(f"BKG_TASK[{task_id}]: SEND ERROR to {target_id}: {err_str}")
+                        reason = "Unknown Error"
+                        if "ChatWriteForbidden" in err_str: reason = "Chat Restricted"
+                        elif "PeerIdInvalid" in err_str: reason = "Peer ID Invalid"
+                        elif "UserIsBlocked" in err_str: reason = "User Blocked"
+                        
+                        failed_list.append({"id": group, "name": getattr(entity, 'title', group), "reason": reason})
+                        
+                        # Even if failed, we should probably update failed_groups in DB to keep user informed
+                        f_conn = get_db_connection()
+                        f_conn.execute("UPDATE tasks SET failed_groups = ? WHERE id = ?", (json.dumps(failed_list), task_id))
+                        if hasattr(f_conn, "commit"): f_conn.commit()
+                        if hasattr(f_conn, "close"): f_conn.close()
                     
                     # Moderate Anti-Spam Interval
                     await asyncio.sleep(random.randint(15, 30))
@@ -2247,15 +2269,19 @@ async def task_poller():
                         log_debug(f"BKG_TASK[{task_id}]: Flood detected. Aborting sequence.")
                         break
             
-            # Pooled clients are not disconnected manually here
             # Mark completed OR Re-schedule
             conn = get_db_connection()
             if interval > 0:
+                # Calculate next time based on UTC
                 new_time = (datetime.now(timezone.utc) + timedelta(hours=interval)).isoformat()
-                conn.execute("UPDATE tasks SET status = 'pending', scheduled_time = ? WHERE id = ?", (new_time, task_id))
-                print(f"BKG: Task {task_id} rescheduled for {new_time}")
+                # INCREMENT batch_number and RESET sent_count
+                conn.execute(
+                    "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 
+                    (new_time, json.dumps(failed_list), task_id)
+                )
+                print(f"BKG: Task {task_id} rescheduled for {new_time} (Batch incremented, count reset)")
             else:
-                conn.execute("UPDATE tasks SET status = 'completed' WHERE id = ?", (task_id,))
+                conn.execute("UPDATE tasks SET status = 'completed', failed_groups = ? WHERE id = ?", (json.dumps(failed_list), task_id))
                 print(f"BKG: Task {task_id} marked COMPLETED")
             
             if hasattr(conn, "commit"): conn.commit()
