@@ -614,6 +614,30 @@ async def verify_code(req: VerifyCodeRequest, user_id: str = Depends(get_current
     finally:
         pass
 
+@app.post("/api/telegram/accounts/{phone_number}/sync")
+async def sync_account_profile(phone_number: str, user_id: str = Depends(get_current_user_id)):
+    """Manually refresh profile photo, name, and username from Telegram."""
+    try:
+        client = await POOL.get_client(user_id, phone_number)
+        profile_data = await fetch_tg_profile_data(client, phone_number)
+        profile: Dict[str, Any] = cast(Dict[str, Any], profile_data)
+        
+        conn = get_db_connection()
+        conn.execute(
+            """UPDATE accounts SET 
+               first_name = ?, last_name = ?, username = ?, profile_photo = ?, country = ?, status = 'active' 
+               WHERE phone_number = ? AND user_id = ?""",
+            (profile['first_name'], profile['last_name'], profile['username'], 
+             profile['profile_photo'], profile['country'], phone_number, user_id)
+        )
+        if hasattr(conn, "commit"): conn.commit()
+        if hasattr(conn, "close"): conn.close()
+        
+        return {"status": "success", "profile": profile}
+    except Exception as e:
+        log_debug(f"SYNC_ERROR for {phone_number}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Sync failed: {str(e)}")
+
 from telethon.tl.functions.contacts import SearchRequest  # type: ignore
 from telethon.tl.functions.channels import GetParticipantsRequest  # type: ignore
 from telethon.tl.types import ChannelParticipantsSearch  # type: ignore
@@ -1415,7 +1439,7 @@ async def bulk_join_stream(
                     failed_groups.append({'name': group_label, 'reason': err_s})
                     yield f"data: {_json.dumps({'type': 'failed', 'name': group_label, 'reason': err_s, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
                     if "FloodWaitError" in err_r:
-                        yield f"data: {_json.dumps({'type': 'flood', 'msg': 'Flood detected. Stopping to protect your account.'})}\n\n"
+                        yield f"data: {_json.dumps({'type': 'flood', 'msg': 'Telegram Rate Limit: Your account is resting. Please wait 1-2 hours before joining more groups.'})}\n\n"
                         break
             
             yield f"data: {_json.dumps({'type': 'done', 'joined': joined, 'failed': failed, 'failed_groups': failed_groups})}\n\n"
@@ -2182,6 +2206,7 @@ async def task_poller():
                 return str(text_obj)
 
             failed_list = []
+            sent_ok_stats = [0]
             # High Fidelity Extraction Loop
             for raw_group in target_groups:
                 try:
@@ -2208,7 +2233,6 @@ async def task_poller():
                     # High-Fidelity Authorization Check
                     if not await client.is_user_authorized():
                         log_debug(f"BKG_TASK[{task_id}]: CRITICAL - Session expired for {phone_num}")
-                        # Mark failed and exit since we can't send anything
                         conn = get_db_connection()
                         conn.execute("UPDATE tasks SET status = 'failed' WHERE id = ?", (task_id,))
                         if hasattr(conn, "commit"): conn.commit()
@@ -2217,34 +2241,28 @@ async def task_poller():
                         active_tasks.remove(task_id)
                         return
 
-                    # Personalization Merging
-                    final_msg_base = str(message)
+                    # Personalization Merging & STRIP WHITESPACE (Fixes Code Block bug)
+                    final_msg_base = str(message).strip()
                     final_msg_base = final_msg_base.replace('{{Group Name}}', getattr(entity, 'title', 'Our Group'))
                     final_msg_base = final_msg_base.replace('{{First Name}}', '').replace('{{Username}}', '')
 
                     # Final Spintax processing
-                    final_msg = recursive_spin(final_msg_base)
+                    final_msg = recursive_spin(final_msg_base).strip()
                     
-                    # Forensic Snapshot
-                    msg_snapshot = str(final_msg)
-                    if len(msg_snapshot) > 50:
-                        msg_p = ""
-                        for i, char in enumerate(msg_snapshot):
-                            if i >= 47: break
-                            msg_p += char
-                        msg_snapshot = msg_p + "..."
-                        
                     log_debug(f"BKG_TASK[{task_id}]: Sending to {target_id} via {sender_name}...")
-                    log_debug(f"BKG_TASK[{task_id}]: Content Snapshot: {msg_snapshot}")
                     
                     try:
-                        await client.send_message(entity, final_msg)
+                        await client.send_message(entity, final_msg, parse_mode='md') # Explicitly type as MD to avoid auto-code conversion
                         log_debug(f"BKG_TASK[{task_id}]: TRANSMITTED successfully.")
+                        sent_ok_stats[0] += 1 # type: ignore
                         
-                        inc_conn = get_db_connection()
-                        inc_conn.execute("UPDATE tasks SET sent_count = sent_count + 1 WHERE id = ?", (task_id,))
-                        if hasattr(inc_conn, "commit"): inc_conn.commit()
-                        if hasattr(inc_conn, "close"): inc_conn.close()
+                        # Background count update (Less frequent to avoid choke)
+                        if sent_ok_stats[0] % 5 == 0:
+                            u_conn = get_db_connection()
+                            u_conn.execute("UPDATE tasks SET sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
+                            if hasattr(u_conn, "commit"): u_conn.commit()
+                            if hasattr(u_conn, "close"): u_conn.close()
+                            
                     except Exception as send_e:
                         err_str = str(send_e)
                         log_debug(f"BKG_TASK[{task_id}]: SEND ERROR to {target_id}: {err_str}")
@@ -2252,15 +2270,10 @@ async def task_poller():
                         if "ChatWriteForbidden" in err_str: reason = "Chat Restricted"
                         elif "PeerIdInvalid" in err_str: reason = "Peer ID Invalid"
                         elif "UserIsBlocked" in err_str: reason = "User Blocked"
+                        elif "FloodWait" in err_str: reason = "Telegram Limit"
                         
                         failed_list.append({"id": group, "name": getattr(entity, 'title', group), "reason": reason})
-                        
-                        # Even if failed, we should probably update failed_groups in DB to keep user informed
-                        f_conn = get_db_connection()
-                        f_conn.execute("UPDATE tasks SET failed_groups = ? WHERE id = ?", (json.dumps(failed_list), task_id))
-                        if hasattr(f_conn, "commit"): f_conn.commit()
-                        if hasattr(f_conn, "close"): f_conn.close()
-                    
+
                     # Moderate Anti-Spam Interval
                     await asyncio.sleep(random.randint(15, 30))
                 except Exception as group_err:
@@ -2269,20 +2282,18 @@ async def task_poller():
                         log_debug(f"BKG_TASK[{task_id}]: Flood detected. Aborting sequence.")
                         break
             
-            # Mark completed OR Re-schedule
+            # Final Batch Update (One Connection)
             conn = get_db_connection()
             if interval > 0:
-                # Calculate next time based on UTC
                 new_time = (datetime.now(timezone.utc) + timedelta(hours=interval)).isoformat()
-                # INCREMENT batch_number and RESET sent_count
                 conn.execute(
-                    "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 
-                    (new_time, json.dumps(failed_list), task_id)
+                    "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = ?, failed_groups = ? WHERE id = ?", 
+                    (new_time, sent_ok_stats[0], json.dumps(failed_list), task_id)
                 )
-                print(f"BKG: Task {task_id} rescheduled for {new_time} (Batch incremented, count reset)")
+                print(f"BKG: Task {task_id} rescheduled for {new_time} (Successful: {sent_ok_stats[0]})")
             else:
-                conn.execute("UPDATE tasks SET status = 'completed', failed_groups = ? WHERE id = ?", (json.dumps(failed_list), task_id))
-                print(f"BKG: Task {task_id} marked COMPLETED")
+                conn.execute("UPDATE tasks SET status = 'completed', sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
+                print(f"BKG: Task {task_id} marked COMPLETED (Successful: {sent_ok_stats[0]})")
             
             if hasattr(conn, "commit"): conn.commit()
             if hasattr(conn, "close"): conn.close()
@@ -2302,29 +2313,35 @@ async def task_poller():
             now_dt = datetime.now(timezone.utc)
             now_str = now_dt.strftime('%Y-%m-%dT%H:%M')
             
+            # 1. Fetch PENDING tasks
             tasks = conn.execute(
                 "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours, scheduled_time FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
                 (now_str,)
             ).fetchall()
             
-            # Heartbeat log
-            print(f"POLLER: Heartbeat - {now_str} | Pending tasks found: {len(tasks)}")
-            
+            if tasks:
+                # 2. IMMEDIATELY MARK QUEUED (Hard Lock) to prevent double picking
+                task_ids = [t[0] for t in tasks]
+                placeholders = ",".join(["?"] * len(task_ids))
+                conn.execute(f"UPDATE tasks SET status = 'queued' WHERE id IN ({placeholders})", tuple(task_ids))
+                if hasattr(conn, "commit"): conn.commit()
+                print(f"POLLER: Locked {len(tasks)} tasks for production.")
+
             if hasattr(conn, "close"): conn.close()
             
-            # Launch loop
+            # Heartbeat log
+            if tasks:
+                print(f"POLLER: Heartbeat - {now_str} | Launched tasks: {len(tasks)}")
+            
+            # 3. Launch loop
             for t in tasks:
                 task_id = t[0]
-                task_time = t[6]
                 if task_id not in active_tasks:
                     active_tasks.add(task_id)
-                    # Start task in background
                     asyncio.create_task(run_single_task(*t))
-                    print(f"POLLER: Launched task {task_id} scheduled for {task_time} (Server now: {now_str})")
                 else:
-                    # Log if it's already running to avoid confusion
-                    print(f"POLLER: Task {task_id} is already in execution set. Skipping launch.")
-            
+                    print(f"POLLER: Task {task_id} is already in execution set. Checking lock.")
+
         except Exception as e:
             print(f"BKG: Poller major error: {e}")
         

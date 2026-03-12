@@ -14,7 +14,8 @@ import {
     ChevronRight,
     Globe,
     ChevronDown,
-    Search
+    Search,
+    CloudSync
 } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
@@ -247,6 +248,25 @@ export default function AccountsPage() {
         }
     };
 
+    const handleSyncProfile = async (phone: string) => {
+        setActionLoading(phone + '_sync');
+        try {
+            const res = await apiFetch(`/api/telegram/accounts/${phone}/sync`, { method: 'POST' });
+            if (res.ok) {
+                setSuccessMsg(`Profile for ${phone} synchronized.`);
+                fetchAccounts();
+                setTimeout(() => setSuccessMsg(''), 5000);
+            } else {
+                const data = await res.json();
+                setError(data.detail || `Sync failed for ${phone}.`);
+            }
+        } catch (err) {
+            setError(`Sync failed for ${phone}.`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const handleSessionDump = async (phone: string) => {
         setActionLoading(phone + '_dump');
         try {
@@ -354,6 +374,13 @@ export default function AccountsPage() {
                                 </span>
                                 <div className="flex gap-2">
                                     <button 
+                                        onClick={() => handleSyncProfile(acc.phone_number)}
+                                        className="p-1.5 bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 rounded-lg text-foreground/30 transition-all"
+                                        title="Sync Profile"
+                                    >
+                                        {actionLoading === acc.phone_number + '_sync' ? <Loader2 size={14} className="animate-spin" /> : <CloudSync size={14} />}
+                                    </button>
+                                    <button 
                                         onClick={() => handleValidateSession(acc.phone_number)}
                                         className="p-1.5 bg-foreground/5 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-lg text-foreground/30 transition-all"
                                         title="Pulse Check"
@@ -379,12 +406,15 @@ export default function AccountsPage() {
                             
                             {/* Profile Image and Identity */}
                             <div className="flex flex-col items-center mb-6">
-                                <div className="w-20 h-20 rounded-full border-4 border-foreground/5 p-1 mb-3 bg-foreground/[0.02] relative shadow-inner">
+                                <div className="w-20 h-20 rounded-full border-4 border-foreground/5 p-1 mb-3 bg-foreground/[0.02] relative shadow-inner overflow-hidden flex items-center justify-center">
                                     {acc.profile_photo ? (
                                         <img 
-                                            src={process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`} 
+                                            src={acc.profile_photo.startsWith('http') ? acc.profile_photo : (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`)} 
                                             className="w-full h-full rounded-full object-cover" 
-                                            onError={(e) => { (e.target as any).src = 'https://abs.twimg.com/sticky/default_profile_images/default_profile_400x400.png' }}
+                                            onError={(e) => { 
+                                                const target = e.target as any;
+                                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(acc.first_name || 'A')}&background=6366f1&color=fff`; 
+                                            }}
                                         />
                                     ) : (
                                         <div className="w-full h-full rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500">
