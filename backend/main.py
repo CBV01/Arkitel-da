@@ -244,7 +244,17 @@ async def resolve_tg_entity(client, target):
         # Optional: DB lookup by ID to find username (much more stable)
         try:
             conn = get_db_connection()
+            # Try exact ID match first
             row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (target_str,)).fetchone()
+            if not row:
+                # Try with -100 prefix variations
+                if target_str.isdigit():
+                    row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (f"-100{target_str}",)).fetchone()
+                elif target_str.startswith("-100"):
+                    # Use replace to avoid index errors in some linters
+                    clean_id = target_str.replace("-100", "", 1)
+                    row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (clean_id,)).fetchone()
+            
             if row and row[0]:
                 resolved_id = row[0]
             if hasattr(conn, "close"): conn.close()
@@ -1106,6 +1116,10 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         is_private = getattr(chat, 'username', None) is None
                         title = getattr(chat, 'title', 'Unknown')
                         username = getattr(chat, 'username', None)
+                        
+                        # PREFER username as the ID if it exists - globally resolvable!
+                        final_id = f"@{username}" if username else chat_id_str
+                        
                         participants_count = (
                             getattr(chat, 'participants_count', 0)
                             or getattr(chat, 'megagroup_participants', 0)
@@ -1113,7 +1127,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         )
                         chat_type = 'channel' if getattr(chat, 'broadcast', False) else 'group'
                         item = {
-                            "id": chat_id_str,
+                            "id": final_id,
                             "title": title,
                             "username": username,
                             "participants_count": participants_count,
