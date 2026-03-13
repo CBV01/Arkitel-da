@@ -348,18 +348,17 @@ export default function ScraperPage() {
     });
 
     const toggleSelectAll = () => {
-        const selectable = filteredResults.filter(r => !r.is_member);
-        if (selectable.length === 0) return;
+        if (filteredResults.length === 0) return;
         
-        const allAlreadySelected = selectable.every(r => selectedGroups.has(String(r.id)));
+        const allAlreadySelected = filteredResults.every(r => selectedGroups.has(String(r.id)));
         
         const newSelected = new Set(selectedGroups);
         if (allAlreadySelected) {
-            // Deselect only the currently visible selectable ones
-            selectable.forEach(r => newSelected.delete(String(r.id)));
+            // Deselect only the currently visible ones
+            filteredResults.forEach(r => newSelected.delete(String(r.id)));
         } else {
-            // Select all visible selectable ones
-            selectable.forEach(r => newSelected.add(String(r.id)));
+            // Select all visible ones
+            filteredResults.forEach(r => newSelected.add(String(r.id)));
         }
         setSelectedGroups(newSelected);
     };
@@ -559,14 +558,14 @@ export default function ScraperPage() {
                                     <th className="font-semibold p-4 pl-6 w-10 text-center">
                                         <button
                                             onClick={toggleSelectAll}
-                                            title={filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(String(r.id))) && filteredResults.filter(r => !r.is_member).length > 0 ? 'Deselect All' : 'Select All'}
+                                            title={filteredResults.every(r => selectedGroups.has(String(r.id))) && filteredResults.length > 0 ? 'Deselect All' : 'Select All'}
                                             className={`w-5 h-5 rounded flex items-center justify-center border transition-all mx-auto ${
-                                                filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(String(r.id)))
+                                                filteredResults.length > 0 && filteredResults.every(r => selectedGroups.has(String(r.id)))
                                                     ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
                                                     : 'border-foreground/20 hover:border-indigo-500'
                                             }`}
                                         >
-                                            {filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(String(r.id))) && (
+                                            {filteredResults.length > 0 && filteredResults.every(r => selectedGroups.has(String(r.id))) && (
                                                 <div className="bg-white rounded-full p-[1px]">
                                                     <CheckCircle2 size={12} className="text-indigo-600 fill-current" />
                                                 </div>
