@@ -262,6 +262,9 @@ async def resolve_tg_entity(client, target):
 
         try:
             entity = await client.get_entity(resolved_id)
+            # If we got a User object but asked for a positive int, it's likely a channel missing the -100 prefix.
+            if getattr(entity, '__class__', None) and entity.__class__.__name__ == 'User' and isinstance(resolved_id, int) and resolved_id > 0:
+                raise ValueError("Resolved to User, but likely meant a Channel/Group. Forcing -100 prefix check.")
             return entity
         except Exception as e:
             # If it's a positive number, try adding -100 prefix (common for Channels/Supergroups)
@@ -314,6 +317,9 @@ async def smart_join(client, target, user_id: str, phone_number: str):
     res = await resolve_tg_entity(client, target)
     if not res:
         raise Exception(f"Could not resolve entity for {target}")
+        
+    if getattr(res, '__class__', None) and res.__class__.__name__ == 'User':
+        raise Exception(f"Target '{target}' resolved to a User entity. You cannot join a User.")
         
     if isinstance(res, tuple) and res[0] == "invite":
         result = await client(ImportChatInviteRequest(res[1]))
