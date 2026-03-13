@@ -57,6 +57,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
     const [showProofForm, setShowProofForm] = useState(false);
     const [appliedDiscount, setAppliedDiscount] = useState<number | null>(null);
     const [proof, setProof] = useState({ name: '', bank: '' });
+    const [isPaystackReady, setIsPaystackReady] = useState(false);
 
     const fetchStatus = async () => {
         try {
@@ -101,6 +102,11 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
     };
 
     const handlePayNow = () => {
+        if (!isPaystackReady) {
+            setMsg({ type: 'error', text: 'Payment gateway still loading. Please wait a second.' });
+            return;
+        }
+        
         const plan = PLANS.find(p => p.key === selectedPlan)!;
         const finalAmount = appliedDiscount ?? plan.price;
         const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
@@ -110,40 +116,47 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
             return;
         }
 
-        // @ts-ignore
-        const handler = PaystackPop.setup({
-            key: publicKey,
-            email: `${status?.username || 'user'}@arkitel.app`,
-            amount: finalAmount * 100, // kobo
-            currency: 'NGN',
-            callback: async (response: any) => {
-                setApplying(true);
-                setMsg({ type: 'success', text: 'Verifying payment... Do not close.' });
-                try {
-                    const res = await apiFetch('/api/monetization/verify-paystack', {
+        try {
+            const ref = `ARK-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+            // @ts-ignore
+            const handler = PaystackPop.setup({
+                key: publicKey,
+                email: `${status?.username || 'user'}@arkitel.app`,
+                amount: Math.round(finalAmount * 100), // kobo
+                currency: 'NGN',
+                ref: ref,
+                callback: function(response: any) {
+                    setApplying(true);
+                    setMsg({ type: 'success', text: 'Verifying payment... Do not close.' });
+                    
+                    apiFetch('/api/monetization/verify-paystack', {
                         method: 'POST',
                         body: JSON.stringify({
                             reference: response.reference,
                             plan_key: selectedPlan
                         })
+                    }).then(res => {
+                        if (res.ok) {
+                            setMsg({ type: 'success', text: '🎉 Payment Verified! Welcome to Premium.' });
+                            setTimeout(() => window.location.reload(), 2000);
+                        } else {
+                            setMsg({ type: 'error', text: 'Verification failed. Please contact admin.' });
+                        }
+                    }).catch(() => {
+                        setMsg({ type: 'error', text: 'Server error during verification.' });
+                    }).finally(() => {
+                        setApplying(false);
                     });
-                    if (res.ok) {
-                        setMsg({ type: 'success', text: '🎉 Payment Verified! Welcome to Premium.' });
-                        setTimeout(() => window.location.reload(), 2000);
-                    } else {
-                        setMsg({ type: 'error', text: 'Verification failed. Please contact admin.' });
-                    }
-                } catch (e) {
-                    setMsg({ type: 'error', text: 'Server error during verification.' });
-                } finally {
-                    setApplying(false);
+                },
+                onClose: function() {
+                    setMsg({ type: 'error', text: 'Payment window closed.' });
                 }
-            },
-            onClose: () => {
-                setMsg({ type: 'error', text: 'Payment cancelled.' });
-            }
-        });
-        handler.openIframe();
+            });
+            handler.openIframe();
+        } catch (err) {
+            console.error("Paystack open error", err);
+            setMsg({ type: 'error', text: 'Failed to open payment gateway. Refresh the page.' });
+        }
     };
 
     const submitProof = async () => {
@@ -180,7 +193,11 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
     return (
         <div className="relative w-full h-full min-h-[400px]">
-            <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
+            <Script 
+                src="https://js.paystack.co/v1/inline.js" 
+                strategy="lazyOnload"
+                onLoad={() => setIsPaystackReady(true)}
+            />
             {children}
 
             {isLocked && (
@@ -266,7 +283,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                             </div>
                         ) : (
                             /* === PLAN SELECTION + COUPON === */
-                            <div className="space-y-3">
+                            <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
                                 {/* Plan Cards */}
                                 <div className="grid grid-cols-3 gap-2">
                                     {PLANS.map((plan) => {
@@ -275,6 +292,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                         return (
                                             <button
                                                 key={plan.key}
+                                                type="button"
                                                 onClick={() => setSelectedPlan(plan.key)}
                                                 className={`relative flex flex-col items-center p-3 rounded-2xl border transition-all duration-200 text-left
                                                     ${isSelected
@@ -325,6 +343,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                 {/* Pay Button */}
                                 <button
                                     onClick={handlePayNow}
+                                    type="button"
                                     className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-indigo-500/25 active:scale-95"
                                 >
                                     <CreditCard size={15} />
@@ -353,6 +372,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                     </div>
                                     <button
                                         onClick={applyCoupon}
+                                        type="button"
                                         disabled={applying || !couponCode.trim()}
                                         className="px-4 rounded-xl bg-white/5 border border-white/8 text-foreground/50 text-[11px] font-bold hover:bg-indigo-500 hover:text-white hover:border-transparent transition-all disabled:opacity-30 active:scale-95 whitespace-nowrap"
                                     >
@@ -367,7 +387,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                         {msg.text}
                                     </div>
                                 )}
-                            </div>
+                            </form>
                         )}
 
                         {/* Footer Message below proof form too */}
