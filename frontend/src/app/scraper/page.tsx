@@ -120,7 +120,9 @@ export default function ScraperPage() {
         try {
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
-            const phoneNumber = accData.accounts?.[0]?.phone_number;
+            // Find first active account
+            const activeAcc = accData.accounts?.find((a: any) => a.status === 'active') || accData.accounts?.[0];
+            const phoneNumber = activeAcc?.phone_number;
             if (!phoneNumber) throw new Error("No connected account.");
 
             const res = await apiFetch('/api/telegram/join', {
@@ -152,7 +154,8 @@ export default function ScraperPage() {
         try {
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
-            const phoneNumber = accData.accounts?.[0]?.phone_number;
+            const activeAcc = accData.accounts?.find((a: any) => a.status === 'active');
+            const phoneNumber = activeAcc?.phone_number || accData.accounts?.[0]?.phone_number;
             if (!phoneNumber) throw new Error('No connected account found.');
 
             const token = localStorage.getItem('tg_auth_token') || '';

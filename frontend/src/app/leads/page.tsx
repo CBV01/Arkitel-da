@@ -114,7 +114,9 @@ export default function LeadsPage() {
     const handleBulkJoin = async () => {
         const groupIds = Array.from(selectedIds).filter(id => typeof id === 'string') as string[];
         if (groupIds.length === 0) return;
-        const phoneNumber = accounts[0]?.phone_number;
+        
+        const activeAcc = accounts.find(a => a.status === 'active') || accounts[0];
+        const phoneNumber = activeAcc?.phone_number;
         if (!phoneNumber) { setError('No connected account found.'); return; }
 
         // Reset and open the progress modal

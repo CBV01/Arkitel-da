@@ -292,6 +292,15 @@ async def resolve_tg_entity(client, target):
                     entity = await client.get_entity(username)
                     return entity
                 except: pass
+
+        # 4. Final Hail Mary: Search for it globally to "prime" the session
+        try:
+            from telethon.tl.functions.contacts import SearchRequest # type: ignore
+            await client(SearchRequest(q=target_str, limit=5))
+            entity = await client.get_entity(target_str)
+            return entity
+        except: pass
+
     except Exception as gl_e:
         log_debug(f"RESOLVE_GL_ERR for {target}: {str(gl_e)}")
 
