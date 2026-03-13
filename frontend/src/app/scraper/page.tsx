@@ -321,10 +321,11 @@ export default function ScraperPage() {
         }
     };
 
-    const toggleSelection = (id: string) => {
+    const toggleSelection = (id: string | number) => {
+        const idStr = String(id);
         const newSet = new Set(selectedGroups);
-        if (newSet.has(id)) newSet.delete(id);
-        else newSet.add(id);
+        if (newSet.has(idStr)) newSet.delete(idStr);
+        else newSet.add(idStr);
         setSelectedGroups(newSet);
     };
 
@@ -337,15 +338,15 @@ export default function ScraperPage() {
         const selectable = filteredResults.filter(r => !r.is_member);
         if (selectable.length === 0) return;
         
-        const allAlreadySelected = selectable.every(r => selectedGroups.has(r.id));
+        const allAlreadySelected = selectable.every(r => selectedGroups.has(String(r.id)));
         
         const newSelected = new Set(selectedGroups);
         if (allAlreadySelected) {
             // Deselect only the currently visible selectable ones
-            selectable.forEach(r => newSelected.delete(r.id));
+            selectable.forEach(r => newSelected.delete(String(r.id)));
         } else {
             // Select all visible selectable ones
-            selectable.forEach(r => newSelected.add(r.id));
+            selectable.forEach(r => newSelected.add(String(r.id)));
         }
         setSelectedGroups(newSelected);
     };
@@ -545,14 +546,18 @@ export default function ScraperPage() {
                                     <th className="font-semibold p-4 pl-6 w-10 text-center">
                                         <button
                                             onClick={toggleSelectAll}
-                                            title={filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(r.id)) && filteredResults.filter(r => !r.is_member).length > 0 ? 'Deselect All' : 'Select All'}
+                                            title={filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(String(r.id))) && filteredResults.filter(r => !r.is_member).length > 0 ? 'Deselect All' : 'Select All'}
                                             className={`w-5 h-5 rounded flex items-center justify-center border transition-all mx-auto ${
-                                                filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(r.id))
-                                                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                                                filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(String(r.id)))
+                                                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
                                                     : 'border-foreground/20 hover:border-indigo-500'
                                             }`}
                                         >
-                                            {filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(r.id)) && <CheckCircle2 size={14} />}
+                                            {filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(String(r.id))) && (
+                                                <div className="bg-white rounded-full p-[1px]">
+                                                    <CheckCircle2 size={12} className="text-indigo-600 fill-current" />
+                                                </div>
+                                            )}
                                         </button>
                                     </th>
                                     <th className="font-semibold p-4">Group / Channel Name</th>
@@ -564,15 +569,19 @@ export default function ScraperPage() {
                             </thead>
                             <tbody className="divide-y divide-black/5 dark:divide-white/5 whitespace-nowrap">
                                 {filteredResults.map((result) => {
-                                    const isSelected = selectedGroups.has(result.id);
+                                    const isSelected = selectedGroups.has(String(result.id));
                                     return (
                                         <tr key={result.id} className={`transition-colors group ${isSelected ? 'bg-indigo-500/5' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.02]'}`}>
                                             <td className="p-4 pl-6">
                                                 <button
                                                     onClick={() => toggleSelection(result.id)}
-                                                    className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-foreground/20 hover:border-indigo-500'}`}
+                                                    className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'border-foreground/20 hover:border-indigo-500'}`}
                                                 >
-                                                    {isSelected && <CheckCircle2 size={14} />}
+                                                    {isSelected && (
+                                                        <div className="bg-white rounded-full p-[1px]">
+                                                            <CheckCircle2 size={12} className="text-indigo-600 fill-current" />
+                                                        </div>
+                                                    )}
                                                 </button>
                                             </td>
                                             <td className="p-4 max-w-[300px]">

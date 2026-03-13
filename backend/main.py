@@ -1568,10 +1568,16 @@ async def bulk_join_stream(
         ids = [group_ids]
 
     conn = get_db_connection()
-    row = conn.execute(
-        "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?",
-        (phone_number, user_id)
-    ).fetchone()
+    if user_id == "admin_virtual_id":
+        row = conn.execute(
+            "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ?",
+            (phone_number,)
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = ?",
+            (phone_number, user_id)
+        ).fetchone()
     if hasattr(conn, "close"): conn.close()
     
     if not row:
