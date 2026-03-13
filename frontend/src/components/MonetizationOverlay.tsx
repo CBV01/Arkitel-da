@@ -1,4 +1,5 @@
 'use client';
+import Script from 'next/script';
 
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/auth';
@@ -101,9 +102,48 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
     const handlePayNow = () => {
         const plan = PLANS.find(p => p.key === selectedPlan)!;
-        window.open(plan.paystackUrl, '_blank');
-        setShowProofForm(true);
-        setMsg({ type: '', text: '' });
+        const finalAmount = appliedDiscount ?? plan.price;
+        const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
+
+        if (!publicKey) {
+            setMsg({ type: 'error', text: 'Payment configuration missing (NPPK).' });
+            return;
+        }
+
+        // @ts-ignore
+        const handler = PaystackPop.setup({
+            key: publicKey,
+            email: `${status?.username || 'user'}@arkitel.app`,
+            amount: finalAmount * 100, // kobo
+            currency: 'NGN',
+            callback: async (response: any) => {
+                setApplying(true);
+                setMsg({ type: 'success', text: 'Verifying payment... Do not close.' });
+                try {
+                    const res = await apiFetch('/api/monetization/verify-paystack', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            reference: response.reference,
+                            plan_key: selectedPlan
+                        })
+                    });
+                    if (res.ok) {
+                        setMsg({ type: 'success', text: '🎉 Payment Verified! Welcome to Premium.' });
+                        setTimeout(() => window.location.reload(), 2000);
+                    } else {
+                        setMsg({ type: 'error', text: 'Verification failed. Please contact admin.' });
+                    }
+                } catch (e) {
+                    setMsg({ type: 'error', text: 'Server error during verification.' });
+                } finally {
+                    setApplying(false);
+                }
+            },
+            onClose: () => {
+                setMsg({ type: 'error', text: 'Payment cancelled.' });
+            }
+        });
+        handler.openIframe();
     };
 
     const submitProof = async () => {
@@ -140,6 +180,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
     return (
         <div className="relative w-full h-full min-h-[400px]">
+            <Script src="https://js.paystack.co/v1/inline.js" strategy="afterInteractive" />
             {children}
 
             {isLocked && (

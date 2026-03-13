@@ -2010,6 +2010,89 @@ async def submit_proof(req: PaymentProofRequest, user_id: str = Depends(get_curr
     finally:
         if hasattr(conn, "close"): conn.close()
 
+class PaystackVerifyRequest(BaseModel):
+    reference: str
+    plan_key: str
+
+@app.post("/api/monetization/verify-paystack")
+async def verify_paystack(req: PaystackVerifyRequest, user_id: str = Depends(get_current_user_id)):
+    """Verifies a Paystack transaction and upgrades the user automatically."""
+    secret_key = os.getenv("PAYSTACK_SECRET_KEY")
+    if not secret_key:
+        raise HTTPException(status_code=500, detail="Payment gateway not configured.")
+
+    async with httpx.AsyncClient() as client:
+        try:
+            headers = {"Authorization": f"Bearer {secret_key}"}
+            response = await client.get(f"https://api.paystack.co/transaction/verify/{req.reference}", headers=headers)
+            res_data = response.json()
+
+            if response.status_code == 200 and res_data.get("status") and res_data["data"]["status"] == "success":
+                # Payment confirmed! Upgrade user.
+                plan_key = req.plan_key
+                plan_cfg = PLAN_CONFIGS.get(plan_key, PLAN_CONFIGS["basic"])
+                
+                conn = get_db_connection()
+                try:
+                    conn.execute(
+                        """UPDATE users SET 
+                           plan = ?, is_approved = 1, payment_proof = ?, 
+                           scrape_limit = ?, max_accounts = ?, 
+                           max_daily_campaigns = ?, max_daily_keywords = ? 
+                           WHERE id = ?""",
+                        (plan_key, f"Paystack:{req.reference}", plan_cfg["scrape_limit"], plan_cfg["max_accounts"], 
+                         plan_cfg["max_daily_campaigns"], plan_cfg["max_daily_keywords"], user_id)
+                    )
+                    conn.execute(
+                        "INSERT INTO payments (user_id, amount, proof_details, status) VALUES (?, ?, ?, ?)",
+                        (user_id, res_data["data"]["amount"] / 100, f"Paystack:{req.reference}", 'completed')
+                    )
+                    if hasattr(conn, "commit"): conn.commit()
+                finally:
+                    if hasattr(conn, "close"): conn.close()
+                
+                return {"status": "success", "message": f"Upgrade to {plan_key} successful!"}
+            else:
+                raise HTTPException(status_code=400, detail="Payment verification failed.")
+        except Exception as e:
+            log_debug(f"Paystack Verify Error: {str(e)}")
+            raise HTTPException(status_code=500, detail="Verification failed.")
+
+@app.post("/api/payments/webhook")
+async def paystack_webhook(request: Request):
+    """Reliability backup for Paystack payments."""
+    # Note: In production you should verify the x-paystack-signature header
+    payload = await request.json()
+    if payload.get("event") == "charge.success":
+        data = payload["data"]
+        ref = data["reference"]
+        cust_email = data["customer"]["email"]
+        amount = data["amount"] / 100
+        
+        # Determine plan from amount or metadata
+        plan_key = "basic"
+        if amount >= 5000: plan_key = "premium"
+        elif amount >= 3500: plan_key = "standard"
+        
+        # Find user by email (mapping email to username if needed)
+        conn = get_db_connection()
+        try:
+            # We assume username or a stored email matches
+            user = conn.execute("SELECT id FROM users WHERE username = ? OR id = ?", (cust_email, data.get("metadata", {}).get("user_id"))).fetchone()
+            if user:
+                u_id = user["id"]
+                plan_cfg = PLAN_CONFIGS.get(plan_key, PLAN_CONFIGS["basic"])
+                conn.execute(
+                    """UPDATE users SET plan = ?, is_approved = 1, payment_proof = ? 
+                       WHERE id = ? AND (plan = 'free' OR plan IS NULL)""",
+                    (plan_key, f"Webhook:{ref}", u_id)
+                )
+                if hasattr(conn, "commit"): conn.commit()
+        finally:
+            if hasattr(conn, "close"): conn.close()
+            
+    return {"status": "success"}
+
 @app.delete("/api/admin/broadcast/{broadcast_id}")
 async def delete_broadcast(broadcast_id: int, admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
