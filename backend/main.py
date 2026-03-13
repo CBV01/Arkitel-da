@@ -93,7 +93,7 @@ PLAN_CONFIGS = {
 
 def check_and_reset_daily_limits(conn, user_id, user_row):
     """Resets daily counts if the day has changed."""
-    last_reset = user_row.get("last_reset_date")
+    last_reset = user_row["last_reset_date"]
     now_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     if last_reset != now_date:
@@ -1391,16 +1391,16 @@ async def scrape_keyword_stream(
     bg_task = asyncio.create_task(scraper_task())
 
     async def event_generator():
-        result_count: int = 0
+        state = {"count": 0}
         try:
             while True:
                 msg = await queue.get()  # pyre-ignore
                 if msg["type"] == "result":
-                    result_count = result_count + 1
+                    state["count"] += 1
                 
                 yield f"data: {json.dumps(msg)}\n\n"
                 
-                if msg["type"] == "result" and result_count >= final_limit:
+                if msg["type"] == "result" and state["count"] >= final_limit:
                     yield f"data: {json.dumps({'type': 'done', 'msg': 'Scrape completed (limit reached)'})}\n\n"
                     bg_task.cancel()
                     break
