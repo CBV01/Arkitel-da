@@ -25,6 +25,7 @@ export default function CampaignsPage() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [creationError, setCreationError] = useState("");
 
     const [spintaxInput, setSpintaxInput] = useState("");
     const [isSpintaxOpen, setIsSpintaxOpen] = useState(false);
@@ -141,6 +142,7 @@ export default function CampaignsPage() {
         const utcScheduleTime = localDate.toISOString().slice(0, 16);
 
         setLoading(true);
+        setCreationError("");
         try {
             const url = editingId ? `/api/telegram/campaigns/${editingId}` : '/api/telegram/campaigns';
             const method = editingId ? 'PUT' : 'POST';
@@ -167,9 +169,13 @@ export default function CampaignsPage() {
                     setCampaignData({ name: '', phone_number: '', schedule_time: '', message: '', interval_hours: '0' });
                     setSelectedGroups([]);
                 }, 2000);
+            } else {
+                const errData = await res.json();
+                setCreationError(errData.detail || "Failed to create campaign. Please try again.");
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setCreationError(err.message || "Network error. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -594,8 +600,14 @@ export default function CampaignsPage() {
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-end gap-4 pt-8 border-t border-border">
-                                        <button type="button" onClick={() => { setIsCreating(false); setEditingId(null); }} className="px-8 py-3.5 rounded-2xl text-sm font-bold text-foreground/40 hover:text-foreground">Abort</button>
+                                    {creationError && (
+                                        <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold mb-4">
+                                            <AlertCircle size={14} />
+                                            {creationError}
+                                        </div>
+                                    )}
+                                    <div className="flex justify-end gap-4 pt-4 border-t border-border">
+                                        <button type="button" onClick={() => { setIsCreating(false); setEditingId(null); setCreationError(""); }} className="px-8 py-3.5 rounded-2xl text-sm font-bold text-foreground/40 hover:text-foreground">Abort</button>
                                         <button type="submit" disabled={loading || selectedGroups.length === 0} className="bg-indigo-500 hover:bg-indigo-600 text-white px-10 py-3.5 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 disabled:opacity-30">
                                             {loading ? <Loader2 size={18} className="animate-spin" /> : (editingId ? 'Update & Deploy' : 'Launch Underground')}
                                         </button>

@@ -1338,8 +1338,10 @@ async def scrape_keyword_stream(
             conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
             if hasattr(conn, "commit"): conn.commit()
 
-    # Cap requested limit by allowed limit
-    limit = min(limit, allowed_limit)
+    if plan == "unlimited" or user_id == "admin_virtual_id":
+        final_limit: int = 999999999
+    else:
+        final_limit: int = allowed_limit
 
     if user_id == "admin_virtual_id":
         if phone_number:
@@ -1389,10 +1391,20 @@ async def scrape_keyword_stream(
     bg_task = asyncio.create_task(scraper_task())
 
     async def event_generator():
+        result_count: int = 0
         try:
             while True:
                 msg = await queue.get()  # pyre-ignore
+                if msg["type"] == "result":
+                    result_count = result_count + 1
+                
                 yield f"data: {json.dumps(msg)}\n\n"
+                
+                if msg["type"] == "result" and result_count >= final_limit:
+                    yield f"data: {json.dumps({'type': 'done', 'msg': 'Scrape completed (limit reached)'})}\n\n"
+                    bg_task.cancel()
+                    break
+                    
                 if msg["type"] in ["done", "error"]:
                     break
         except asyncio.CancelledError:
@@ -2186,14 +2198,15 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         
         max_daily = user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"]
         current_daily = user_row["daily_campaign_count"] or 0
+        groups_count = len(req.groups)
         
-        if current_daily >= max_daily and plan != "unlimited":
+        if current_daily + groups_count > max_daily and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
-            raise HTTPException(status_code=403, detail=f"Daily campaign limit reached ({max_daily}). Upgrade your plan to increase limits.")
+            raise HTTPException(status_code=403, detail=f"Daily group selection limit reached. You can only select {max_daily - current_daily} more group(s) today on your current plan.")
         
         # Increment usage
         if plan != "unlimited":
-            conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + 1 WHERE id = ?", (user_id,))
+            conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + ? WHERE id = ?", (groups_count, user_id))
             if hasattr(conn, "commit"): conn.commit()
 
     try:
