@@ -345,6 +345,18 @@ def init_db():
             conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
         except:
             pass
+            
+    # Migration for coupons table
+    coupon_cols = [
+        ("max_daily_campaigns", "INTEGER"),
+        ("max_daily_keywords", "INTEGER"),
+        ("scrape_limit", "INTEGER")
+    ]
+    for col_name, col_def in coupon_cols:
+        try:
+            conn.execute(f"ALTER TABLE coupons ADD COLUMN {col_name} {col_def}")
+        except:
+            pass
     
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")

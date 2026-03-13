@@ -40,7 +40,7 @@ export default function AdminDashboard() {
     const [coupons, setCoupons] = useState<any[]>([]);
     const [monetizationUsers, setMonetizationUsers] = useState<any[]>([]);
     const [loadingMonetization, setLoadingMonetization] = useState(false);
-    const [newCoupon, setNewCoupon] = useState({ code: '', price: 5000 });
+    const [newCoupon, setNewCoupon] = useState({ code: '', price: 5000, max_daily_campaigns: '', max_daily_keywords: '', scrape_limit: '' });
 
     const fetchAdminData = async () => {
         try {
@@ -481,16 +481,59 @@ export default function AdminDashboard() {
                                     />
                                     <p className="text-[10px] text-foreground/30 px-1 font-medium italic">* Set to 0 for a free automatic unlock code.</p>
                                 </div>
+                                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-white/5 mt-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest px-1">Max Campaigns</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="Default..."
+                                            value={newCoupon.max_daily_campaigns}
+                                            onChange={(e) => setNewCoupon({...newCoupon, max_daily_campaigns: e.target.value})}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs focus:ring-1 focus:ring-indigo-500/50 outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest px-1">Max Keywords</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="Default..."
+                                            value={newCoupon.max_daily_keywords}
+                                            onChange={(e) => setNewCoupon({...newCoupon, max_daily_keywords: e.target.value})}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs focus:ring-1 focus:ring-indigo-500/50 outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-bold text-foreground/30 uppercase tracking-widest px-1">Scrape Limit</label>
+                                        <input 
+                                            type="number" 
+                                            placeholder="Default..."
+                                            value={newCoupon.scrape_limit}
+                                            onChange={(e) => setNewCoupon({...newCoupon, scrape_limit: e.target.value})}
+                                            className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs focus:ring-1 focus:ring-indigo-500/50 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <p className="text-[9px] text-foreground/30 px-1 font-medium italic">* Leave above limits blank to use standard premium limits.</p>
                                 <button
                                     onClick={async () => {
                                         if (!newCoupon.code) return;
+                                        
+                                        const payload = {
+                                            code: newCoupon.code,
+                                            price: newCoupon.price,
+                                            max_daily_campaigns: newCoupon.max_daily_campaigns ? parseInt(newCoupon.max_daily_campaigns) : null,
+                                            max_daily_keywords: newCoupon.max_daily_keywords ? parseInt(newCoupon.max_daily_keywords) : null,
+                                            scrape_limit: newCoupon.scrape_limit ? parseInt(newCoupon.scrape_limit) : null
+                                        };
+
                                         const res = await apiFetch('/api/admin/monetization/coupons', {
                                             method: 'POST',
-                                            body: JSON.stringify(newCoupon)
+                                            body: JSON.stringify(payload)
                                         });
                                         if (res.ok) {
                                             setSuccessMsg("Coupon created successfully!");
-                                            setNewCoupon({ code: '', price: 5000 });
+                                            setNewCoupon({ code: '', price: 5000, max_daily_campaigns: '', max_daily_keywords: '', scrape_limit: '' });
+
                                             fetchMonetizationData();
                                         }
                                     }}
@@ -509,6 +552,11 @@ export default function AdminDashboard() {
                                             <div>
                                                 <div className="text-xs font-bold text-foreground">{c.code}</div>
                                                 <div className="text-[10px] text-foreground/40 font-bold">{c.price === 0 ? 'FREE ACCESS' : `#${c.price}`} • {c.is_active ? 'Active' : 'Used'}</div>
+                                                {c.max_daily_campaigns && (
+                                                    <div className="text-[8px] text-indigo-400 mt-0.5 tracking-wider uppercase font-black">
+                                                        [CUSTOM] {c.max_daily_campaigns} Camp / {c.max_daily_keywords} Key / {c.scrape_limit} Scr
+                                                    </div>
+                                                )}
                                             </div>
                                             <button 
                                                 onClick={async () => {

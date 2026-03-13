@@ -1821,17 +1821,24 @@ async def get_coupons_admin(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
     rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
     if hasattr(conn, "close"): conn.close()
-    return {"coupons": [dict(id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"], created_at=r["created_at"]) for r in rows]}
+    return {"coupons": [dict(id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"], created_at=r["created_at"], max_daily_campaigns=r.get("max_daily_campaigns"), max_daily_keywords=r.get("max_daily_keywords"), scrape_limit=r.get("scrape_limit")) for r in rows]}
 
 class CouponCreateRequest(BaseModel):
     code: str
     price: int
+    max_daily_campaigns: Optional[int] = None
+    max_daily_keywords: Optional[int] = None
+    scrape_limit: Optional[int] = None
 
 @app.post("/api/admin/monetization/coupons")
 async def create_coupon_admin(req: CouponCreateRequest, admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
     try:
-        conn.execute("INSERT INTO coupons (code, price) VALUES (?, ?)", (req.code, req.price))
+        conn.execute(
+            """INSERT INTO coupons (code, price, max_daily_campaigns, max_daily_keywords, scrape_limit) 
+               VALUES (?, ?, ?, ?, ?)""", 
+            (req.code, req.price, req.max_daily_campaigns, req.max_daily_keywords, req.scrape_limit)
+        )
         if hasattr(conn, "commit"): conn.commit()
         return {"status": "success"}
     except Exception as e:
@@ -1884,13 +1891,19 @@ async def apply_coupon(code: str, user_id: str = Depends(get_current_user_id)):
         if price == 0:
             # FREE access code - unlock Premium immediately (highest plan)
             cfg = PLAN_CONFIGS["premium"]
+            
+            # Use custom limits from coupon if available, otherwise default to premium
+            c_campaigns = coupon["max_daily_campaigns"] if coupon["max_daily_campaigns"] is not None else cfg["max_daily_campaigns"]
+            c_keywords = coupon["max_daily_keywords"] if coupon["max_daily_keywords"] is not None else cfg["max_daily_keywords"]
+            c_scrape = coupon["scrape_limit"] if coupon["scrape_limit"] is not None else cfg["scrape_limit"]
+            
             conn.execute(
                 """UPDATE users SET 
                    plan = 'premium', is_approved = 1, 
                    max_accounts = ?, scrape_limit = ?,
                    max_daily_campaigns = ?, max_daily_keywords = ?
                    WHERE id = ?""",
-                (cfg["max_accounts"], cfg["scrape_limit"], cfg["max_daily_campaigns"], cfg["max_daily_keywords"], user_id)
+                (cfg["max_accounts"], c_scrape, c_campaigns, c_keywords, user_id)
             )
             # Deactivate coupon after single use
             conn.execute("UPDATE coupons SET is_active = 0 WHERE UPPER(code) = ?", (code,))
