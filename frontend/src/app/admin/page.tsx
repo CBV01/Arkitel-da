@@ -639,20 +639,23 @@ export default function AdminDashboard() {
                                                     </select>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <div className="flex flex-col gap-1.5">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[9px] text-foreground/30 font-black uppercase">CAMPAIGNS:</span>
-                                                            <span className="text-[10px] font-mono text-foreground">{u.daily_campaign_count} / {u.max_daily_campaigns}</span>
+                                                    <div className="flex flex-wrap gap-2 max-w-[180px]">
+                                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/5">
+                                                            <span className="text-[8px] text-foreground/30 font-black">CAMP:</span>
+                                                            <span className="text-[10px] font-bold text-indigo-400">{u.daily_campaign_count} / {u.max_daily_campaigns}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[9px] text-foreground/30 font-black uppercase">KEYWORDS:</span>
-                                                            <span className="text-[10px] font-mono text-foreground">{u.daily_keyword_count} / {u.max_daily_keywords}</span>
+                                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/5">
+                                                            <span className="text-[8px] text-foreground/30 font-black">KEY:</span>
+                                                            <span className="text-[10px] font-bold text-emerald-400">{u.daily_keyword_count} / {u.max_daily_keywords}</span>
                                                         </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[9px] text-foreground/30 font-black uppercase">SCRAPE:</span>
-                                                            <span className="text-[10px] font-mono text-foreground">{u.scrape_limit}</span>
+                                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/5">
+                                                            <span className="text-[8px] text-foreground/30 font-black">SCR:</span>
+                                                            <span className="text-[10px] font-bold text-amber-400">{u.scrape_limit}</span>
                                                         </div>
-                                                        <div className="text-[9px] text-foreground/30 font-black uppercase">ACCOUNTS: {u.max_accounts}</div>
+                                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/5">
+                                                            <span className="text-[8px] text-foreground/30 font-black">ACC:</span>
+                                                            <span className="text-[10px] font-bold text-blue-400">{u.max_accounts}</span>
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4">

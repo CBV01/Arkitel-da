@@ -266,25 +266,29 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                                     </div>
                                 </div>
 
-                                {/* Keyword Limit */}
-                                <div className="space-y-1">
-                                    <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
-                                        <span>Keywords Searched</span>
-                                        <span>{status?.daily_keyword_count || 0} / {status?.max_daily_keywords || 5}</span>
-                                    </div>
-                                    <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
-                                        <div 
-                                            className="h-full bg-emerald-500 transition-all duration-1000"
-                                            style={{ width: `${Math.min(100, ((status?.daily_keyword_count || 0) / (status?.max_daily_keywords || 5)) * 100)}%` }}
-                                        />
-                                    </div>
-                                </div>
+                                {status?.plan !== 'free' && (
+                                    <>
+                                        {/* Keyword Limit */}
+                                        <div className="space-y-1">
+                                            <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
+                                                <span>Keywords Searched</span>
+                                                <span>{status?.daily_keyword_count || 0} / {status?.max_daily_keywords || 5}</span>
+                                            </div>
+                                            <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                                                <div 
+                                                    className="h-full bg-emerald-500 transition-all duration-1000"
+                                                    style={{ width: `${Math.min(100, ((status?.daily_keyword_count || 0) / (status?.max_daily_keywords || 5)) * 100)}%` }}
+                                                />
+                                            </div>
+                                        </div>
 
-                                {/* Scrape Power */}
-                                <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
-                                    <span>Scrape Limit</span>
-                                    <span className="text-foreground/60">{status?.scrape_limit || 50} / search</span>
-                                </div>
+                                        {/* Scrape Power */}
+                                        <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
+                                            <span>Scrape Limit</span>
+                                            <span className="text-foreground/60">{status?.scrape_limit || 50} / search</span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
                             <div className="pt-2 border-t border-border/50">

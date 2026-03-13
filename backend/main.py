@@ -618,8 +618,10 @@ async def verify_passkey(req: PasskeyVerify, user_id: str = Depends(get_current_
 async def get_me(user_id: str = Depends(get_current_user_id)):
     if user_id == "admin_virtual_id":
         return {
+            "id": "admin_virtual_id",
             "username": "System Administrator",
             "role": "admin",
+            "plan": "unlimited",
             "passkey_verified": True
         }
     
@@ -1873,6 +1875,20 @@ async def delete_coupon_admin(code: str, admin_id: str = Depends(get_current_adm
 
 @app.get("/api/monetization/status")
 async def get_user_status(user_id: str = Depends(get_current_user_id)):
+    if user_id == "admin_virtual_id":
+        cfg = PLAN_CONFIGS["unlimited"]
+        return {
+            "plan": "unlimited",
+            "scrape_limit": cfg["scrape_limit"],
+            "max_accounts": cfg["max_accounts"],
+            "max_daily_campaigns": cfg["max_daily_campaigns"],
+            "daily_campaign_count": 0,
+            "max_daily_keywords": cfg["max_daily_keywords"],
+            "daily_keyword_count": 0,
+            "is_approved": 1,
+            "has_proof": True
+        }
+
     conn = get_db_connection()
     row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     if hasattr(conn, "close"): conn.close()

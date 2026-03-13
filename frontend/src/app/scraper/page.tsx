@@ -334,14 +334,20 @@ export default function ScraperPage() {
     });
 
     const toggleSelectAll = () => {
-        // Treat is_member as false if it's undefined (Layer 2/3 results don't always set it)
         const selectable = filteredResults.filter(r => !r.is_member);
-        const allSelected = selectable.length > 0 && selectedGroups.size === selectable.length;
-        if (allSelected) {
-            setSelectedGroups(new Set());
+        if (selectable.length === 0) return;
+        
+        const allAlreadySelected = selectable.every(r => selectedGroups.has(r.id));
+        
+        const newSelected = new Set(selectedGroups);
+        if (allAlreadySelected) {
+            // Deselect only the currently visible selectable ones
+            selectable.forEach(r => newSelected.delete(r.id));
         } else {
-            setSelectedGroups(new Set(selectable.map(r => r.id)));
+            // Select all visible selectable ones
+            selectable.forEach(r => newSelected.add(r.id));
         }
+        setSelectedGroups(newSelected);
     };
 
     return (
@@ -536,17 +542,17 @@ export default function ScraperPage() {
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-black/5 dark:border-white/5 text-foreground/50 text-[11px] uppercase tracking-wider bg-black/[0.02] dark:bg-white/[0.02]">
-                                    <th className="font-semibold p-4 pl-6 w-10">
+                                    <th className="font-semibold p-4 pl-6 w-10 text-center">
                                         <button
                                             onClick={toggleSelectAll}
-                                            title={selectedGroups.size > 0 ? 'Deselect All' : 'Select All'}
-                                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${
-                                                filteredResults.filter(r => !r.is_member).length > 0 && selectedGroups.size === filteredResults.filter(r => !r.is_member).length
+                                            title={filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(r.id)) && filteredResults.filter(r => !r.is_member).length > 0 ? 'Deselect All' : 'Select All'}
+                                            className={`w-5 h-5 rounded flex items-center justify-center border transition-all mx-auto ${
+                                                filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(r.id))
                                                     ? 'bg-indigo-600 border-indigo-600 text-white'
                                                     : 'border-foreground/20 hover:border-indigo-500'
                                             }`}
                                         >
-                                            {filteredResults.filter(r => !r.is_member).length > 0 && selectedGroups.size === filteredResults.filter(r => !r.is_member).length && <CheckCircle2 size={14} />}
+                                            {filteredResults.filter(r => !r.is_member).length > 0 && filteredResults.filter(r => !r.is_member).every(r => selectedGroups.has(r.id)) && <CheckCircle2 size={14} />}
                                         </button>
                                     </th>
                                     <th className="font-semibold p-4">Group / Channel Name</th>
