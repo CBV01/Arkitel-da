@@ -2075,10 +2075,11 @@ async def edit_campaign(task_id: int, req: CampaignEditRequest, user_id: str = D
         updates.append("scheduled_time = ?")
         params.append(req.scheduled_time)
     if req.target_groups is not None:
+        tg = req.target_groups
         updates.append("target_groups = ?")
         updates.append("total_targets = ?")
-        params.append(json.dumps(req.target_groups))
-        params.append(len(req.target_groups))
+        params.append(json.dumps(tg))
+        params.append(len(tg))
     if req.interval_hours is not None:
         updates.append("interval_hours = ?")
         params.append(req.interval_hours)
