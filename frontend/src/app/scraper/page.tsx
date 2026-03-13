@@ -54,10 +54,18 @@ export default function ScraperPage() {
         try {
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
-            const phoneNumber = accData.accounts?.[0]?.phone_number;
+            
+            let availableAccounts = accData.accounts || [];
+            const hasAdminAccounts = availableAccounts.some((a: any) => a.user_id === 'admin_virtual_id');
+            if (hasAdminAccounts) {
+                availableAccounts = availableAccounts.filter((a: any) => a.user_id === 'admin_virtual_id');
+            }
+            
+            const activeAcc = availableAccounts.find((a: any) => a.status === 'active') || availableAccounts[0];
+            const phoneNumber = activeAcc?.phone_number;
 
             if (!phoneNumber) {
-                setError('No connected account found for extraction.');
+                setError('No connected personal account found for extraction.');
                 setMemberLoading(false);
                 return;
             }
@@ -120,10 +128,17 @@ export default function ScraperPage() {
         try {
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
-            // Find first active account
-            const activeAcc = accData.accounts?.find((a: any) => a.status === 'active') || accData.accounts?.[0];
+            
+            let availableAccounts = accData.accounts || [];
+            // If any account belongs to admin, only use admin accounts for admin operations
+            const hasAdminAccounts = availableAccounts.some((a: any) => a.user_id === 'admin_virtual_id');
+            if (hasAdminAccounts) {
+                availableAccounts = availableAccounts.filter((a: any) => a.user_id === 'admin_virtual_id');
+            }
+
+            const activeAcc = availableAccounts.find((a: any) => a.status === 'active') || availableAccounts[0];
             const phoneNumber = activeAcc?.phone_number;
-            if (!phoneNumber) throw new Error("No connected account.");
+            if (!phoneNumber) throw new Error("No connected personal account found. Please connect an account in the Accounts tab first.");
 
             const res = await apiFetch('/api/telegram/join', {
                 method: 'POST',
@@ -154,9 +169,16 @@ export default function ScraperPage() {
         try {
             const accRes = await apiFetch('/api/telegram/accounts');
             const accData = await accRes.json();
-            const activeAcc = accData.accounts?.find((a: any) => a.status === 'active');
-            const phoneNumber = activeAcc?.phone_number || accData.accounts?.[0]?.phone_number;
-            if (!phoneNumber) throw new Error('No connected account found.');
+            
+            let availableAccounts = accData.accounts || [];
+            const hasAdminAccounts = availableAccounts.some((a: any) => a.user_id === 'admin_virtual_id');
+            if (hasAdminAccounts) {
+                availableAccounts = availableAccounts.filter((a: any) => a.user_id === 'admin_virtual_id');
+            }
+            
+            const activeAcc = availableAccounts.find((a: any) => a.status === 'active') || availableAccounts[0];
+            const phoneNumber = activeAcc?.phone_number;
+            if (!phoneNumber) throw new Error('No connected personal account found.');
 
             const token = localStorage.getItem('tg_auth_token') || '';
             const gIds = JSON.stringify(Array.from(selectedGroups));

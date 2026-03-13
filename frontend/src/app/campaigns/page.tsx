@@ -106,7 +106,19 @@ export default function CampaignsPage() {
             const res = await apiFetch('/api/telegram/accounts');
             if (res.ok) {
                 const data = await res.json();
-                setAccounts(data.accounts || []);
+                let accs = data.accounts || [];
+
+                // If any account belongs to admin, only use admin accounts for admin operations
+                const hasAdminAccounts = accs.some((a: any) => a.user_id === 'admin_virtual_id');
+                if (hasAdminAccounts) {
+                    accs = accs.filter((a: any) => a.user_id === 'admin_virtual_id');
+                }
+
+                setAccounts(accs);
+                if (accs.length > 0 && !campaignData.phone_number) {
+                    const active = accs.find((a: any) => a.status === 'active') || accs[0];
+                    setCampaignData(prev => ({ ...prev, phone_number: active.phone_number }));
+                }
             }
         } catch (err) {
             console.error("Failed to fetch accounts", err);
