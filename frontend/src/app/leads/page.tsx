@@ -163,6 +163,7 @@ export default function LeadsPage() {
                         evtSource.close();
                     } else if (data.type === 'error') {
                         setError(data.msg);
+                        setJoinProgress(p => ({ ...p, done: true, log: [{ type: 'failed', name: 'BLOCKER', reason: data.msg }, ...p.log] }));
                         evtSource.close();
                         setJoining(false);
                     } else if (data.type === 'progress') {

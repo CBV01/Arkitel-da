@@ -258,6 +258,19 @@ export default function ScraperPage() {
                 signal: controller.signal
             });
 
+            if (res.status === 403) {
+                const data = await res.json();
+                setError(data.detail || "Daily usage limit reached for scraping.");
+                setLoading(false);
+                setScrapeStatus(''); // Clear the connecting status
+                return;
+            }
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.detail || "Search failed.");
+            }
+
             if (!res.body) throw new Error("No readable stream available");
 
             const reader = res.body.getReader();

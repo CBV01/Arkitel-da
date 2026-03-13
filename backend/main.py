@@ -1333,7 +1333,7 @@ async def scrape_keyword_stream(
         
         if current_keywords >= max_keywords and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
-            raise HTTPException(status_code=403, detail=f"Daily keyword limit reached ({max_keywords}). Reset at Midnight UTC.")
+            raise HTTPException(status_code=403, detail="Daily usage limit reached for scraping. Reset at Midnight UTC.")
 
         # Increment keyword use
         if plan != "unlimited":
