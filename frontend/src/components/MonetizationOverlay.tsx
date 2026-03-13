@@ -143,9 +143,9 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
             {children}
 
             {isLocked && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto rounded-[inherit]">
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 h-[100dvh] w-screen overflow-hidden bg-background">
                     {/* Dark Solid Backdrop for Mobile, Glass for Desktop */}
-                    <div className="absolute inset-0 bg-background/95 lg:bg-background/80 lg:backdrop-blur-xl" />
+                    <div className="absolute inset-0 bg-background/95 lg:bg-background/90 lg:backdrop-blur-3xl" />
                     <div className="hidden lg:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/8 rounded-full blur-[120px] pointer-events-none" />
 
                     <div className="relative w-full max-w-[480px] my-4 animate-in zoom-in-95 duration-400">

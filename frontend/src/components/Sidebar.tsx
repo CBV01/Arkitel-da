@@ -200,18 +200,6 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                 {/* Theme Toggle & Logout */}
                 <div className="p-4 border-t border-border space-y-1">
                     <button
-                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                        className={`
-                flex items-center gap-3 py-3 w-full rounded-xl text-sm font-medium transition-all text-foreground/60 hover:text-foreground hover:bg-foreground/5
-                ${isCollapsed ? "justify-center px-0" : "px-4"}
-              `}
-                        title={isCollapsed ? "Toggle Theme" : ""}
-                    >
-                        {mounted && (theme === "dark" ? <Sun size={20} /> : <Moon size={20} />)}
-                        {!isCollapsed && <span className="animate-in fade-in duration-300">{mounted ? (theme === "dark" ? "Light Mode" : "Dark Mode") : "Theme"}</span>}
-                    </button>
-
-                    <button
                         onClick={handleLogout}
                         className={`
                 flex items-center gap-3 py-3 w-full rounded-xl text-sm font-medium transition-all text-red-500/60 hover:text-red-500 hover:bg-red-500/10
