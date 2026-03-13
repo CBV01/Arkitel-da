@@ -2528,7 +2528,7 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
             c_members = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
             total_leads = c_scraped + c_members
             pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'pending'").fetchone()[0]
-            messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'completed'").fetchone()[0]
+            messages_sent = conn.execute("SELECT SUM(sent_count) FROM tasks").fetchone()[0] or 0
             
             tasks_rows = conn.execute(
                 "SELECT phone_number, status, message_text, scheduled_time FROM tasks ORDER BY scheduled_time DESC LIMIT 5"
@@ -2538,19 +2538,20 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
             for i in range(6, -1, -1):
                 day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
                 count = conn.execute(
-                    "SELECT COUNT(*) FROM tasks WHERE status = 'completed' AND scheduled_time LIKE ?",
+                    "SELECT SUM(sent_count) FROM tasks WHERE scheduled_time LIKE ?",
                     (f"{day}%",)
-                ).fetchone()[0]
+                ).fetchone()[0] or 0
                 trends.append(count)
         else:
             # Core counts for regular user
             total_accounts = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchone()[0]
-            
             # Dashboard leads should strictly match what the user sees in the Leads page
-            total_leads = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
+            c_scraped = conn.execute("SELECT COUNT(*) FROM scraped_groups WHERE user_id = ?", (user_id,)).fetchone()[0]
+            c_members = conn.execute("SELECT COUNT(*) FROM leads WHERE user_id = ?", (user_id,)).fetchone()[0]
+            total_leads = c_scraped + c_members
             
             pending_tasks = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'pending'", (user_id,)).fetchone()[0]
-            messages_sent = conn.execute("SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed'", (user_id,)).fetchone()[0]
+            messages_sent = conn.execute("SELECT SUM(sent_count) FROM tasks WHERE user_id = ?", (user_id,)).fetchone()[0] or 0
             
             tasks_rows = conn.execute(
                 "SELECT phone_number, status, message_text, scheduled_time FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC LIMIT 5", 
@@ -2561,9 +2562,9 @@ async def get_dashboard_stats(user_id: str = Depends(get_current_user_id)):
             for i in range(6, -1, -1):
                 day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
                 count = conn.execute(
-                    "SELECT COUNT(*) FROM tasks WHERE user_id = ? AND status = 'completed' AND scheduled_time LIKE ?",
+                    "SELECT SUM(sent_count) FROM tasks WHERE user_id = ? AND scheduled_time LIKE ?",
                     (user_id, f"{day}%")
-                ).fetchone()[0]
+                ).fetchone()[0] or 0
                 trends.append(count)
             
         service_health = {
