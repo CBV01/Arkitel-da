@@ -2167,6 +2167,23 @@ async def bulk_delete_members(req: BulkDeleteRequest, user_id: str = Depends(get
 
 # Removed redundant get_accounts (already refactored earlier)
 
+@app.post("/api/telegram/campaigns/{task_id}/stop")
+async def stop_campaign(task_id: int, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    try:
+        # Verify ownership
+        row = conn.execute("SELECT user_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Task not found")
+        if row["user_id"] != user_id and user_id != "admin_virtual_id":
+             raise HTTPException(status_code=403, detail="Unauthorized")
+        
+        conn.execute("UPDATE tasks SET status = 'stopped' WHERE id = ?", (task_id,))
+        if hasattr(conn, "commit"): conn.commit()
+        return {"status": "success"}
+    finally:
+        if hasattr(conn, "close"): conn.close()
+
 @app.get("/api/telegram/campaigns")
 async def get_campaigns(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
@@ -2203,14 +2220,12 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         current_daily = user_row["daily_campaign_count"] or 0
         groups_count = len(req.groups)
         
-        if current_daily + groups_count > max_daily and plan != "unlimited":
+        if current_daily >= max_daily and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
-            raise HTTPException(status_code=403, detail=f"Daily group selection limit reached. You can only select {max_daily - current_daily} more group(s) today on your current plan.")
+            raise HTTPException(status_code=403, detail=f"Daily limit reached ({max_daily}/{max_daily}). Upgrade your plan to send more.")
         
-        # Increment usage
-        if plan != "unlimited":
-            conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + ? WHERE id = ?", (groups_count, user_id))
-            if hasattr(conn, "commit"): conn.commit()
+        # WE NO LONGER INCREMENT HERE. WE INCREMENT ON SUCCESSFUL SEND IN THE BACKGROUND.
+
 
     try:
         # The schedule_time sent by the frontend must already be in UTC.
@@ -2643,6 +2658,32 @@ async def task_poller():
             sent_ok_stats = [0]
             # High Fidelity Extraction Loop
             for raw_group in target_groups:
+                # Dynamic Status Check (Abort if User Stopped the Campaign)
+                status_conn = get_db_connection()
+                current_status = status_conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                if hasattr(status_conn, "close"): status_conn.close()
+                if not current_status or current_status["status"] != "processing":
+                    log_debug(f"BKG_TASK[{task_id}]: Task externally aborted or stopped. Status: {current_status['status'] if current_status else 'None'}. Halting sender loop.")
+                    break
+
+                # Global User Limit Check (Enforce Plan Quotas in Real-Time)
+                quota_conn = get_db_connection()
+                try:
+                    u_row = quota_conn.execute("SELECT plan, daily_campaign_count, max_daily_campaigns FROM users WHERE id = ?", (u_id,)).fetchone()
+                    if u_row:
+                        u_plan = u_row["plan"] or "free"
+                        u_count = u_row["daily_campaign_count"] or 0
+                        u_cfg = PLAN_CONFIGS.get(u_plan, PLAN_CONFIGS["free"])
+                        u_max = u_row["max_daily_campaigns"] or u_cfg["max_daily_campaigns"]
+                        
+                        if u_plan != "unlimited" and u_count >= u_max:
+                            log_debug(f"BKG_TASK[{task_id}]: GLOBAL QUOTA REACHED ({u_count}/{u_max}). Stopping campaign for today.")
+                            quota_conn.execute("UPDATE tasks SET status = 'completed' WHERE id = ?", (task_id,))
+                            if hasattr(quota_conn, "commit"): quota_conn.commit()
+                            break
+                finally:
+                    if hasattr(quota_conn, "close"): quota_conn.close()
+
                 try:
                     # Clean and resolve ID format (int vs str)
                     group = str(raw_group).strip()
@@ -2708,6 +2749,8 @@ async def task_poller():
                         # INSTANT COUNT UPDATE (Every message)
                         u_conn = get_db_connection()
                         u_conn.execute("UPDATE tasks SET sent_count = ? WHERE id = ?", (sent_ok_stats[0], task_id))
+                        # INCREMENT USER GLOBAL DAILY COUNT
+                        u_conn.execute("UPDATE users SET daily_campaign_count = daily_campaign_count + 1 WHERE id = ?", (u_id,))
                         if hasattr(u_conn, "commit"): u_conn.commit()
                         
                         # BATCH LOG UPDATE (Every 5 messages - prevents DB choking)
@@ -2738,18 +2781,27 @@ async def task_poller():
             
             # Final Batch Update (One Connection)
             conn = get_db_connection()
-            if int(interval) > 0:
-                new_time = (datetime.now(timezone.utc) + timedelta(hours=int(interval))).strftime('%Y-%m-%dT%H:%M')
-                # RESET sent_count TO 0 for next batch cycle
-                conn.execute(
-                    "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 
-                    (new_time, json.dumps(failed_list), task_id)
-                )
-                print(f"BKG: Task {task_id} rescheduled for {new_time} (Successful: {sent_ok_stats[0]})")
-            else:
-                conn.execute("UPDATE tasks SET status = 'completed', sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
-                print(f"BKG: Task {task_id} marked COMPLETED (Successful: {sent_ok_stats[0]})")
+            # Double check if it was stopped externally before saving final state
+            final_status_row = conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            current_status = final_status_row["status"] if final_status_row else "processing"
             
+            if current_status == "processing":
+                if int(interval) > 0:
+                    new_time = (datetime.now(timezone.utc) + timedelta(hours=int(interval))).strftime('%Y-%m-%dT%H:%M')
+                    # RESET sent_count TO 0 for next batch cycle
+                    conn.execute(
+                        "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 
+                        (new_time, json.dumps(failed_list), task_id)
+                    )
+                    print(f"BKG: Task {task_id} rescheduled for {new_time} (Successful: {sent_ok_stats[0]})")
+                else:
+                    conn.execute("UPDATE tasks SET status = 'completed', sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
+                    print(f"BKG: Task {task_id} marked COMPLETED (Successful: {sent_ok_stats[0]})")
+            else:
+                log_debug(f"BKG: Task {task_id} already marked as {current_status}, skipping auto-complete.")
+                # We still update the final stats so the UI is accurate
+                conn.execute("UPDATE tasks SET sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
+                
             if hasattr(conn, "commit"): conn.commit()
             if hasattr(conn, "close"): conn.close()
 

@@ -81,6 +81,25 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
             }
         };
         fetchUser();
+
+        const updateStatus = () => {
+            if (getToken()) {
+                apiFetch('/api/monetization/status')
+                    .then(res => res.ok ? res.json() : null)
+                    .then(data => {
+                        if (data) setStatus(data);
+                    })
+                    .catch(() => {});
+            }
+        };
+
+        window.addEventListener('update_status', updateStatus);
+        const intervalId = setInterval(updateStatus, 15000);
+
+        return () => {
+            window.removeEventListener('update_status', updateStatus);
+            clearInterval(intervalId);
+        };
     }, [pathname, router]);
 
     const handleLogout = () => {
@@ -173,7 +192,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                 </button>
 
                 {/* Navigation Links */}
-                <div className="space-y-1.5 flex-1 px-3">
+                <div className="space-y-1.5 flex-1 px-3 overflow-y-auto overflow-x-hidden custom-scrollbar">
                     {navItems.map((item) => {
                         const isActive = pathname === item.href;
                         return (

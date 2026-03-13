@@ -242,6 +242,9 @@ export default function ScraperPage() {
         setResults([]);
         setScrapeStatus('Connecting to Scrape Engine...');
 
+        // Immediately notify sidebar – backend increments keyword count before streaming starts
+        window.dispatchEvent(new Event('update_status'));
+
         if (abortControllerRef.current) abortControllerRef.current.abort();
         const controller = new AbortController();
         abortControllerRef.current = controller;
@@ -282,6 +285,8 @@ export default function ScraperPage() {
                                         });
                                     } else if (parsed.type === 'done') {
                                         setScrapeStatus('Scrape Complete!');
+                                        // Notify sidebar to refresh keyword count
+                                        window.dispatchEvent(new Event('update_status'));
                                     } else if (parsed.type === 'error') {
                                         setError(parsed.msg);
                                     }
@@ -302,6 +307,8 @@ export default function ScraperPage() {
         } finally {
             setLoading(false);
             abortControllerRef.current = null;
+            // Always refresh sidebar status counts after scrape ends
+            window.dispatchEvent(new Event('update_status'));
         }
     };
 

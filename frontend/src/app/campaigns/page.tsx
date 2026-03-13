@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle, AlertCircle } from 'lucide-react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle, AlertCircle, Pause } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
 
@@ -33,6 +33,22 @@ export default function CampaignsPage() {
     const [loadingTasks, setLoadingTasks] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 15;
+
+    const [userStatus, setUserStatus] = useState<any>(null);
+
+    const fetchStatus = async () => {
+        try {
+            const res = await apiFetch('/api/monetization/status');
+            if (res.ok) {
+                const data = await res.json();
+                setUserStatus(data);
+            }
+        } catch (e) {}
+    };
+
+    useEffect(() => {
+        fetchStatus();
+    }, []);
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -126,9 +142,13 @@ export default function CampaignsPage() {
     }, []);
 
     const toggleGroup = (id: string) => {
-        setSelectedGroups(prev =>
-            prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id]
-        );
+        setSelectedGroups(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(g => g !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -162,6 +182,8 @@ export default function CampaignsPage() {
             if (res.ok) {
                 setSuccess(true);
                 fetchCampaigns();
+                // Refresh sidebar usage counters
+                window.dispatchEvent(new Event('update_status'));
                 setTimeout(() => {
                     setSuccess(false);
                     setIsCreating(false);
@@ -211,6 +233,20 @@ export default function CampaignsPage() {
     const isSpintaxValid = (text: string) => {
         if (!text) return true;
         return text.includes('{') && text.includes('}') && text.includes('|');
+    };
+
+    const handleStop = async (id: number) => {
+        if (!confirm("Stop this campaign? It will cease all pending transmissions.")) return;
+        try {
+            const res = await apiFetch(`/api/telegram/campaigns/${id}/stop`, { method: 'POST' });
+            if (res.ok) {
+                fetchCampaigns();
+            } else {
+                alert('Failed to stop campaign.');
+            }
+        } catch (e: any) {
+            alert(e.message);
+        }
     };
 
     const handleDelete = async (id: number) => {
@@ -362,6 +398,15 @@ export default function CampaignsPage() {
                                             } catch (e) {}
                                             return null;
                                         })()}
+                                        {camp.status === 'processing' && (
+                                            <button
+                                                onClick={() => handleStop(camp.id)}
+                                                className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
+                                                title="Stop Campaign"
+                                            >
+                                                <Pause size={16} />
+                                            </button>
+                                        )}
                                         <button
                                             onClick={() => handleEdit(camp)}
                                             className="p-2 text-foreground/40 hover:text-indigo-400 hover:bg-indigo-400/10 rounded-lg transition-all"
