@@ -2053,6 +2053,7 @@ class CampaignEditRequest(BaseModel):
     scheduled_time: Optional[str] = None
     target_groups: Optional[List[str]] = None
     interval_hours: Optional[int] = None
+    phone_number: Optional[str] = None
 
 @app.put("/api/telegram/campaigns/{task_id}")
 async def edit_campaign(task_id: int, req: CampaignEditRequest, user_id: str = Depends(get_current_user_id)):
@@ -2075,12 +2076,22 @@ async def edit_campaign(task_id: int, req: CampaignEditRequest, user_id: str = D
         params.append(req.scheduled_time)
     if req.target_groups is not None:
         updates.append("target_groups = ?")
+        updates.append("total_targets = ?")
         params.append(json.dumps(req.target_groups))
+        params.append(len(req.target_groups))
     if req.interval_hours is not None:
         updates.append("interval_hours = ?")
         params.append(req.interval_hours)
+    if req.phone_number is not None:
+        updates.append("phone_number = ?")
+        params.append(req.phone_number)
     
     if updates:
+        # Reset to pending on edit so it re-runs
+        updates.append("status = 'pending'")
+        updates.append("failed_groups = '[]'")
+        updates.append("sent_count = 0")
+        
         params.append(task_id)
         params.append(user_id)
         conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ? AND user_id = ?", tuple(params))
