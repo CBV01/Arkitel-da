@@ -394,8 +394,9 @@ class TelegramPool:
         conn = get_db_connection()
         try:
             if user_id == "admin_virtual_id":
+                # Admin can only use their OWN accounts for operations to avoid consuming user resources
                 row = conn.execute(
-                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ?", 
+                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", 
                     (phone_number,)
                 ).fetchone()
             else:
@@ -889,14 +890,14 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
         # Admin sees all accounts in the system
         rows = conn.execute("""
             SELECT phone_number, status, api_id, api_hash, 
-                   first_name, last_name, username, profile_photo, country, created_at 
+                   first_name, last_name, username, profile_photo, country, created_at, user_id 
             FROM accounts
         """).fetchall()
     else:
         # Regular user only sees their own accounts
         rows = conn.execute("""
             SELECT phone_number, status, api_id, api_hash, 
-                   first_name, last_name, username, profile_photo, country, created_at 
+                   first_name, last_name, username, profile_photo, country, created_at, user_id 
             FROM accounts WHERE user_id = ?
         """, (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
@@ -913,13 +914,17 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
             "username": row[6],
             "profile_photo": row[7],
             "country": row[8],
-            "created_at": row[9]
+            "created_at": row[9],
+            "user_id": row[10]
         })
     return {"accounts": accounts}
 @app.delete("/api/telegram/accounts/{phone_number}")
 async def delete_account(phone_number: str, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    conn.execute("DELETE FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id))
+    if user_id == "admin_virtual_id":
+        conn.execute("DELETE FROM accounts WHERE phone_number = ?", (phone_number,))
+    else:
+        conn.execute("DELETE FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id))
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
     print(f"AUTH: Account {phone_number} deleted by user {user_id}")
@@ -937,7 +942,10 @@ async def validate_account_session(phone_number: str, user_id: str = Depends(get
 @app.get("/api/telegram/accounts/{phone_number}/session")
 async def dump_session_string(phone_number: str, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    row = conn.execute("SELECT session_string FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
+    if user_id == "admin_virtual_id":
+        row = conn.execute("SELECT session_string FROM accounts WHERE phone_number = ?", (phone_number,)).fetchone()
+    else:
+        row = conn.execute("SELECT session_string FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchone()
     if hasattr(conn, "close"): conn.close()
     
     if not row:
@@ -1370,9 +1378,9 @@ async def scrape_keyword_stream(
 
     if user_id == "admin_virtual_id":
         if phone_number:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", (phone_number,)).fetchall()
         else:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' AND user_id = 'admin_virtual_id'").fetchall()
     elif phone_number:
         rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
     else:
@@ -1452,9 +1460,9 @@ async def scrape_keyword(
     conn = get_db_connection()
     if user_id == "admin_virtual_id":
         if phone_number:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", (phone_number,)).fetchall()
         else:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' AND user_id = 'admin_virtual_id'").fetchall()
     elif phone_number:
         rows = conn.execute(
             "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?",
@@ -1593,7 +1601,7 @@ async def bulk_join_stream(
     conn = get_db_connection()
     if user_id == "admin_virtual_id":
         row = conn.execute(
-            "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ?",
+            "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'",
             (phone_number,)
         ).fetchone()
     else:
