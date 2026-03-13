@@ -104,19 +104,9 @@ export default function LeadsPage() {
             const res = await apiFetch('/api/telegram/accounts');
             if (res.ok) {
                 const data = await res.json();
-                let accs = data.accounts || [];
-                
-                // If any account belongs to admin, only use admin accounts for admin operations
-                const hasAdminAccounts = accs.some((a: any) => a.user_id === 'admin_virtual_id');
-                if (hasAdminAccounts) {
-                    accs = accs.filter((a: any) => a.user_id === 'admin_virtual_id');
-                }
-
+                const accs = data.accounts || [];
                 setAccounts(accs);
-                if (accs.length > 0) {
-                    const active = accs.find((a: any) => a.status === 'active') || accs[0];
-                    setExtractingPhone(active.phone_number);
-                }
+                if (accs.length > 0) setExtractingPhone(accs[0].phone_number);
             }
         } catch (e) { }
     };

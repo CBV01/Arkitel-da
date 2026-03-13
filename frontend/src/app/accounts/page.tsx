@@ -15,8 +15,7 @@ import {
     Globe,
     ChevronDown,
     Search,
-    CloudSync,
-    Shield
+    CloudSync
 } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
@@ -56,8 +55,6 @@ export default function AccountsPage() {
     const [fetchingAccounts, setFetchingAccounts] = useState(true);
     const [successMsg, setSuccessMsg] = useState('');
     const [actionLoading, setActionLoading] = useState<string | null>(null);
-    const [adminView, setAdminView] = useState<'my' | 'clients'>('my');
-    const [isAdmin, setIsAdmin] = useState(false);
 
     const fetchAccounts = async () => {
         setFetchingAccounts(true);
@@ -66,12 +63,6 @@ export default function AccountsPage() {
             const data = await res.json();
             if (res.ok) {
                 setAccounts(data.accounts || []);
-                // Check if we have any client accounts to determine if we show admin tabs
-                const hasClients = data.accounts?.some((a: any) => a.user_id !== 'admin_virtual_id');
-                const hasMy = data.accounts?.some((a: any) => a.user_id === 'admin_virtual_id');
-                if (hasClients) {
-                    setIsAdmin(true);
-                }
             }
         } catch (err) {
             console.error("Failed to fetch accounts:", err);
@@ -340,22 +331,6 @@ export default function AccountsPage() {
                 </button>
             </header>
 
-            {isAdmin && (
-                <div className="flex bg-foreground/5 p-1 rounded-2xl mb-8 w-fit mx-auto border border-border/50">
-                    <button 
-                        onClick={() => setAdminView('my')}
-                        className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${adminView === 'my' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'text-foreground/40 hover:text-foreground/60'}`}
-                    >
-                        <Shield size={14} /> My Accounts
-                    </button>
-                    <button 
-                        onClick={() => setAdminView('clients')}
-                        className={`px-8 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${adminView === 'clients' ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/20' : 'text-foreground/40 hover:text-foreground/60'}`}
-                    >
-                        <Users size={14} /> Client Accounts
-                    </button>
-                </div>
-            )}
 
             {fetchingAccounts ? (
                 <Preloader message="Synchronizing Identity Matrix..." />
@@ -377,9 +352,7 @@ export default function AccountsPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                    {accounts
-                        .filter(acc => !isAdmin || (adminView === 'my' ? acc.user_id === 'admin_virtual_id' : acc.user_id !== 'admin_virtual_id'))
-                        .map((acc) => (
+                    {accounts.map((acc) => (
                         <div key={acc.phone_number} className="bg-card border border-border p-6 rounded-[32px] group relative hover:shadow-2xl hover:shadow-indigo-500/5 transition-all duration-500 flex flex-col">
                             {/* Status and Action Header */}
                             <div className="flex justify-between items-start mb-6">

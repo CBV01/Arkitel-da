@@ -394,9 +394,8 @@ class TelegramPool:
         conn = get_db_connection()
         try:
             if user_id == "admin_virtual_id":
-                # Admin can only use their OWN accounts for operations to avoid consuming user resources
                 row = conn.execute(
-                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", 
+                    "SELECT session_string, api_id, api_hash, user_id FROM accounts WHERE phone_number = ?", 
                     (phone_number,)
                 ).fetchone()
             else:
@@ -1378,9 +1377,9 @@ async def scrape_keyword_stream(
 
     if user_id == "admin_virtual_id":
         if phone_number:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", (phone_number,)).fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
         else:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' AND user_id = 'admin_virtual_id'").fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
     elif phone_number:
         rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
     else:
@@ -1460,9 +1459,9 @@ async def scrape_keyword(
     conn = get_db_connection()
     if user_id == "admin_virtual_id":
         if phone_number:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", (phone_number,)).fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
         else:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' AND user_id = 'admin_virtual_id'").fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
     elif phone_number:
         rows = conn.execute(
             "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?",
@@ -1601,7 +1600,7 @@ async def bulk_join_stream(
     conn = get_db_connection()
     if user_id == "admin_virtual_id":
         row = conn.execute(
-            "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'",
+            "SELECT session_string, api_id, api_hash FROM accounts WHERE phone_number = ?",
             (phone_number,)
         ).fetchone()
     else:
