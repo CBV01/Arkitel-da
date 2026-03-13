@@ -1833,7 +1833,10 @@ async def get_coupons_admin(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
     rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
     if hasattr(conn, "close"): conn.close()
-    return {"coupons": [dict(id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"], created_at=r["created_at"], max_daily_campaigns=r.get("max_daily_campaigns"), max_daily_keywords=r.get("max_daily_keywords"), scrape_limit=r.get("scrape_limit")) for r in rows]}
+    def _safe(r, k):
+        try: return r[k]
+        except: return None
+    return {"coupons": [dict(id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"], created_at=r["created_at"], max_daily_campaigns=_safe(r, "max_daily_campaigns"), max_daily_keywords=_safe(r, "max_daily_keywords"), scrape_limit=_safe(r, "scrape_limit")) for r in rows]}
 
 class CouponCreateRequest(BaseModel):
     code: str

@@ -79,18 +79,28 @@ export default function AdminDashboard() {
     const fetchMonetizationData = async () => {
         setLoadingMonetization(true);
         try {
-            const [couponsRes, monoUsersRes] = await Promise.all([
-                apiFetch('/api/admin/monetization/coupons'),
-                apiFetch('/api/admin/monetization/users')
-            ]);
-            if (couponsRes.ok && monoUsersRes.ok) {
+            // Fetch coupons and users independently so one failure doesn't block the other
+            const couponsRes = await apiFetch('/api/admin/monetization/coupons');
+            if (couponsRes.ok) {
                 const cData = await couponsRes.json();
-                const uData = await monoUsersRes.json();
                 setCoupons(cData.coupons || []);
-                setMonetizationUsers(uData.users || []);
+            } else {
+                const errText = await couponsRes.text();
+                console.error(`Coupons fetch failed [${couponsRes.status}]:`, errText);
             }
-        } catch (err) {
-            console.error("Monetization fetch error", err);
+
+            const monoUsersRes = await apiFetch('/api/admin/monetization/users');
+            if (monoUsersRes.ok) {
+                const uData = await monoUsersRes.json();
+                setMonetizationUsers(uData.users || []);
+            } else {
+                const errText = await monoUsersRes.text();
+                console.error(`Monetization users fetch failed [${monoUsersRes.status}]:`, errText);
+                setErrorMsg(`Failed to load monetization users: ${monoUsersRes.status} - ${errText}`);
+            }
+        } catch (err: any) {
+            console.error('Monetization fetch error:', err);
+            setErrorMsg(`Monetization load error: ${err.message}`);
         } finally {
             setLoadingMonetization(false);
         }
