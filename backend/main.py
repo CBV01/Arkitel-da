@@ -533,6 +533,7 @@ async def qr_login_worker(client: TelegramClient, qr, user_id, api_id, api_hash,
 class UserRegister(BaseModel):
     username: str
     password: str
+    email: Optional[str] = None
 
 class PasskeyVerify(BaseModel):
     passkey: str
@@ -574,8 +575,8 @@ async def register(user: UserRegister):
     pw_hash = get_password_hash(user.password)
     
     conn.execute(
-        "INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
-        (user_id, user.username, pw_hash, "user")
+        "INSERT INTO users (id, username, password_hash, role, email) VALUES (?, ?, ?, ?, ?)",
+        (user_id, user.username, pw_hash, "user", user.email)
     )
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
@@ -1958,6 +1959,7 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
             "daily_campaign_count": 0,
             "max_daily_keywords": cfg["max_daily_keywords"],
             "daily_keyword_count": 0,
+            "email": "admin@arkitel.app",
             "is_approved": 1,
             "has_proof": True
         }
@@ -1980,6 +1982,7 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
     return {
         "plan": row["plan"],
         "username": row["username"], 
+        "email": row["email"] or f"{row['username']}@arkitel.app",
         "scrape_limit": row["scrape_limit"] or p_cfg["scrape_limit"],
         "max_accounts": row["max_accounts"] or p_cfg["max_accounts"],
         "max_daily_campaigns": row["max_daily_campaigns"] or p_cfg["max_daily_campaigns"],

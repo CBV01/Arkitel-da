@@ -115,7 +115,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
             const handler = pPop.setup({
                 key: publicKey,
-                email: `${status?.username || 'user'}@arkitel.app`,
+                email: status?.email || `${(status?.username || 'user').replace(/\s+/g, '_')}@arkitel.app`,
                 amount: Math.round(finalAmount * 100), // kobo
                 currency: 'NGN',
                 ref: ref,
@@ -146,7 +146,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                     setMsg({ type: 'error', text: 'Payment window closed.' });
                 }
             });
-            handler.openIframe();
+            handler.open();
         } catch (err) {
             console.error("Paystack open error", err);
             setMsg({ type: 'error', text: 'Failed to open payment gateway. Refresh the page.' });
@@ -189,6 +189,13 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
         <div className="relative w-full h-full min-h-[400px]">
             {children}
             {isLocked && (
+                <>
+                <Script 
+                    src="https://js.paystack.co/v1/inline.js" 
+                    strategy="lazyOnload"
+                    onLoad={() => setIsPaystackReady(true)}
+                />
+
                 <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
                     {/* Backdrop - Minimalist Deep Dark */}
                     <div className="absolute inset-0 bg-[#0a0a0c]/95 backdrop-blur-md" />
@@ -254,14 +261,8 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                 </button>
                             </div>
                         ) : (
-                            <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
-                                <Script 
-                                    src="https://js.paystack.co/v1/inline.js" 
-                                    strategy="lazyOnload"
-                                    onLoad={() => setIsPaystackReady(true)}
-                                />
-
-                                {/* Horizontal Plan Scroll/Tabs */}
+                        <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+                            {/* Horizontal Plan Scroll/Tabs */}
                                 <div className="grid grid-cols-3 gap-2">
                                     {plans.map((plan) => {
                                         const meta = PLAN_METADATA[plan.key] || { icon: Star, color: 'from-gray-500 to-gray-700' };

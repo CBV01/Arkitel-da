@@ -185,6 +185,7 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             role TEXT DEFAULT 'user',
+            email TEXT,
             is_active INTEGER DEFAULT 1,
             passkey_verified INTEGER DEFAULT 0
         )""",
@@ -342,6 +343,7 @@ def init_db():
     # Migration for users table (Premium Features & Plan Limits)
     user_cols = [
         ("plan", "TEXT DEFAULT 'free'"),
+        ("email", "TEXT"),
         ("scrape_limit", "INTEGER DEFAULT 100"),
         ("max_accounts", "INTEGER DEFAULT 1"),
         ("total_scraped", "INTEGER DEFAULT 0"),
