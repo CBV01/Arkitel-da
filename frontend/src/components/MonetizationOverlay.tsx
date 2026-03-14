@@ -42,7 +42,9 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
             }
             if (plansRes.ok) {
                 const pData = await plansRes.json();
-                setPlans(pData);
+                // Filter: Only show Basic, Standard, Premium
+                const filtered = pData.filter((p: any) => ['basic', 'standard', 'premium'].includes(p.key));
+                setPlans(filtered);
             }
         } catch (e) {
             console.error("Failed to fetch monetization data");
@@ -103,8 +105,15 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
         try {
             const ref = `ARK-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-            // @ts-ignore
-            const handler = PaystackPop.setup({
+            
+            // Explicitly check for Paystack library after load
+            const pPop = (window as any).PaystackPop;
+            if (!pPop) {
+                setMsg({ type: 'error', text: 'Paystack library not ready. Please wait 2 seconds and try again.' });
+                return;
+            }
+
+            const handler = pPop.setup({
                 key: publicKey,
                 email: `${status?.username || 'user'}@arkitel.app`,
                 amount: Math.round(finalAmount * 100), // kobo
@@ -180,98 +189,82 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
         <div className="relative w-full h-full min-h-[400px]">
             {children}
             {isLocked && (
-                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-4 overflow-hidden rounded-[inherit]">
-                    <div className="absolute inset-0 bg-background/95 lg:bg-background/90 lg:backdrop-blur-3xl" />
-                    <div className="hidden lg:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/8 rounded-full blur-[120px] pointer-events-none" />
+                <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
+                    {/* Backdrop - Minimalist Deep Dark */}
+                    <div className="absolute inset-0 bg-[#0a0a0c]/95 backdrop-blur-md" />
 
-                    <div className="relative w-full max-w-[480px] my-4 animate-in zoom-in-95 duration-400">
-
-                        {/* Header */}
-                        <div className="text-center mb-5">
+                    {/* Centered Compact Card */}
+                    <div className="relative w-full max-w-[400px] bg-[#111115] border border-white/5 rounded-[2.5rem] p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-500 overflow-hidden">
+                        
+                        {/* Header Area */}
+                        <div className="text-center mb-6">
                             <div className="relative inline-flex mb-3">
-                                <div className="absolute inset-0 bg-indigo-500 blur-2xl opacity-25 animate-pulse rounded-full" />
-                                <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-xl shadow-indigo-500/30">
-                                    <Lock size={24} />
+                                <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full" />
+                                <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center text-white shadow-lg">
+                                    <Crown size={22} fill="currentColor" />
                                 </div>
                             </div>
-                            <h2 className="text-xl font-black tracking-tight text-white leading-none">
-                                Arkitel <span className="text-indigo-400">Premium Vault</span>
+                            <h2 className="text-xl font-black text-white tracking-tight">
+                                Unlock <span className="text-indigo-400">Mastery</span>
                             </h2>
-                            <p className="text-foreground/35 text-[10px] font-bold uppercase tracking-[0.2em] mt-1">
-                                {featureName} — Paid Plans Only
+                            <p className="text-foreground/30 text-[9px] font-bold uppercase tracking-[0.2em] mt-1.5 px-4">
+                                {featureName} is available on paid plans
                             </p>
                         </div>
 
                         {status?.has_proof ? (
-                            /* === PENDING VERIFICATION STATE === */
-                            <div className="bg-emerald-500/5 border border-emerald-500/15 p-6 rounded-3xl flex flex-col items-center space-y-3 text-center">
-                                <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                                    <CheckCircle2 size={20} />
-                                </div>
-                                <p className="font-bold text-sm text-emerald-400">Payment Proof Submitted</p>
-                                <p className="text-[10px] text-foreground/30 max-w-[220px] uppercase tracking-wider leading-relaxed font-bold">
-                                    Your payment is being verified. Access will be granted shortly.
+                            <div className="bg-emerald-500/5 border border-emerald-500/10 p-6 rounded-3xl text-center space-y-3">
+                                <CheckCircle2 className="mx-auto text-emerald-400" size={28} />
+                                <p className="font-bold text-xs text-emerald-400 uppercase tracking-widest">Verification Pending</p>
+                                <p className="text-[10px] text-foreground/40 leading-relaxed max-w-[200px] mx-auto">
+                                    Admin will unlock your account manually within a few minutes.
                                 </p>
                             </div>
                         ) : showProofForm ? (
-                            /* === PROOF SUBMISSION FORM === */
-                            <div className="bg-card/80 border border-white/10 p-6 rounded-3xl space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="font-bold text-sm text-white">Confirm Your Payment</h3>
-                                    <button onClick={() => setShowProofForm(false)} className="text-foreground/30 hover:text-foreground transition-colors">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between px-1">
+                                    <h3 className="font-black text-xs text-white/90 uppercase tracking-widest">Verify Payment</h3>
+                                    <button onClick={() => setShowProofForm(false)} className="text-foreground/20 hover:text-white transition-colors">
                                         <X size={16} />
                                     </button>
                                 </div>
-                                <p className="text-[10px] text-foreground/30 leading-relaxed">
-                                    After paying on Paystack, enter the name and bank you used so the admin can verify your payment.
-                                </p>
-                                <div className="space-y-2.5">
+                                <div className="space-y-2">
                                     <input
-                                        placeholder="Full Name Used on Payment"
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-foreground outline-none focus:border-indigo-500/60 placeholder:text-foreground/25 transition-colors"
+                                        placeholder="Name on your Bank Account"
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-foreground outline-none focus:border-indigo-500/40 placeholder:text-foreground/20 transition-all font-bold"
                                         value={proof.name}
                                         onChange={(e) => setProof({ ...proof, name: e.target.value })}
                                     />
                                     <input
-                                        placeholder="Your Bank Name (e.g. GTBank, Opay)"
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-foreground outline-none focus:border-indigo-500/60 placeholder:text-foreground/25 transition-colors"
+                                        placeholder="Bank Name (Opay, GTB, etc)"
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-foreground outline-none focus:border-indigo-500/40 placeholder:text-foreground/20 transition-all font-bold"
                                         value={proof.bank}
                                         onChange={(e) => setProof({ ...proof, bank: e.target.value })}
                                     />
                                 </div>
-                                {appliedDiscount !== null && (
-                                    <div className="text-center text-xs font-bold text-emerald-400 bg-emerald-500/10 py-2 rounded-xl border border-emerald-500/20">
-                                        ✅ Coupon Applied — Amount: ₦{appliedDiscount.toLocaleString()}
-                                    </div>
-                                )}
                                 <button
                                     onClick={submitProof}
                                     disabled={applying}
-                                    className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-all text-sm shadow-lg shadow-indigo-500/20 active:scale-95"
+                                    className="w-full bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 text-white font-black py-3.5 rounded-xl transition-all text-xs shadow-lg shadow-indigo-500/20"
                                 >
-                                    {applying ? 'Submitting...' : 'Submit Proof of Payment'}
+                                    {applying ? 'Processing...' : 'Submit Verification'}
                                 </button>
-                                {/* Pay again button */}
-                                <button
-                                    onClick={handlePayNow}
-                                    className="w-full text-foreground/30 text-[10px] font-bold hover:text-indigo-400 transition-colors py-1"
-                                >
-                                    Haven't paid yet? Click to Pay
+                                <button onClick={handlePayNow} className="w-full text-foreground/20 text-[9px] font-black uppercase tracking-[0.2em] hover:text-indigo-400 transition-colors py-2">
+                                    Back to payment
                                 </button>
                             </div>
                         ) : (
-                            /* === PLAN SELECTION + COUPON === */
-                            <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-                                {/* PAYSTACK SCRIPT INSIDE FORM AS REQUIRED */}
+                            <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
                                 <Script 
                                     src="https://js.paystack.co/v1/inline.js" 
                                     strategy="lazyOnload"
                                     onLoad={() => setIsPaystackReady(true)}
                                 />
-                                {/* Plan Cards */}
+
+                                {/* Horizontal Plan Scroll/Tabs */}
                                 <div className="grid grid-cols-3 gap-2">
                                     {plans.map((plan) => {
-                                        const meta = PLAN_METADATA[plan.key] || { icon: Star, color: 'from-gray-600 to-gray-400', glow: '' };
+                                        const meta = PLAN_METADATA[plan.key] || { icon: Star, color: 'from-gray-500 to-gray-700' };
                                         const Icon = meta.icon;
                                         const isSelected = selectedPlan === plan.key;
                                         return (
@@ -279,111 +272,91 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                                 key={plan.key}
                                                 type="button"
                                                 onClick={() => setSelectedPlan(plan.key)}
-                                                className={`relative flex flex-col items-center p-3 rounded-2xl border transition-all duration-200 text-left
+                                                className={`relative flex flex-col items-center p-3 rounded-2xl border transition-all duration-300
                                                     ${isSelected
-                                                        ? 'bg-white/8 border-white/20 scale-[1.03] shadow-xl'
-                                                        : 'bg-white/3 border-white/6 hover:border-white/12 hover:bg-white/5'
+                                                        ? 'bg-indigo-500/10 border-indigo-500/40 scale-[1.05] shadow-xl'
+                                                        : 'bg-white/[0.03] border-white/5 hover:bg-white/5 opacity-60'
                                                     }`}
                                             >
-                                                {plan.popular && (
-                                                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 text-[8px] font-black uppercase tracking-widest bg-amber-500 text-black px-2 py-0.5 rounded-full whitespace-nowrap">
-                                                        Popular
-                                                    </div>
-                                                )}
-                                                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${meta.color} flex items-center justify-center text-white mb-2 shadow-lg ${meta.glow}`}>
+                                                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${meta.color} flex items-center justify-center text-white mb-2 shadow-inner`}>
                                                     <Icon size={14} />
                                                 </div>
-                                                <div className="font-black text-[11px] text-white">{plan.name}</div>
-                                                <div className="text-[10px] font-bold text-foreground/40 mt-0.5">₦{plan.price.toLocaleString()}</div>
-                                                {isSelected && (
-                                                    <div className="absolute bottom-2 right-2">
-                                                        <CheckCircle2 size={10} className="text-white/60" />
-                                                    </div>
-                                                )}
+                                                <div className="font-extrabold text-[10px] text-white/90 whitespace-nowrap">{plan.name}</div>
+                                                <div className="text-[9px] font-bold text-foreground/40 mt-0.5">₦{plan.price.toLocaleString()}</div>
                                             </button>
                                         );
                                     })}
                                 </div>
 
-                                {/* Selected Plan Perks */}
+                                {/* Dynamic Perks - Centered and Boxed */}
                                 {(() => {
-                                    const plan = plans.find(p => p.key === selectedPlan)!;
+                                    const plan = plans.find(p => p.key === selectedPlan);
                                     if (!plan) return null;
-                                    const meta = PLAN_METADATA[plan.key] || { icon: Star };
-                                    const Icon = meta.icon;
                                     const perks = typeof plan.perks === 'string' ? JSON.parse(plan.perks) : plan.perks;
                                     return (
-                                        <div className="bg-white/3 border border-white/6 rounded-2xl p-3 space-y-1.5">
-                                            <div className="flex items-center gap-1.5 mb-2">
-                                                <Icon size={11} className="text-white/40" />
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-foreground/30">{plan.name} Includes</span>
+                                        <div className="bg-[#18181b] border border-white/5 rounded-2xl p-4 overflow-hidden">
+                                            <div className="flex items-center gap-2 mb-2 px-1">
+                                                <div className="w-1 h-3 bg-indigo-500 rounded-full" />
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-foreground/40">Includes</span>
                                             </div>
-                                            {perks.map((perk: string) => (
-                                                <div key={perk} className="flex items-center gap-2 text-[10px] text-foreground/50">
-                                                    <div className="w-1 h-1 rounded-full bg-foreground/30 flex-shrink-0" />
-                                                    {perk}
-                                                </div>
-                                            ))}
+                                            <div className="space-y-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {perks.map((perk: string) => (
+                                                    <div key={perk} className="flex items-center gap-2.5 text-[10px] font-bold text-foreground/60 leading-tight">
+                                                        <div className="w-1 h-1 rounded-full bg-indigo-500/50 flex-shrink-0" />
+                                                        {perk}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     );
                                 })()}
 
-                                {/* Pay Button */}
-                                <button
-                                    onClick={handlePayNow}
-                                    type="button"
-                                    className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-indigo-500/25 active:scale-95"
-                                >
-                                    <CreditCard size={15} />
-                                    Pay ₦{plans.find(p => p.key === selectedPlan)?.price.toLocaleString()} via Paystack
-                                </button>
+                                {/* Action Buttons */}
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={handlePayNow}
+                                        type="button"
+                                        disabled={!isPaystackReady}
+                                        className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white font-black py-4 rounded-2xl transition-all flex items-center justify-center gap-2.5 text-xs shadow-2xl shadow-indigo-500/20 active:scale-95"
+                                    >
+                                        <CreditCard size={14} />
+                                        Upgrade to {plans.find(p => p.key === selectedPlan)?.name}
+                                    </button>
 
-                                {/* Divider */}
-                                <div className="flex items-center gap-3">
-                                    <div className="h-px flex-1 bg-white/5" />
-                                    <span className="text-[9px] font-bold text-foreground/20 uppercase tracking-widest">Have a coupon?</span>
-                                    <div className="h-px flex-1 bg-white/5" />
-                                </div>
-
-                                {/* Coupon */}
-                                <div className="flex gap-2">
-                                    <div className="relative flex-1">
-                                        <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/25" size={13} />
+                                    <div className="flex gap-2">
                                         <input
                                             type="text"
-                                            placeholder="Enter coupon code..."
+                                            placeholder="USE COUPON?"
                                             value={couponCode}
-                                            onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setMsg({ type: '', text: '' }); }}
-                                            onKeyDown={(e) => e.key === 'Enter' && applyCoupon()}
-                                            className="w-full bg-white/5 border border-white/8 rounded-xl pl-9 pr-3 py-2.5 text-[11px] font-bold outline-none focus:border-indigo-500/50 placeholder:text-foreground/20 text-white transition-colors"
+                                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                            className="flex-1 bg-white/5 border border-white/5 rounded-xl px-4 py-2.5 text-[10px] font-black outline-none focus:border-indigo-500/20 text-white placeholder:text-foreground/15 transition-all text-center tracking-widest"
                                         />
+                                        <button
+                                            onClick={applyCoupon}
+                                            disabled={applying || !couponCode.trim()}
+                                            className="px-4 rounded-xl bg-white/5 text-[9px] font-black uppercase text-foreground/30 hover:bg-indigo-500/20 hover:text-indigo-400 transition-all border border-white/5"
+                                        >
+                                            Apply
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={applyCoupon}
-                                        type="button"
-                                        disabled={applying || !couponCode.trim()}
-                                        className="px-4 rounded-xl bg-white/5 border border-white/8 text-foreground/50 text-[11px] font-bold hover:bg-indigo-500 hover:text-white hover:border-transparent transition-all disabled:opacity-30 active:scale-95 whitespace-nowrap"
-                                    >
-                                        {applying ? '...' : 'Apply'}
-                                    </button>
                                 </div>
 
-                                {/* Feedback Message */}
                                 {msg.text && (
-                                    <div className={`flex items-center gap-2 p-3 rounded-xl text-[10px] font-bold ${msg.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/15' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'}`}>
-                                        {msg.type === 'error' ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
+                                    <div className={`mt-2 flex items-center justify-center gap-2 py-2 px-4 rounded-full text-[9px] font-bold border transition-all animate-in slide-in-from-top-1
+                                        ${msg.type === 'error' ? 'bg-red-500/5 text-red-400 border-red-500/10' : 'bg-emerald-500/5 text-emerald-400 border-emerald-500/10'}`}>
+                                        <AlertCircle size={10} />
                                         {msg.text}
                                     </div>
                                 )}
                             </form>
                         )}
-
-                        {/* Footer Message below proof form too */}
-                        {msg.text && showProofForm && (
-                            <div className={`mt-3 flex items-center gap-2 p-3 rounded-xl text-[10px] font-bold ${msg.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/15' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'}`}>
-                                {msg.type === 'error' ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
-                                {msg.text}
-                            </div>
+                        
+                        {/* Status Label */}
+                        {!isPaystackReady && !showProofForm && !status?.has_proof && (
+                             <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-background/50 backdrop-blur-xl px-2 py-1 rounded-full border border-white/5 animate-pulse">
+                                 <div className="w-1 h-1 rounded-full bg-amber-400" />
+                                 <span className="text-[7px] font-black text-amber-400 uppercase tracking-widest">Gateway Loading</span>
+                             </div>
                         )}
                     </div>
                 </div>
