@@ -202,6 +202,7 @@ def init_db():
             country TEXT,
             status TEXT DEFAULT 'active',
             status_detail TEXT,
+            is_active INTEGER DEFAULT 0,
             last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
@@ -322,6 +323,7 @@ def init_db():
         ("username", "TEXT"),
         ("profile_photo", "TEXT"),
         ("country", "TEXT"),
+        ("is_active", "INTEGER DEFAULT 0"),
         ("created_at", "DATETIME")
     ]
     for col_name, col_type in needed_cols:

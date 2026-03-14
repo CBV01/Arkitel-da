@@ -115,7 +115,7 @@ export default function LeadsPage() {
         const groupIds = Array.from(selectedIds).filter(id => typeof id === 'string') as string[];
         if (groupIds.length === 0) return;
         
-        const activeAcc = accounts.find(a => a.status === 'active') || accounts[0];
+        const activeAcc = accounts.find(a => a.is_active) || accounts.find(a => a.status === 'active') || accounts[0];
         const phoneNumber = activeAcc?.phone_number;
         if (!phoneNumber) { setError('No connected account found.'); return; }
 
@@ -169,9 +169,17 @@ export default function LeadsPage() {
                         evtSource.close();
                         setJoining(false);
                     } else if (data.type === 'progress') {
-                        setJoinProgress(p => ({
-                            ...p, log: [{ type: 'joined', name: data.msg }, ...p.log.slice(0, 49)]
-                        }));
+                        setJoinProgress(p => {
+                            const newLog = [...p.log];
+                            // If the latest log is a safety delay or rest, replace it instead of pushing
+                            const isCountdown = data.msg.includes('s...') || data.msg.includes('delay');
+                            if (isCountdown && newLog.length > 0 && (newLog[0].name.includes('delay') || newLog[0].name.includes('Resuming'))) {
+                                newLog[0] = { type: 'joined', name: data.msg };
+                            } else {
+                                newLog.unshift({ type: 'joined', name: data.msg });
+                            }
+                            return { ...p, log: newLog.slice(0, 50) };
+                        });
                     }
                 } catch { }
             };
@@ -605,6 +613,18 @@ export default function LeadsPage() {
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {l.itemType === 'community' && (
                                         <>
+                                            <button
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    const text = l.username ? `@${l.username}` : l.id;
+                                                    navigator.clipboard.writeText(text);
+                                                    alert('Copied to clipboard');
+                                                }}
+                                                className="p-1.5 bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 rounded-lg text-foreground/30 transition-all"
+                                                title="Copy Username/ID"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                                            </button>
                                             {joinedIds.has(l.id) || (l.username && joinedIds.has(l.username)) ? (
                                                 <div
                                                     className="px-2 py-1 h-7 bg-emerald-500/10 text-emerald-500 rounded-lg text-[10px] font-bold tracking-wider uppercase flex items-center justify-center border border-emerald-500/20 shadow-sm"

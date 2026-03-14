@@ -11,11 +11,13 @@ import {
     AlertCircle, 
     Users,
     Rocket,
-    ChevronRight,
+    CloudSync,
+    Star,
+    Check,
     Globe,
-    ChevronDown,
     Search,
-    CloudSync
+    ChevronRight,
+    ChevronDown
 } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
@@ -262,6 +264,22 @@ export default function AccountsPage() {
         }
     };
 
+    const handleSetActive = async (phone: string) => {
+        setActionLoading(phone + '_active');
+        try {
+            const res = await apiFetch(`/api/telegram/accounts/${phone}/active`, { method: 'POST' });
+            if (res.ok) {
+                setSuccessMsg(`Account ${phone} is now your primary node.`);
+                fetchAccounts();
+                setTimeout(() => setSuccessMsg(''), 5000);
+            }
+        } catch (err) {
+            setError(`Failed to set ${phone} as active.`);
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     const handleSessionDump = async (phone: string) => {
         setActionLoading(phone + '_dump');
         try {
@@ -368,6 +386,21 @@ export default function AccountsPage() {
                                     }`} />
                                     {acc.status}
                                 </span>
+                                <div className="flex items-center gap-2">
+                                    {acc.is_active ? (
+                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 text-indigo-500 rounded-full text-[10px] font-black uppercase border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
+                                            <Star size={12} className="fill-indigo-500" />
+                                            Primary Node
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => handleSetActive(acc.phone_number)}
+                                            className="px-3 py-1 bg-foreground/5 hover:bg-foreground/10 text-foreground/40 hover:text-foreground/60 rounded-full text-[10px] font-bold uppercase transition-all"
+                                        >
+                                            {actionLoading === acc.phone_number + '_active' ? <Loader2 size={10} className="animate-spin" /> : 'Make Active'}
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="flex gap-2">
                                     <button 
                                         onClick={() => handleSyncProfile(acc.phone_number)}

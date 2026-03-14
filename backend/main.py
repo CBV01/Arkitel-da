@@ -890,14 +890,14 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
         # Admin sees all accounts in the system
         rows = conn.execute("""
             SELECT phone_number, status, api_id, api_hash, 
-                   first_name, last_name, username, profile_photo, country, created_at, user_id 
+                   first_name, last_name, username, profile_photo, country, created_at, user_id, is_active
             FROM accounts
         """).fetchall()
     else:
         # Regular user only sees their own accounts
         rows = conn.execute("""
             SELECT phone_number, status, api_id, api_hash, 
-                   first_name, last_name, username, profile_photo, country, created_at, user_id 
+                   first_name, last_name, username, profile_photo, country, created_at, user_id, is_active
             FROM accounts WHERE user_id = ?
         """, (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
@@ -915,9 +915,25 @@ async def get_accounts(user_id: str = Depends(get_current_user_id)):
             "profile_photo": row[7],
             "country": row[8],
             "created_at": row[9],
-            "user_id": row[10]
+            "user_id": row[10],
+            "is_active": row[11]
         })
     return {"accounts": accounts}
+
+@app.post("/api/telegram/accounts/{phone_number}/active")
+async def set_active_account(phone_number: str, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    try:
+        # 1. Deactivate all other accounts for this user
+        conn.execute("UPDATE accounts SET is_active = 0 WHERE user_id = ?", (user_id,))
+        # 2. Activate the selected account
+        conn.execute("UPDATE accounts SET is_active = 1 WHERE phone_number = ? AND user_id = ?", (phone_number, user_id))
+        if hasattr(conn, "commit"): conn.commit()
+        return {"status": "success", "msg": f"Account {phone_number} is now active."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
 @app.delete("/api/telegram/accounts/{phone_number}")
 async def delete_account(phone_number: str, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
@@ -1380,11 +1396,12 @@ async def scrape_keyword_stream(
         if phone_number:
             rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
         else:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' ORDER BY is_active DESC LIMIT 1").fetchall()
     elif phone_number:
         rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
     else:
-        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchall()
+        # Prioritize explicitly active account, fallback to any active status account
+        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY is_active DESC LIMIT 1", (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     if not rows: raise HTTPException(status_code=404, detail="No active accounts found.")
 
@@ -1663,11 +1680,13 @@ async def bulk_join_stream(
                     
                     # Micro-Rest: Pause for 2 mins every 5 joins to avoid account flagging
                     if idx > 1 and (idx - 1) % 5 == 0:
-                        yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': 'Applying 2-minute Micro-Rest for account safety...'})}\n\n"
-                        await asyncio.sleep(120)
+                        for remaining in range(120, 0, -1):
+                            yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Micro-Rest: Resuming in {remaining}s...', 'remaining': remaining})}\n\n"
+                            await asyncio.sleep(1)
 
-                    yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Safety delay {wait_time}s...'})}\n\n"
-                    await asyncio.sleep(wait_time)
+                    for remaining in range(wait_time, 0, -1):
+                        yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Safety delay: {remaining}s...', 'remaining': remaining})}\n\n"
+                        await asyncio.sleep(1)
                     
                     yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Joining {group_label}...'})}\n\n"
                     # Use pool-based client
@@ -1676,35 +1695,27 @@ async def bulk_join_stream(
                     joined = joined + 1
                     yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
                 except Exception as e:
-                    from telethon.errors import FloodWaitError # type: ignore
+                    from telethon.errors import FloodWaitError, ChannelsTooMuchError, UserDeactivatedError # type: ignore
                     err_r = str(e)
                     
                     if isinstance(e, FloodWaitError):
                         wait_seconds: int = cast(int, getattr(e, 'seconds', 0))
-                        if wait_seconds <= 300: # Wait up to 5 mins automatically
-                            yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Rate limit: Staying quiet for {wait_seconds}s...'})}\n\n"
-                            await asyncio.sleep(wait_seconds + 2)
-                            # Retry this same index once
-                            try:
-                                await smart_join(client, g_id, str(user_id), str(phone_number))
-                                joined = joined + 1
-                                yield f"data: {_json.dumps({'type': 'joined', 'name': group_label, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
-                                continue
-                            except Exception as retry_e:
-                                err_r = str(retry_e)
-                        else:
-                            yield f"data: {_json.dumps({'type': 'flood', 'msg': f'Telegram Rate Limit: Please wait {wait_seconds} seconds before joining more groups.'})}\n\n"
-                            break
-
+                        yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'🚨 RATE LIMIT: Telegram says wait {wait_seconds}s. Use the manual Copy button if you are in a hurry.'})}\n\n"
+                        # We stop the automated process for FloodWait to protect the account
+                        break
+                    
+                    if "too many channels" in err_r.lower() or isinstance(e, ChannelsTooMuchError):
+                        err_s = "Account Limit: You are in 500 groups already. Leave some groups first."
+                    elif "privacy" in err_r.lower():
+                        err_s = "Privacy: Group doesn't allow invites or joining."
+                    elif "deactivated" in err_r.lower() or isinstance(e, UserDeactivatedError):
+                        err_s = "Account Alert: This account seems banned/deactivated by Telegram."
+                    elif "chat_admin_required" in err_r.lower():
+                         err_s = "Restricted: Admin required to join."
+                    else:
+                        err_s = "Join Ignored: Telegram restricted this action. Use the 'Copy' button and join manually."
+                    
                     failed = failed + 1
-                    err_s = err_r
-                    # Extremely safe truncation to avoid indexing errors
-                    if len(err_r) > 80:
-                        err_s = ""
-                        for i, char in enumerate(err_r):
-                            if i >= 77: break
-                            err_s += char
-                        err_s += "..."
                     failed_groups.append({'name': group_label, 'reason': err_s})
                     yield f"data: {_json.dumps({'type': 'failed', 'name': group_label, 'reason': err_s, 'idx': idx, 'total': total, 'joined': joined, 'failed': failed})}\n\n"
             

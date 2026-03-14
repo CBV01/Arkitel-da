@@ -107,7 +107,15 @@ export default function CampaignsPage() {
             const res = await apiFetch('/api/telegram/accounts');
             if (res.ok) {
                 const data = await res.json();
-                setAccounts(data.accounts || []);
+                const accs = data.accounts || [];
+                setAccounts(accs);
+                
+                // If there's an active/primary account, pre-select it for the user
+                const active = accs.find((a: any) => a.is_active) || accs.find((a: any) => a.status === 'active');
+                if (active && !editingId) {
+                    setCampaignData(prev => ({ ...prev, phone_number: active.phone_number }));
+                    if (!dialogs.length) fetchDialogs(active.phone_number);
+                }
             }
         } catch (err) {
             console.error("Failed to fetch accounts", err);
