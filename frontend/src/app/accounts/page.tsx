@@ -371,140 +371,145 @@ export default function AccountsPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
                     {accounts.map((acc) => (
-                        <div key={acc.phone_number} className="bg-card border border-border p-6 rounded-[32px] group relative hover:shadow-2xl hover:shadow-indigo-500/5 transition-all duration-500 flex flex-col">
-                                {/* Header: Status and Active Indicator */}
-                                <div className="flex justify-between items-center mb-6">
-                                    <span className={`px-3 py-1 text-[10px] font-bold rounded-full flex items-center gap-1.5 uppercase transition-all ${
-                                        acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500' : 
-                                        (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500/10 text-amber-500' : 
-                                        'bg-red-500/10 text-red-500'
-                                    }`}>
-                                        <div className={`w-1.5 h-1.5 rounded-full ${
-                                            acc.status === 'active' ? 'bg-emerald-500 animate-pulse' : 
-                                            (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500' : 
-                                            'bg-red-500'
-                                        }`} />
-                                        {acc.status}
-                                    </span>
+                        <div key={acc.phone_number} className="bg-[#111115] border border-white/5 rounded-[2.5rem] p-6 group relative hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 flex flex-col min-h-[520px]">
+                            {/* Header: Status and Active Indicator */}
+                            <div className="flex justify-between items-center mb-8">
+                                <span className={`px-4 py-1.5 text-[9px] font-black rounded-full flex items-center gap-2 uppercase tracking-widest transition-all ${
+                                    acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 
+                                    (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
+                                    'bg-red-500/10 text-red-500 border border-red-500/20'
+                                }`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${
+                                        acc.status === 'active' ? 'bg-emerald-500 animate-pulse' : 
+                                        (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500' : 
+                                        'bg-red-500'
+                                    }`} />
+                                    {acc.status}
+                                </span>
 
-                                    <div className="flex items-center gap-2">
-                                        {acc.is_active ? (
-                                            <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 text-indigo-500 rounded-full text-[10px] font-black uppercase border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
-                                                <Star size={12} className="fill-indigo-500" />
-                                                Primary Node
-                                            </div>
-                                        ) : (
-                                            <button 
-                                                onClick={() => handleSetActive(acc.phone_number)}
-                                                className="px-3 py-1 bg-white/5 hover:bg-white/10 text-foreground/40 hover:text-white rounded-full text-[10px] font-bold uppercase transition-all border border-white/5"
-                                            >
-                                                {actionLoading === acc.phone_number + '_active' ? <Loader2 size={10} className="animate-spin" /> : 'Use This'}
-                                            </button>
-                                        )}
-                                    </div>
+                                <div className="flex items-center gap-2">
+                                    {acc.is_active ? (
+                                        <div className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-500/10 text-indigo-500 rounded-full text-[9px] font-black uppercase tracking-widest border border-indigo-500/20">
+                                            <Star size={12} className="fill-indigo-500" />
+                                            Active
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => handleSetActive(acc.phone_number)}
+                                            className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-foreground/40 hover:text-white rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-white/5 active:scale-95"
+                                        >
+                                            {actionLoading === acc.phone_number + '_active' ? <Loader2 size={10} className="animate-spin" /> : 'Activate'}
+                                        </button>
+                                    )}
                                 </div>
-                                
-                                {/* Profile Image and Identity */}
-                                <div className="flex flex-col items-center mb-6">
-                                    <div className="w-20 h-20 rounded-full border-4 border-foreground/5 p-1 mb-3 bg-foreground/[0.02] relative shadow-inner overflow-hidden flex items-center justify-center">
+                            </div>
+                            
+                            {/* Profile Section */}
+                            <div className="flex flex-col items-center mb-8">
+                                <div className="relative mb-5 group-hover:scale-110 transition-transform duration-500">
+                                    <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="relative w-24 h-24 rounded-[2.5rem] border-4 border-white/5 p-1 bg-[#18181b] shadow-2xl overflow-hidden flex items-center justify-center">
                                         {acc.profile_photo ? (
                                             <img 
                                                 src={acc.profile_photo.startsWith('http') ? acc.profile_photo : (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`)} 
-                                                className="w-full h-full rounded-full object-cover" 
+                                                className="w-full h-full rounded-[2.2rem] object-cover" 
                                                 onError={(e) => { 
                                                     const target = e.target as any;
                                                     target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(acc.first_name || 'A')}&background=6366f1&color=fff`; 
                                                 }}
                                             />
                                         ) : (
-                                            <div className="w-full h-full rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                                            <div className="w-full h-full rounded-[2.2rem] bg-indigo-500/5 flex items-center justify-center text-indigo-500/40">
                                                 <Users size={32} />
                                             </div>
                                         )}
                                     </div>
-                                    <h4 className="text-lg font-bold text-white tracking-tight px-4 text-center">{acc.first_name || 'Account'} {acc.last_name || ''}</h4>
-                                    <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-1 max-w-full truncate px-4">@{acc.username || 'unknown_node'}</p>
                                 </div>
+                                <h4 className="text-xl font-black text-white tracking-tight px-4 text-center leading-tight">
+                                    {acc.first_name || 'Neural'} {acc.last_name || 'Node'}
+                                </h4>
+                                <div className="mt-2 flex items-center gap-2 bg-indigo-500/5 px-3 py-1 rounded-full border border-indigo-500/10">
+                                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">@{acc.username || 'arkitel_node'}</span>
+                                </div>
+                            </div>
 
-                                {/* Info Grid */}
-                                <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-5 mb-auto space-y-4">
-                                    <div className="flex items-center justify-between text-[10px] font-bold text-foreground/30 uppercase tracking-tighter">
-                                        <span className="flex items-center gap-1.5 font-black text-white/20"><Rocket size={10} className="opacity-50" /> #CH_{acc.phone_number.slice(-4)}</span>
-                                        <span className="flex items-center gap-1.5 bg-white/5 px-2 py-0.5 rounded-full"><Globe size={10} className="opacity-50" /> {acc.country || 'Global'}</span>
+                            {/* Info & Actions */}
+                            <div className="bg-[#18181b] border border-white/5 rounded-[2.5rem] p-6 mb-8 flex-1 flex flex-col">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center text-white/40">
+                                            <Phone size={16} />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] font-black text-white/20 uppercase tracking-widest leading-none mb-1 text-left">Identity</span>
+                                            <span className="text-xs font-bold text-white/70">{acc.phone_number}</span>
+                                        </div>
                                     </div>
-                                    
-                                    <div className="flex flex-col gap-2.5">
-                                        <div className="flex items-center gap-3 text-xs font-bold text-foreground/70">
-                                            <div className="w-7 h-7 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500"><Phone size={14} /></div>
-                                            {acc.phone_number}
-                                        </div>
-                                        
-                                        {/* Action Cluster - High end layout */}
-                                        <div className="grid grid-cols-4 gap-2 pt-3 mt-1 border-t border-white/5">
-                                            <button 
-                                                onClick={() => handleSyncProfile(acc.phone_number)}
-                                                className="col-span-1 p-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 rounded-2xl flex items-center justify-center transition-all border border-indigo-500/10"
-                                                title="Sync Profile"
-                                            >
-                                                {actionLoading === acc.phone_number + '_sync' ? <Loader2 size={14} className="animate-spin" /> : <CloudSync size={16} />}
-                                            </button>
-                                            <button 
-                                                onClick={() => handleValidateSession(acc.phone_number)}
-                                                className="col-span-1 p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-2xl flex items-center justify-center transition-all border border-emerald-500/10"
-                                                title="Pulse Check"
-                                            >
-                                                {actionLoading === acc.phone_number + '_valid' ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={16} />}
-                                            </button>
-                                            <button 
-                                                onClick={() => handleSessionDump(acc.phone_number)}
-                                                className="col-span-1 p-3 bg-white/5 hover:bg-white/10 text-white/40 rounded-2xl flex items-center justify-center transition-all border border-white/10"
-                                                title="Export Key"
-                                            >
-                                                {actionLoading === acc.phone_number + '_dump' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={16} />}
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDeleteAccount(acc.phone_number)}
-                                                className="col-span-1 p-3 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl flex items-center justify-center transition-all border border-red-500/10"
-                                                title="Delete"
-                                            >
-                                                {actionLoading === acc.phone_number ? <Loader2 size={14} className="animate-spin" /> : <X size={16} />}
-                                            </button>
-                                        </div>
+                                    <div className="px-3 py-1 bg-white/5 rounded-lg border border-white/5">
+                                        <span className="text-[9px] font-black text-white/30 uppercase tracking-widest">{acc.country || 'GLOBAL'}</span>
                                     </div>
                                 </div>
-
-                                <div className="h-px bg-border/20 my-1" />
-
-                                <div className="flex items-center justify-between">
-                                    <div className="flex flex-col gap-0.5">
-                                        <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
-                                            <CheckCircle2 size={12} className="text-emerald-500" />
-                                            Identity Lock
-                                        </div>
-                                        {acc.status_detail && (
-                                            <p className="text-[8px] text-foreground/40 italic ml-4 leading-tight">{acc.status_detail}</p>
-                                        )}
-                                    </div>
-                                    <div className="flex flex-col items-end gap-1">
-                                        <div className="flex items-center gap-1.5 text-[9px] font-black text-foreground/30 uppercase">
-                                            <Rocket size={12} className="text-indigo-500" />
-                                            Last Active
-                                        </div>
-                                        <span className="text-[8px] font-bold text-foreground/20">
-                                            {acc.last_active ? new Date(acc.last_active).toLocaleTimeString() : 'N/A'}
-                                        </span>
-                                    </div>
-                                </div>
-                            
-                                {/* Joined Footer */}
-                                <div className="flex items-center justify-between pt-5 mt-5 border-t border-border/10">
-                                    <span className="text-[10px] font-bold text-foreground/20 uppercase tracking-[0.1em]">Joined {acc.created_at ? new Date(acc.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Recently'}</span>
-                                    <button className="text-[10px] font-black text-indigo-500 uppercase tracking-widest hover:text-indigo-400 flex items-center gap-1 transition-all group/btn">
-                                        View Details <ChevronRight size={10} className="group-hover/btn:translate-x-1 transition-transform" />
+                                
+                                <div className="mt-auto grid grid-cols-4 gap-3 pt-6 border-t border-white/5">
+                                    <button 
+                                        onClick={() => handleSyncProfile(acc.phone_number)}
+                                        className="aspect-square bg-indigo-600/10 hover:bg-indigo-600 text-indigo-500 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-indigo-500/10 active:scale-90"
+                                        title="Sync Profile"
+                                    >
+                                        {actionLoading === acc.phone_number + '_sync' ? <Loader2 size={16} className="animate-spin" /> : <CloudSync size={20} />}
+                                    </button>
+                                    <button 
+                                        onClick={() => handleValidateSession(acc.phone_number)}
+                                        className="aspect-square bg-emerald-600/10 hover:bg-emerald-600 text-emerald-500 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-emerald-500/10 active:scale-90"
+                                        title="Pulse Check"
+                                    >
+                                        {actionLoading === acc.phone_number + '_valid' ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={20} />}
+                                    </button>
+                                    <button 
+                                        onClick={() => handleSessionDump(acc.phone_number)}
+                                        className="aspect-square bg-white/5 hover:bg-white/20 text-white/40 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-white/10 active:scale-90"
+                                        title="Export Key"
+                                    >
+                                        {actionLoading === acc.phone_number + '_dump' ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={20} />}
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteAccount(acc.phone_number)}
+                                        className="aspect-square bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-red-500/10 active:scale-90"
+                                        title="Delete"
+                                    >
+                                        {actionLoading === acc.phone_number ? <Loader2 size={16} className="animate-spin" /> : <X size={20} />}
                                     </button>
                                 </div>
                             </div>
-                        ))}
+
+                            {/* Card Footer: Metadata */}
+                            <div className="flex items-center justify-between px-2 text-left">
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest">
+                                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                        Encryption
+                                    </div>
+                                    <span className="text-[10px] font-bold text-white/40 ml-3">Level 4 Lock</span>
+                                </div>
+                                <div className="flex flex-col items-end gap-1">
+                                    <div className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest">
+                                        Active Log
+                                        <div className="w-1 h-1 rounded-full bg-indigo-500" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-white/40 mr-3">
+                                        {acc.last_active ? new Date(acc.last_active).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Standby'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 pt-5 border-t border-white/5 flex items-center justify-between">
+                                <span className="text-[9px] font-bold text-white/10 uppercase tracking-widest">Integrated {acc.created_at ? new Date(acc.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Just now'}</span>
+                                <button className="text-[9px] font-black text-indigo-500 uppercase tracking-[0.2em] hover:text-indigo-400 flex items-center gap-2 transition-all group/btn">
+                                    Audit <ChevronRight size={12} className="group-hover/btn:translate-x-1 transition-transform" />
+                                </button>
+                            </div>
+                        </div>
+                    ))}
                     </div>
             )}
 

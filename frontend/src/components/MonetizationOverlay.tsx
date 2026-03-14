@@ -261,7 +261,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                 </button>
                             </div>
                         ) : (
-                        <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
+                        <div className="space-y-5">
                             {/* Horizontal Plan Scroll/Tabs */}
                                 <div className="grid grid-cols-3 gap-2">
                                     {plans.map((plan) => {
@@ -349,7 +349,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                         {msg.text}
                                     </div>
                                 )}
-                            </form>
+                            </div>
                         )}
                         
                         {/* Status Label */}
