@@ -10,45 +10,15 @@ interface MonetizationOverlayProps {
     featureName: string;
 }
 
-const PLANS = [
-    {
-        key: 'basic',
-        name: 'Basic',
-        price: 2000,
-        icon: Zap,
-        color: 'from-emerald-600 to-emerald-400',
-        glow: 'shadow-emerald-500/20',
-        badge: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
-        perks: ['50 campaigns / day', '1 Telegram account', '50 leads per search', '10 keyword searches / day'],
-        paystackUrl: 'https://paystack.com/pay/arkitel-basic',
-    },
-    {
-        key: 'standard',
-        name: 'Standard',
-        price: 3500,
-        icon: Star,
-        color: 'from-amber-600 to-amber-400',
-        glow: 'shadow-amber-500/20',
-        badge: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-        perks: ['150 campaigns / day', '2 Telegram accounts', '150 leads per search', '15 keyword searches / day'],
-        paystackUrl: 'https://paystack.com/pay/arkitel-standard',
-        popular: true,
-    },
-    {
-        key: 'premium',
-        name: 'Premium',
-        price: 5000,
-        icon: Crown,
-        color: 'from-indigo-600 to-indigo-400',
-        glow: 'shadow-indigo-500/20',
-        badge: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/30',
-        perks: ['300 campaigns / day', '3 Telegram accounts', '350 leads per search', '30 keyword searches / day'],
-        paystackUrl: 'https://paystack.com/pay/arkitel-premium',
-    },
-];
+const PLAN_METADATA: Record<string, any> = {
+    basic: { icon: Zap, color: 'from-emerald-600 to-emerald-400', glow: 'shadow-emerald-500/20' },
+    standard: { icon: Star, color: 'from-amber-600 to-amber-400', glow: 'shadow-amber-500/20' },
+    premium: { icon: Crown, color: 'from-indigo-600 to-indigo-400', glow: 'shadow-indigo-500/20' },
+};
 
 export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ children, featureName }) => {
     const [status, setStatus] = useState<any>(null);
+    const [plans, setPlans] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedPlan, setSelectedPlan] = useState('standard');
     const [couponCode, setCouponCode] = useState('');
@@ -61,13 +31,21 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
     const fetchStatus = async () => {
         try {
-            const res = await apiFetch('/api/monetization/status');
-            if (res.ok) {
-                const data = await res.json();
+            const [statusRes, plansRes] = await Promise.all([
+                 apiFetch('/api/monetization/status'),
+                 apiFetch('/api/monetization/plans')
+            ]);
+
+            if (statusRes.ok) {
+                const data = await statusRes.json();
                 setStatus(data);
             }
+            if (plansRes.ok) {
+                const pData = await plansRes.json();
+                setPlans(pData);
+            }
         } catch (e) {
-            console.error("Failed to fetch monetization status");
+            console.error("Failed to fetch monetization data");
         } finally {
             setLoading(false);
         }
@@ -107,12 +85,19 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
             return;
         }
         
-        const plan = PLANS.find(p => p.key === selectedPlan)!;
+        const plan = plans.find(p => p.key === selectedPlan);
+        if (!plan) {
+            setMsg({ type: 'error', text: 'Please select a valid plan first.' });
+            return;
+        }
+
         const finalAmount = appliedDiscount ?? plan.price;
         const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
-        if (!publicKey) {
-            setMsg({ type: 'error', text: 'Payment configuration missing (NPPK).' });
+        console.log("ARKITEL: Initializing payment with PK starting:", publicKey?.substring(0, 10));
+
+        if (!publicKey || publicKey === "undefined") {
+            setMsg({ type: 'error', text: 'Payment configuration missing (NPPK). Ensure NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is set.' });
             return;
         }
 
@@ -166,7 +151,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
         }
         setApplying(true);
         try {
-            const plan = PLANS.find(p => p.key === selectedPlan)!;
+            const plan = plans.find(p => p.key === selectedPlan)!;
             const finalAmount = appliedDiscount ?? plan.price;
             const proofStr = `[${plan.name}] ${proof.name} | ${proof.bank} | ₦${finalAmount.toLocaleString()}`;
             const res = await apiFetch('/api/monetization/submit-proof', {
@@ -193,16 +178,9 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
     return (
         <div className="relative w-full h-full min-h-[400px]">
-            <Script 
-                src="https://js.paystack.co/v1/inline.js" 
-                strategy="lazyOnload"
-                onLoad={() => setIsPaystackReady(true)}
-            />
             {children}
-
             {isLocked && (
                 <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-4 overflow-hidden rounded-[inherit]">
-                    {/* Dark Solid Backdrop for Mobile, Glass for Desktop */}
                     <div className="absolute inset-0 bg-background/95 lg:bg-background/90 lg:backdrop-blur-3xl" />
                     <div className="hidden lg:block absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-500/8 rounded-full blur-[120px] pointer-events-none" />
 
@@ -284,10 +262,17 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                         ) : (
                             /* === PLAN SELECTION + COUPON === */
                             <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
+                                {/* PAYSTACK SCRIPT INSIDE FORM AS REQUIRED */}
+                                <Script 
+                                    src="https://js.paystack.co/v1/inline.js" 
+                                    strategy="lazyOnload"
+                                    onLoad={() => setIsPaystackReady(true)}
+                                />
                                 {/* Plan Cards */}
                                 <div className="grid grid-cols-3 gap-2">
-                                    {PLANS.map((plan) => {
-                                        const Icon = plan.icon;
+                                    {plans.map((plan) => {
+                                        const meta = PLAN_METADATA[plan.key] || { icon: Star, color: 'from-gray-600 to-gray-400', glow: '' };
+                                        const Icon = meta.icon;
                                         const isSelected = selectedPlan === plan.key;
                                         return (
                                             <button
@@ -305,7 +290,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                                         Popular
                                                     </div>
                                                 )}
-                                                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${plan.color} flex items-center justify-center text-white mb-2 shadow-lg ${plan.glow}`}>
+                                                <div className={`w-8 h-8 rounded-xl bg-gradient-to-br ${meta.color} flex items-center justify-center text-white mb-2 shadow-lg ${meta.glow}`}>
                                                     <Icon size={14} />
                                                 </div>
                                                 <div className="font-black text-[11px] text-white">{plan.name}</div>
@@ -322,15 +307,18 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
 
                                 {/* Selected Plan Perks */}
                                 {(() => {
-                                    const plan = PLANS.find(p => p.key === selectedPlan)!;
-                                    const Icon = plan.icon;
+                                    const plan = plans.find(p => p.key === selectedPlan)!;
+                                    if (!plan) return null;
+                                    const meta = PLAN_METADATA[plan.key] || { icon: Star };
+                                    const Icon = meta.icon;
+                                    const perks = typeof plan.perks === 'string' ? JSON.parse(plan.perks) : plan.perks;
                                     return (
                                         <div className="bg-white/3 border border-white/6 rounded-2xl p-3 space-y-1.5">
                                             <div className="flex items-center gap-1.5 mb-2">
                                                 <Icon size={11} className="text-white/40" />
                                                 <span className="text-[9px] font-black uppercase tracking-widest text-foreground/30">{plan.name} Includes</span>
                                             </div>
-                                            {plan.perks.map((perk) => (
+                                            {perks.map((perk: string) => (
                                                 <div key={perk} className="flex items-center gap-2 text-[10px] text-foreground/50">
                                                     <div className="w-1 h-1 rounded-full bg-foreground/30 flex-shrink-0" />
                                                     {perk}
@@ -347,7 +335,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                     className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-lg shadow-indigo-500/25 active:scale-95"
                                 >
                                     <CreditCard size={15} />
-                                    Pay ₦{PLANS.find(p => p.key === selectedPlan)?.price.toLocaleString()} via Paystack
+                                    Pay ₦{plans.find(p => p.key === selectedPlan)?.price.toLocaleString()} via Paystack
                                 </button>
 
                                 {/* Divider */}

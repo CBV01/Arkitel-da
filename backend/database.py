@@ -297,6 +297,17 @@ def init_db():
             status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS plans (
+            key TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            price INTEGER DEFAULT 0,
+            max_daily_campaigns INTEGER DEFAULT 20,
+            max_accounts INTEGER DEFAULT 1,
+            max_daily_keywords INTEGER DEFAULT 5,
+            scrape_limit INTEGER DEFAULT 50,
+            has_premium_access INTEGER DEFAULT 0,
+            perks TEXT -- JSON string of perks
+        )""",
     ]
 
     conn = cast(Any, get_db_connection())
@@ -358,6 +369,25 @@ def init_db():
         except:
             pass
     
+    # Migration for tasks table: interval_minutes
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN interval_minutes INTEGER DEFAULT 0")
+    except:
+        pass
+
+    # Seed default plans
+    plans = [
+        ('free', 'Free', 0, 20, 1, 5, 50, 0, '["20 campaigns / day", "1 Telegram account", "50 leads per search", "5 keyword searches / day"]'),
+        ('basic', 'Basic', 2000, 50, 1, 10, 50, 1, '["50 campaigns / day", "1 Telegram account", "50 leads per search", "10 keyword searches / day"]'),
+        ('standard', 'Standard', 3500, 150, 2, 15, 150, 1, '["150 campaigns / day", "2 Telegram accounts", "150 leads per search", "15 keyword searches / day"]'),
+        ('premium', 'Premium', 5000, 300, 3, 30, 350, 1, '["300 campaigns / day", "3 Telegram accounts", "350 leads per search", "30 keyword searches / day"]'),
+        ('unlimited', 'Unlimited', 10000, 999999, 99, 999999, 1000, 1, '["Unlimited everything", "Priority support"]')
+    ]
+    for p in plans:
+        conn.execute("""INSERT OR IGNORE INTO plans 
+                      (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, has_premium_access, perks) 
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", p)
+
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('global_passkey', '123456')")

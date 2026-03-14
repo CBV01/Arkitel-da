@@ -52,44 +52,36 @@ def log_debug(msg: str):
     print(formatted)
     LOG_BUFFER.append(formatted)
 
-# --- Tiered Plan Configurations ---
-PLAN_CONFIGS = {
-    "free": {
-        "max_daily_campaigns": 20,
-        "max_accounts": 1,
-        "max_daily_keywords": 5,
-        "scrape_limit": 50,
-        "has_premium_access": False
-    },
-    "basic": {
-        "max_daily_campaigns": 50,
-        "max_accounts": 1,
-        "max_daily_keywords": 10,
-        "scrape_limit": 50,
-        "has_premium_access": True
-    },
-    "standard": {
-        "max_daily_campaigns": 150,
-        "max_accounts": 2,
-        "max_daily_keywords": 15,
-        "scrape_limit": 150,
-        "has_premium_access": True
-    },
-    "premium": {
-        "max_daily_campaigns": 300,
-        "max_accounts": 3,
-        "max_daily_keywords": 30,
-        "scrape_limit": 350,
-        "has_premium_access": True
-    },
-    "unlimited": {
-        "max_daily_campaigns": 999999,
-        "max_accounts": 99,
-        "max_daily_keywords": 999999,
-        "scrape_limit": 1000,
-        "has_premium_access": True
+# --- Tiered Plan Configurations (Dynamic from DB) ---
+def get_plan_configs() -> Dict[str, Dict[str, Any]]:
+    configs: Dict[str, Dict[str, Any]] = {
+        "free": {"max_daily_campaigns": 20, "max_accounts": 1, "max_daily_keywords": 5, "scrape_limit": 50, "has_premium_access": False},
+        "unlimited": {"max_daily_campaigns": 999999, "max_accounts": 99, "max_daily_keywords": 999999, "scrape_limit": 1000, "has_premium_access": True}
     }
-}
+    conn = None
+    try:
+        conn = get_db_connection()
+        rows = conn.execute("SELECT * FROM plans").fetchall()
+        for r in rows:
+            configs[r["key"]] = {
+                "name": r["name"],
+                "price": r["price"],
+                "max_daily_campaigns": r["max_daily_campaigns"],
+                "max_accounts": r["max_accounts"],
+                "max_daily_keywords": r["max_daily_keywords"],
+                "scrape_limit": r["scrape_limit"],
+                "has_premium_access": bool(r["has_premium_access"]),
+                "perks": json.loads(r["perks"]) if r["perks"] else []
+            }
+    except Exception as e:
+        print(f"Error loading plan configs: {e}")
+    finally:
+        if conn and hasattr(conn, "close"): 
+            conn.close()
+    
+    return configs
+
+PLAN_CONFIGS: Dict[str, Dict[str, Any]] = get_plan_configs() # Initial load
 
 def check_and_reset_daily_limits(conn, user_id, user_row):
     """Resets daily counts if the day has changed."""
@@ -562,6 +554,7 @@ class CampaignRequest(BaseModel):
     message: str
     groups: list[str] = []
     interval_hours: int = 0
+    interval_minutes: int = 0
 
 class AdminLoginRequest(BaseModel):
     password: str
@@ -667,12 +660,14 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
     count_row = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
     if hasattr(conn, "close"): conn.close()
     
-    plan = user["plan"] if user else "free"
-    max_acc = user["max_accounts"] if user else 1
+    plan = (user["plan"] if user else "free") or "free"
+    plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+    
+    # Use user-specific override or fallback to plan default
+    max_acc = user["max_accounts"] if user and user["max_accounts"] is not None else plan_cfg["max_accounts"]
     current_count = count_row[0] if count_row else 0
     
-    if plan != "unlimited" and current_count >= max_acc and user_id != "admin_virtual_id":
-        plan_limits = {"free": 1, "basic": 1, "standard": 2, "premium": 3}
+    if user_id != "admin_virtual_id" and plan != "unlimited" and current_count >= max_acc:
         raise HTTPException(status_code=403, detail=f"Account limit reached ({max_acc}). Upgrade your plan to link more accounts.")
 
     # Fallback to defaults from environment/config
@@ -1364,8 +1359,8 @@ async def scrape_keyword_stream(
             raise HTTPException(status_code=403, detail=f"Access Denied: The {plan.capitalize()} plan does not include Scraper access. Upgrade to UNLOCK.")
         
         allowed_limit = user_row["scrape_limit"] or plan_cfg["scrape_limit"]
-        max_keywords = user_row["max_daily_keywords"] or plan_cfg["max_daily_keywords"]
-        current_keywords = user_row["daily_keyword_count"] or 0
+        max_keywords = int(user_row["max_daily_keywords"] or plan_cfg["max_daily_keywords"])
+        current_keywords = int(user_row["daily_keyword_count"] or 0)
         
         if current_keywords >= max_keywords and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
@@ -1464,22 +1459,44 @@ async def scrape_keyword(
 ):
     conn = get_db_connection()
     if user_id == "admin_virtual_id":
+        plan_cfg = PLAN_CONFIGS["unlimited"]
+        max_keywords = 9999
+        current_keywords = 0
+        scrape_limit = 9999
+        
         if phone_number:
             rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
         else:
             rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active'").fetchall()
-    elif phone_number:
-        rows = conn.execute(
-            "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?",
-            (phone_number, user_id)
-        ).fetchall()
     else:
-        rows = conn.execute(
-            "SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'",
-            (user_id,)
-        ).fetchall()
-    if hasattr(conn, "close"):
-        conn.close()
+        user_row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user_row:
+             if hasattr(conn, "close"): conn.close()
+             raise HTTPException(status_code=404, detail="User not found")
+        
+        check_and_reset_daily_limits(conn, user_id, user_row)
+        plan = (user_row["plan"] or "free")
+        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        
+        max_keywords = int(user_row["max_daily_keywords"] or plan_cfg["max_daily_keywords"])
+        current_keywords = int(user_row["daily_keyword_count"] or 0)
+        scrape_limit = int(user_row["scrape_limit"] or plan_cfg["scrape_limit"])
+
+        if plan != "unlimited" and current_keywords >= max_keywords:
+             if hasattr(conn, "close"): conn.close()
+             raise HTTPException(status_code=403, detail="Daily search limit reached.")
+        
+        # Increment search count
+        if plan != "unlimited":
+            conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
+            if hasattr(conn, "commit"): conn.commit()
+
+        if phone_number:
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
+        else:
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active'", (user_id,)).fetchall()
+
+    if hasattr(conn, "close"): conn.close()
 
     if not rows:
         raise HTTPException(status_code=404, detail="No active accounts found.")
@@ -1515,6 +1532,9 @@ async def scrape_keyword(
             unique_groups[key] = item
             
     final_list = list(unique_groups.values())
+    
+    # Enforce scrape_limit from plan - cast to Any to satisfy Pyre's slicing check
+    final_list = cast(Any, final_list)[:scrape_limit]
 
     # Auto-saving to scraped_groups disabled as per user request
     # Manual save will be triggered via /api/telegram/leads/groups/bulk-save
@@ -1963,20 +1983,14 @@ async def apply_coupon(code: str, user_id: str = Depends(get_current_user_id)):
         price = int(coupon["price"])
         if price == 0:
             # FREE access code - unlock Premium immediately (highest plan)
-            cfg = PLAN_CONFIGS["premium"]
-            
-            # Use custom limits from coupon if available, otherwise default to premium
-            c_campaigns = coupon["max_daily_campaigns"] if coupon["max_daily_campaigns"] is not None else cfg["max_daily_campaigns"]
-            c_keywords = coupon["max_daily_keywords"] if coupon["max_daily_keywords"] is not None else cfg["max_daily_keywords"]
-            c_scrape = coupon["scrape_limit"] if coupon["scrape_limit"] is not None else cfg["scrape_limit"]
-            
+            # Set limits to NULL so they fall back to PLAN_CONFIGS
             conn.execute(
                 """UPDATE users SET 
                    plan = 'premium', is_approved = 1, 
-                   max_accounts = ?, scrape_limit = ?,
-                   max_daily_campaigns = ?, max_daily_keywords = ?
+                   max_accounts = NULL, scrape_limit = NULL,
+                   max_daily_campaigns = NULL, max_daily_keywords = NULL
                    WHERE id = ?""",
-                (cfg["max_accounts"], c_scrape, c_campaigns, c_keywords, user_id)
+                (user_id,)
             )
             # Deactivate coupon after single use
             conn.execute("UPDATE coupons SET is_active = 0 WHERE UPPER(code) = ?", (code,))
@@ -2037,11 +2051,10 @@ async def verify_paystack(req: PaystackVerifyRequest, user_id: str = Depends(get
                     conn.execute(
                         """UPDATE users SET 
                            plan = ?, is_approved = 1, payment_proof = ?, 
-                           scrape_limit = ?, max_accounts = ?, 
-                           max_daily_campaigns = ?, max_daily_keywords = ? 
+                           scrape_limit = NULL, max_accounts = NULL, 
+                           max_daily_campaigns = NULL, max_daily_keywords = NULL 
                            WHERE id = ?""",
-                        (plan_key, f"Paystack:{req.reference}", plan_cfg["scrape_limit"], plan_cfg["max_accounts"], 
-                         plan_cfg["max_daily_campaigns"], plan_cfg["max_daily_keywords"], user_id)
+                        (plan_key, f"Paystack:{req.reference}", user_id)
                     )
                     conn.execute(
                         "INSERT INTO payments (user_id, amount, proof_details, status) VALUES (?, ?, ?, ?)",
@@ -2194,6 +2207,7 @@ class CampaignEditRequest(BaseModel):
     scheduled_time: Optional[str] = None
     target_groups: Optional[List[str]] = None
     interval_hours: Optional[int] = None
+    interval_minutes: Optional[int] = None
     phone_number: Optional[str] = None
 
 @app.put("/api/telegram/campaigns/{task_id}")
@@ -2223,6 +2237,9 @@ async def edit_campaign(task_id: int, req: CampaignEditRequest, user_id: str = D
     if req.interval_hours is not None:
         updates.append("interval_hours = ?")
         params.append(req.interval_hours)
+    if req.interval_minutes is not None:
+        updates.append("interval_minutes = ?")
+        params.append(req.interval_minutes)
     if req.phone_number is not None:
         updates.append("phone_number = ?")
         params.append(req.phone_number)
@@ -2248,7 +2265,19 @@ class ExtractRequest(BaseModel):
 
 @app.post("/api/telegram/extract")
 async def extract_members(req: ExtractRequest, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
     try:
+        # Plan Check for Extraction
+        if user_id != "admin_virtual_id":
+            user_row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not user_row:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            plan = user_row["plan"] or "free"
+            plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+            if not plan_cfg.get("has_premium_access"):
+                raise HTTPException(status_code=403, detail="Member Extraction is a Premium feature. Upgrade to Standard or Premium to unlock.")
+
         client = await POOL.get_client(user_id, req.phone_number)
         
         # Resolve entity
@@ -2340,14 +2369,14 @@ async def stop_campaign(task_id: int, user_id: str = Depends(get_current_user_id
 async def get_campaigns(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     tasks = conn.execute(
-        "SELECT id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count, batch_number, failed_groups FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC", 
+        "SELECT id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, interval_minutes, total_targets, sent_count, batch_number, failed_groups FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC", 
         (user_id,)
     ).fetchall()
     if hasattr(conn, "close"): conn.close()
     
     return {
         "campaigns": [
-            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5], interval_hours=t[6], total_targets=t[7], sent_count=t[8], batch_number=t[9], failed_groups=t[10]) 
+            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5], interval_hours=t[6], interval_minutes=t[7], total_targets=t[8], sent_count=t[9], batch_number=t[10], failed_groups=t[11]) 
             for t in tasks
         ]
     }
@@ -2368,9 +2397,8 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         plan = user_row["plan"] or "free"
         plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
         
-        max_daily = user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"]
-        current_daily = user_row["daily_campaign_count"] or 0
-        groups_count = len(req.groups)
+        max_daily = int(user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"])
+        current_daily = int(user_row["daily_campaign_count"] or 0)
         
         if current_daily >= max_daily and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
@@ -2394,8 +2422,8 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
                 clean_time = f"{parts[0]}:{parts[1]}"
 
         conn.execute(
-            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, total_targets, sent_count, batch_number, failed_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, req.name, req.phone_number, clean_time, req.message, str(req.groups), "pending", req.interval_hours, len(req.groups), 0, 1, "[]")
+            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, interval_minutes, total_targets, sent_count, batch_number, failed_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, req.name, req.phone_number, clean_time, req.message, str(req.groups), "pending", req.interval_hours, req.interval_minutes, len(req.groups), 0, 1, "[]")
         )
         if hasattr(conn, "commit"): conn.commit()
         return {"status": "success", "message": f"Campaign scheduled for {req.schedule_time} UTC."}
@@ -2762,6 +2790,48 @@ async def admin_update_settings(key: str, value: str, admin_id: str = Depends(ge
     if hasattr(conn, "close"): conn.close()
     return {"status": "success"}
 
+class PlanUpdateRequest(BaseModel):
+    key: str
+    name: str
+    price: int
+    max_daily_campaigns: int
+    max_accounts: int
+    max_daily_keywords: int
+    scrape_limit: int
+    has_premium_access: bool
+    perks: List[str]
+
+@app.get("/api/admin/plans")
+async def admin_get_plans(admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM plans").fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return [dict(r) for r in rows]
+
+@app.get("/api/monetization/plans")
+async def get_plans_public():
+    conn = get_db_connection()
+    rows = conn.execute("SELECT * FROM plans").fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return [dict(r) for r in rows]
+
+@app.post("/api/admin/plans/update")
+async def admin_update_plan(req: PlanUpdateRequest, admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO plans 
+           (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, has_premium_access, perks) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (req.key, req.name, req.price, req.max_daily_campaigns, req.max_accounts, req.max_daily_keywords, req.scrape_limit, 1 if req.has_premium_access else 0, json.dumps(req.perks))
+    )
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    
+    # Reload global configs
+    global PLAN_CONFIGS
+    PLAN_CONFIGS = get_plan_configs()
+    return {"status": "success"}
+
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Telegram Automation API is running"}
@@ -2939,8 +3009,14 @@ async def task_poller():
             current_status = final_status_row["status"] if final_status_row else "processing"
             
             if current_status == "processing":
-                if int(interval) > 0:
-                    new_time = (datetime.now(timezone.utc) + timedelta(hours=int(interval))).strftime('%Y-%m-%dT%H:%M')
+                # Check for interval_minutes or interval (hours)
+                task_row = conn.execute("SELECT interval_hours, interval_minutes FROM tasks WHERE id = ?", (task_id,)).fetchone()
+                val_hours = task_row["interval_hours"] if task_row else 0
+                val_mins = task_row.get("interval_minutes", 0) if task_row else 0
+                
+                if val_hours > 0 or val_mins > 0:
+                    delta = timedelta(hours=val_hours, minutes=val_mins)
+                    new_time = (datetime.now(timezone.utc) + delta).strftime('%Y-%m-%dT%H:%M')
                     # RESET sent_count TO 0 for next batch cycle
                     conn.execute(
                         "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 

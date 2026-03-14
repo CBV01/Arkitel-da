@@ -28,6 +28,8 @@ export default function AdminDashboard() {
     const [users, setUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('overview');
+    const [plans, setPlans] = useState<any[]>([]);
+    const [loadingPlans, setLoadingPlans] = useState(false);
     const [passkey, setPasskey] = useState('');
     const [broadcastMsg, setBroadcastMsg] = useState('');
     const [broadcastType, setBroadcastType] = useState('info');
@@ -41,6 +43,7 @@ export default function AdminDashboard() {
     const [monetizationUsers, setMonetizationUsers] = useState<any[]>([]);
     const [loadingMonetization, setLoadingMonetization] = useState(false);
     const [newCoupon, setNewCoupon] = useState({ code: '', price: 5000, max_daily_campaigns: '', max_daily_keywords: '', scrape_limit: '' });
+    const [editingPlan, setEditingPlan] = useState<any>(null);
 
     const fetchAdminData = async () => {
         try {
@@ -106,6 +109,21 @@ export default function AdminDashboard() {
         }
     };
 
+    const fetchPlans = async () => {
+        setLoadingPlans(true);
+        try {
+            const res = await apiFetch('/api/admin/plans');
+            if (res.ok) {
+                const data = await res.json();
+                setPlans(data);
+            }
+        } catch (err) {
+            console.error("Failed to fetch plans", err);
+        } finally {
+            setLoadingPlans(false);
+        }
+    };
+
     useEffect(() => {
         fetchAdminData();
     }, []);
@@ -113,6 +131,8 @@ export default function AdminDashboard() {
     useEffect(() => {
         if (activeTab === 'monetization') {
             fetchMonetizationData();
+        } else if (activeTab === 'packages') {
+            fetchPlans();
         }
     }, [activeTab]);
 
@@ -210,7 +230,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex bg-white/[0.03] backdrop-blur-3xl p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
-                    {['overview', 'users', 'monetization', 'settings', 'maintenance'].map((tab) => (
+                    {['overview', 'users', 'packages', 'monetization', 'settings', 'maintenance'].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -371,6 +391,204 @@ export default function AdminDashboard() {
                 </div>
             )}
 
+            {activeTab === 'packages' && (
+                <div className="space-y-8">
+                    <div className="bg-white/5 border border-white/5 rounded-3xl p-8">
+                         <div className="flex items-center justify-between mb-8">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
+                                    <Database size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold">Package Configurations</h2>
+                                    <p className="text-sm text-foreground/40 mt-0.5">Define world settings for automated plans</p>
+                                </div>
+                            </div>
+                         </div>
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {plans.map((plan) => (
+                                <div key={plan.key} className="bg-white/5 border border-white/5 p-6 rounded-3xl relative group overflow-hidden">
+                                     <div className="flex items-center justify-between mb-6">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-foreground capitalize">{plan.name}</h3>
+                                            <div className="text-2xl font-black text-indigo-400">#{plan.price}</div>
+                                        </div>
+                                        <button 
+                                            onClick={() => setEditingPlan(plan)}
+                                            className="p-3 rounded-xl bg-white/5 text-foreground/40 hover:text-white hover:bg-indigo-500 transition-all shadow-lg"
+                                        >
+                                            <Settings size={20} />
+                                        </button>
+                                     </div>
+
+                                     <div className="space-y-3">
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-foreground/40 font-bold uppercase tracking-widest">Daily Campaigns</span>
+                                            <span className="font-mono text-white">{plan.max_daily_campaigns > 9999 ? 'Unlimited' : plan.max_daily_campaigns}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-foreground/40 font-bold uppercase tracking-widest">Telegram Accounts</span>
+                                            <span className="font-mono text-white">{plan.max_accounts}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-foreground/40 font-bold uppercase tracking-widest">Scrape Limit</span>
+                                            <span className="font-mono text-white">{plan.scrape_limit}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-foreground/40 font-bold uppercase tracking-widest">Premium Status</span>
+                                            <span className={`font-mono ${plan.has_premium_access ? 'text-emerald-400' : 'text-foreground/20'}`}>
+                                                {plan.has_premium_access ? 'YES' : 'NO'}
+                                            </span>
+                                        </div>
+                                     </div>
+
+                                     <div className="mt-6 pt-6 border-t border-white/5">
+                                         <div className="text-[10px] font-bold text-foreground/30 uppercase tracking-[0.2em] mb-3">Stored Perks</div>
+                                         <div className="flex flex-wrap gap-2">
+                                            {(JSON.parse(plan.perks || '[]')).map((perk: string, idx: number) => (
+                                                <span key={idx} className="px-2 py-1 rounded-md bg-white/5 text-[10px] text-foreground/60 border border-white/5">
+                                                    {perk}
+                                                </span>
+                                            ))}
+                                         </div>
+                                     </div>
+                                </div>
+                            ))}
+                         </div>
+                    </div>
+
+                    {/* Edit Plan Modal Overlay */}
+                    {editingPlan && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+                            <div className="bg-[#0a0a0b] border border-white/10 rounded-[32px] w-full max-w-xl shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto custom-scrollbar p-8">
+                                <div className="flex justify-between items-center mb-8">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
+                                            <Settings size={24} />
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-xl">Edit {editingPlan.name} Plan</h3>
+                                            <p className="text-xs text-foreground/40 font-medium">Update database-level constraints</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setEditingPlan(null)} className="text-foreground/20 hover:text-foreground"><X size={24} /></button>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Display Name</label>
+                                            <input 
+                                                type="text" 
+                                                value={editingPlan.name}
+                                                onChange={(e) => setEditingPlan({...editingPlan, name: e.target.value})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Price (#)</label>
+                                            <input 
+                                                type="number" 
+                                                value={editingPlan.price}
+                                                onChange={(e) => setEditingPlan({...editingPlan, price: parseInt(e.target.value)})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Daily Campaigns</label>
+                                            <input 
+                                                type="number" 
+                                                value={editingPlan.max_daily_campaigns}
+                                                onChange={(e) => setEditingPlan({...editingPlan, max_daily_campaigns: parseInt(e.target.value)})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Telegram Accounts</label>
+                                            <input 
+                                                type="number" 
+                                                value={editingPlan.max_accounts}
+                                                onChange={(e) => setEditingPlan({...editingPlan, max_accounts: parseInt(e.target.value)})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Scrape Limit</label>
+                                            <input 
+                                                type="number" 
+                                                value={editingPlan.scrape_limit}
+                                                onChange={(e) => setEditingPlan({...editingPlan, scrape_limit: parseInt(e.target.value)})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Keyword Searches</label>
+                                            <input 
+                                                type="number" 
+                                                value={editingPlan.max_daily_keywords}
+                                                onChange={(e) => setEditingPlan({...editingPlan, max_daily_keywords: parseInt(e.target.value)})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-4 py-4 px-6 rounded-2xl bg-white/5 border border-white/10">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={editingPlan.has_premium_access === 1 || editingPlan.has_premium_access === true}
+                                            onChange={(e) => setEditingPlan({...editingPlan, has_premium_access: e.target.checked})}
+                                            className="w-5 h-5 accent-indigo-500"
+                                            id="hasPremium"
+                                        />
+                                        <label htmlFor="hasPremium" className="text-sm font-bold text-foreground/60 cursor-pointer">Grant Premium Access (Scraper, Leads)</label>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Perks (Comma Separated)</label>
+                                        <textarea 
+                                            value={(JSON.parse(editingPlan.perks || '[]')).join(', ')}
+                                            onChange={(e) => {
+                                                const perks = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                                                setEditingPlan({...editingPlan, perks: JSON.stringify(perks)});
+                                            }}
+                                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none resize-none h-24"
+                                        />
+                                    </div>
+
+                                    <button
+                                        onClick={async () => {
+                                            const payload = {
+                                                ...editingPlan,
+                                                has_premium_access: editingPlan.has_premium_access === 1 || editingPlan.has_premium_access === true,
+                                                perks: JSON.parse(editingPlan.perks || '[]')
+                                            };
+                                            const res = await apiFetch('/api/admin/plans/update', {
+                                                method: 'POST',
+                                                body: JSON.stringify(payload)
+                                            });
+                                            if (res.ok) {
+                                                setSuccessMsg(`${editingPlan.name} updated in core database.`);
+                                                setEditingPlan(null);
+                                                fetchPlans();
+                                            }
+                                        }}
+                                        className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all"
+                                    >
+                                        Commit Changes to Database
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
             {activeTab === 'settings' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-white/5 border border-white/5 p-8 rounded-3xl space-y-6">

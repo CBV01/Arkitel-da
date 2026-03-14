@@ -20,7 +20,8 @@ export default function CampaignsPage() {
         phone_number: '',
         schedule_time: '',
         message: '',
-        interval_hours: '0' // 0 means no repeat
+        interval_hours: '0',
+        interval_minutes: '0'
     });
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
@@ -175,6 +176,7 @@ export default function CampaignsPage() {
                     message: campaignData.message,
                     message_text: campaignData.message, // Ensure both are sent for compatibility
                     interval_hours: parseInt(campaignData.interval_hours),
+                    interval_minutes: parseInt(campaignData.interval_minutes),
                     groups: selectedGroups,
                     target_groups: selectedGroups // For PUT edit
                 })
@@ -188,7 +190,7 @@ export default function CampaignsPage() {
                     setSuccess(false);
                     setIsCreating(false);
                     setEditingId(null);
-                    setCampaignData({ name: '', phone_number: '', schedule_time: '', message: '', interval_hours: '0' });
+                    setCampaignData({ name: '', phone_number: '', schedule_time: '', message: '', interval_hours: '0', interval_minutes: '0' });
                     setSelectedGroups([]);
                 }, 2000);
             } else {
@@ -213,7 +215,8 @@ export default function CampaignsPage() {
             phone_number: camp.phone_number,
             schedule_time: localISO,
             message: camp.message_text || camp.message || '',
-            interval_hours: (camp.interval_hours || 0).toString()
+            interval_hours: (camp.interval_hours || 0).toString(),
+            interval_minutes: (camp.interval_minutes || 0).toString()
         });
 
         let groups: string[] = [];
@@ -336,9 +339,9 @@ export default function CampaignsPage() {
                                                 }
                                             })()}
                                         </div>
-                                        {camp.interval_hours > 0 && (
+                                        {(camp.interval_hours > 0 || camp.interval_minutes > 0) && (
                                             <div className="flex items-center gap-1 text-[10px] text-amber-500/50 font-bold uppercase tracking-wider">
-                                                <Clock size={12} /> {camp.interval_hours}h Repeat • Batch {camp.batch_number || 1}
+                                                <Clock size={12} /> {camp.interval_hours > 0 ? `${camp.interval_hours}h ` : ''}{camp.interval_minutes > 0 ? `${camp.interval_minutes}m ` : ''}Repeat • Batch {camp.batch_number || 1}
                                             </div>
                                         )}
                                     </div>
@@ -488,18 +491,31 @@ export default function CampaignsPage() {
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Repeat (Hrs)</label>
-                                                    <select
-                                                        value={campaignData.interval_hours}
-                                                        onChange={(e) => setCampaignData({ ...campaignData, interval_hours: e.target.value })}
-                                                        className="w-full bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground"
-                                                    >
-                                                        <option value="0">No Repeat</option>
-                                                        <option value="1">1 Hour</option>
-                                                        <option value="5">5 Hours</option>
-                                                        <option value="12">12 Hours</option>
-                                                        <option value="24">24 Hours</option>
-                                                    </select>
+                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Repeat (Hrs/Min)</label>
+                                                    <div className="flex gap-2">
+                                                        <select
+                                                            value={campaignData.interval_hours}
+                                                            onChange={(e) => setCampaignData({ ...campaignData, interval_hours: e.target.value })}
+                                                            className="flex-1 bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                                        >
+                                                            <option value="0">0h</option>
+                                                            <option value="1">1h</option>
+                                                            <option value="2">2h</option>
+                                                            <option value="5">5h</option>
+                                                            <option value="12">12h</option>
+                                                            <option value="24">24h</option>
+                                                        </select>
+                                                        <select
+                                                            value={campaignData.interval_minutes}
+                                                            onChange={(e) => setCampaignData({ ...campaignData, interval_minutes: e.target.value })}
+                                                            className="flex-1 bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                                        >
+                                                            <option value="0">0m</option>
+                                                            <option value="15">15m</option>
+                                                            <option value="30">30m</option>
+                                                            <option value="45">45m</option>
+                                                        </select>
+                                                    </div>
                                                 </div>
                                             </div>
 
