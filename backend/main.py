@@ -1953,6 +1953,13 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
 
     conn = get_db_connection()
     row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    
+    if row:
+        # Reset daily counts if needed (Midnight UTC)
+        if check_and_reset_daily_limits(conn, user_id, row):
+            # Refresh row data if a reset occurred
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    
     if hasattr(conn, "close"): conn.close()
     if not row: raise HTTPException(status_code=404, detail="User not found")
     
@@ -1961,6 +1968,7 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
     
     return {
         "plan": row["plan"],
+        "username": row["username"], 
         "scrape_limit": row["scrape_limit"] or p_cfg["scrape_limit"],
         "max_accounts": row["max_accounts"] or p_cfg["max_accounts"],
         "max_daily_campaigns": row["max_daily_campaigns"] or p_cfg["max_daily_campaigns"],
