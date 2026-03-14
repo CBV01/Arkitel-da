@@ -361,6 +361,7 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                         )}
                     </div>
                 </div>
+                </>
             )}
         </div>
     );
