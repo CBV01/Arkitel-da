@@ -371,141 +371,140 @@ export default function AccountsPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-1000">
                     {accounts.map((acc) => (
-                        <div key={acc.phone_number} className="bg-[#111115] border border-white/5 rounded-[2.5rem] p-6 group relative hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 flex flex-col min-h-[520px]">
+                        <div key={acc.phone_number} className="bg-[#111115] border border-white/5 rounded-[2rem] p-5 group relative hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 flex flex-col">
                             {/* Header: Status and Active Indicator */}
-                            <div className="flex justify-between items-center mb-8">
-                                <span className={`px-4 py-1.5 text-[9px] font-black rounded-full flex items-center gap-2 uppercase tracking-widest transition-all ${
+                            <div className="flex justify-between items-center mb-6">
+                                <span className={`px-3 py-1 text-[8px] font-black rounded-full flex items-center gap-1.5 uppercase tracking-widest transition-all ${
                                     acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 
                                     (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
                                     'bg-red-500/10 text-red-500 border border-red-500/20'
                                 }`}>
-                                    <div className={`w-1.5 h-1.5 rounded-full ${
+                                    <div className={`w-1 h-1 rounded-full ${
                                         acc.status === 'active' ? 'bg-emerald-500 animate-pulse' : 
                                         (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500' : 
                                         'bg-red-500'
                                     }`} />
-                                    {acc.status}
+                                    {acc.status === 'active' ? 'ONLINE' : acc.status.toUpperCase()}
                                 </span>
 
                                 <div className="flex items-center gap-2">
                                     {acc.is_active ? (
-                                        <div className="flex items-center gap-1.5 px-4 py-1.5 bg-indigo-500/10 text-indigo-500 rounded-full text-[9px] font-black uppercase tracking-widest border border-indigo-500/20">
-                                            <Star size={12} className="fill-indigo-500" />
-                                            Active
+                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 text-indigo-500 rounded-full text-[8px] font-black uppercase tracking-widest border border-indigo-500/20">
+                                            <Star size={10} className="fill-indigo-500" />
+                                            PRIMARY
                                         </div>
                                     ) : (
                                         <button 
                                             onClick={() => handleSetActive(acc.phone_number)}
-                                            className="px-4 py-1.5 bg-white/5 hover:bg-white/10 text-foreground/40 hover:text-white rounded-full text-[9px] font-black uppercase tracking-widest transition-all border border-white/5 active:scale-95"
+                                            className="px-3 py-1 bg-white/5 hover:bg-white/10 text-foreground/40 hover:text-white rounded-full text-[8px] font-black uppercase tracking-widest transition-all border border-white/5 active:scale-95"
                                         >
-                                            {actionLoading === acc.phone_number + '_active' ? <Loader2 size={10} className="animate-spin" /> : 'Activate'}
+                                            {actionLoading === acc.phone_number + '_active' ? <Loader2 size={8} className="animate-spin" /> : 'SET PRIMARY'}
                                         </button>
                                     )}
                                 </div>
                             </div>
                             
-                            {/* Profile Section */}
-                            <div className="flex flex-col items-center mb-8">
-                                <div className="relative mb-5 group-hover:scale-110 transition-transform duration-500">
-                                    <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <div className="relative w-24 h-24 rounded-[2.5rem] border-4 border-white/5 p-1 bg-[#18181b] shadow-2xl overflow-hidden flex items-center justify-center">
+                            {/* Profile Section - More Compact */}
+                            <div className="flex flex-col items-center mb-6">
+                                <div className="relative mb-3 group-hover:scale-105 transition-transform duration-500">
+                                    <div className="relative w-16 h-16 rounded-3xl border-2 border-white/5 p-0.5 bg-[#18181b] shadow-xl overflow-hidden flex items-center justify-center">
                                         {acc.profile_photo ? (
                                             <img 
                                                 src={acc.profile_photo.startsWith('http') ? acc.profile_photo : (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`)} 
-                                                className="w-full h-full rounded-[2.2rem] object-cover" 
+                                                className="w-full h-full rounded-[1.2rem] object-cover" 
                                                 onError={(e) => { 
                                                     const target = e.target as any;
                                                     target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(acc.first_name || 'A')}&background=6366f1&color=fff`; 
                                                 }}
                                             />
                                         ) : (
-                                            <div className="w-full h-full rounded-[2.2rem] bg-indigo-500/5 flex items-center justify-center text-indigo-500/40">
-                                                <Users size={32} />
+                                            <div className="w-full h-full rounded-[1.2rem] bg-indigo-500/5 flex items-center justify-center text-indigo-500/40">
+                                                <Users size={24} />
                                             </div>
                                         )}
                                     </div>
                                 </div>
-                                <h4 className="text-xl font-black text-white tracking-tight px-4 text-center leading-tight">
+                                <h4 className="text-base font-black text-white tracking-tight px-4 text-center leading-tight">
                                     {acc.first_name || 'Neural'} {acc.last_name || 'Node'}
                                 </h4>
-                                <div className="mt-2 flex items-center gap-2 bg-indigo-500/5 px-3 py-1 rounded-full border border-indigo-500/10">
-                                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">@{acc.username || 'arkitel_node'}</span>
+                                <div className="mt-1.5 flex items-center gap-2 bg-indigo-500/5 px-2 py-0.5 rounded-full border border-indigo-500/10">
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.2em]">@{acc.username || 'arkitel_node'}</span>
                                 </div>
                             </div>
 
-                            {/* Info & Actions */}
-                            <div className="bg-[#18181b] border border-white/5 rounded-[2.5rem] p-6 mb-8 flex-1 flex flex-col">
-                                <div className="flex items-center justify-between mb-6">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center text-white/40">
-                                            <Phone size={16} />
+                            {/* Info & Actions - Reduced Padding */}
+                            <div className="bg-[#18181b] border border-white/5 rounded-[2rem] p-4 mb-6 flex-1 flex flex-col">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-white/40 font-bold">
+                                            <Phone size={14} />
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-[9px] font-black text-white/20 uppercase tracking-widest leading-none mb-1 text-left">Identity</span>
-                                            <span className="text-xs font-bold text-white/70">{acc.phone_number}</span>
+                                            <span className="text-[8px] font-black text-white/20 uppercase tracking-widest leading-none mb-0.5 text-left">Identity</span>
+                                            <span className="text-[10px] font-bold text-white/70">{acc.phone_number}</span>
                                         </div>
                                     </div>
-                                    <div className="px-3 py-1 bg-white/5 rounded-lg border border-white/5">
-                                        <span className="text-[9px] font-black text-white/30 uppercase tracking-widest">{acc.country || 'GLOBAL'}</span>
+                                    <div className="px-2 py-0.5 bg-white/5 rounded-md border border-white/5">
+                                        <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">{acc.country || 'GLOBAL'}</span>
                                     </div>
                                 </div>
                                 
-                                <div className="mt-auto grid grid-cols-4 gap-3 pt-6 border-t border-white/5">
+                                <div className="mt-auto grid grid-cols-4 gap-2.5 pt-4 border-t border-white/5">
                                     <button 
                                         onClick={() => handleSyncProfile(acc.phone_number)}
-                                        className="aspect-square bg-indigo-600/10 hover:bg-indigo-600 text-indigo-500 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-indigo-500/10 active:scale-90"
+                                        className="aspect-square bg-indigo-600/10 hover:bg-indigo-600 text-indigo-500 hover:text-white rounded-xl flex items-center justify-center transition-all border border-indigo-500/10 active:scale-90"
                                         title="Sync Profile"
                                     >
-                                        {actionLoading === acc.phone_number + '_sync' ? <Loader2 size={16} className="animate-spin" /> : <CloudSync size={20} />}
+                                        {actionLoading === acc.phone_number + '_sync' ? <Loader2 size={14} className="animate-spin" /> : <CloudSync size={16} />}
                                     </button>
                                     <button 
                                         onClick={() => handleValidateSession(acc.phone_number)}
-                                        className="aspect-square bg-emerald-600/10 hover:bg-emerald-600 text-emerald-500 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-emerald-500/10 active:scale-90"
+                                        className="aspect-square bg-emerald-600/10 hover:bg-emerald-600 text-emerald-500 hover:text-white rounded-xl flex items-center justify-center transition-all border border-emerald-500/10 active:scale-90"
                                         title="Pulse Check"
                                     >
-                                        {actionLoading === acc.phone_number + '_valid' ? <Loader2 size={16} className="animate-spin" /> : <Rocket size={20} />}
+                                        {actionLoading === acc.phone_number + '_valid' ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={16} />}
                                     </button>
                                     <button 
                                         onClick={() => handleSessionDump(acc.phone_number)}
-                                        className="aspect-square bg-white/5 hover:bg-white/20 text-white/40 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-white/10 active:scale-90"
+                                        className="aspect-square bg-white/5 hover:bg-white/20 text-white/40 hover:text-white rounded-xl flex items-center justify-center transition-all border border-white/10 active:scale-90"
                                         title="Export Key"
                                     >
-                                        {actionLoading === acc.phone_number + '_dump' ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={20} />}
+                                        {actionLoading === acc.phone_number + '_dump' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={16} />}
                                     </button>
                                     <button 
                                         onClick={() => handleDeleteAccount(acc.phone_number)}
-                                        className="aspect-square bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl flex items-center justify-center transition-all border border-red-500/10 active:scale-90"
+                                        className="aspect-square bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl flex items-center justify-center transition-all border border-red-500/10 active:scale-90"
                                         title="Delete"
                                     >
-                                        {actionLoading === acc.phone_number ? <Loader2 size={16} className="animate-spin" /> : <X size={20} />}
+                                        {actionLoading === acc.phone_number ? <Loader2 size={14} className="animate-spin" /> : <X size={16} />}
                                     </button>
                                 </div>
                             </div>
 
                             {/* Card Footer: Metadata */}
-                            <div className="flex items-center justify-between px-2 text-left">
-                                <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest">
-                                        <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                            <div className="flex items-center justify-between px-1 text-left">
+                                <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-1.5 text-[8px] font-black text-white/20 uppercase tracking-widest">
+                                        <div className="w-1 h-1 rounded-full bg-emerald-500 opacity-50" />
                                         Encryption
                                     </div>
-                                    <span className="text-[10px] font-bold text-white/40 ml-3">Level 4 Lock</span>
+                                    <span className="text-[9px] font-bold text-white/40 ml-2.5 leading-none">Level 4 Lock</span>
                                 </div>
-                                <div className="flex flex-col items-end gap-1">
-                                    <div className="flex items-center gap-2 text-[9px] font-black text-white/20 uppercase tracking-widest">
-                                        Active Log
-                                        <div className="w-1 h-1 rounded-full bg-indigo-500" />
+                                <div className="flex flex-col items-end gap-0.5">
+                                    <div className="flex items-center gap-1.5 text-[8px] font-black text-white/20 uppercase tracking-widest leading-none">
+                                        Last Active
+                                        <div className="w-1 h-1 rounded-full bg-indigo-500 opacity-50" />
                                     </div>
-                                    <span className="text-[10px] font-bold text-white/40 mr-3">
+                                    <span className="text-[9px] font-bold text-white/40 mr-2.5 leading-none">
                                         {acc.last_active ? new Date(acc.last_active).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Standby'}
                                     </span>
                                 </div>
                             </div>
 
-                            <div className="mt-6 pt-5 border-t border-white/5 flex items-center justify-between">
-                                <span className="text-[9px] font-bold text-white/10 uppercase tracking-widest">Integrated {acc.created_at ? new Date(acc.created_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Just now'}</span>
-                                <button className="text-[9px] font-black text-indigo-500 uppercase tracking-[0.2em] hover:text-indigo-400 flex items-center gap-2 transition-all group/btn">
-                                    Audit <ChevronRight size={12} className="group-hover/btn:translate-x-1 transition-transform" />
+                            <div className="mt-5 pt-4 border-t border-white/5 flex items-center justify-between">
+                                <span className="text-[8px] font-bold text-white/10 uppercase tracking-widest">Linked {acc.created_at ? new Date(acc.created_at).toLocaleDateString('en-US', { month: 'short' }) : 'Now'}</span>
+                                <button className="text-[8px] font-black text-indigo-500 uppercase tracking-[0.2em] hover:text-indigo-400 flex items-center gap-1.5 transition-all group/btn">
+                                    Audit <ChevronRight size={10} className="group-hover/btn:translate-x-1 transition-transform" />
                                 </button>
                             </div>
                         </div>

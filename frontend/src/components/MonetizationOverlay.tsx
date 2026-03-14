@@ -1,6 +1,4 @@
 'use client';
-import Script from 'next/script';
-
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '@/lib/auth';
 import { Lock, Ticket, CreditCard, CheckCircle2, X, AlertCircle, Zap, Star, Crown } from 'lucide-react';
@@ -16,6 +14,12 @@ const PLAN_METADATA: Record<string, any> = {
     premium: { icon: Crown, color: 'from-indigo-600 to-indigo-400', glow: 'shadow-indigo-500/20' },
 };
 
+const PLAN_URLS: Record<string, string> = {
+    basic: 'https://paystack.com/buy/basic-plan-bqchpb',
+    standard: 'https://paystack.com/buy/standard-plan-ivjtuf',
+    premium: 'https://paystack.com/buy/premium-pgnifo'
+};
+
 export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ children, featureName }) => {
     const [status, setStatus] = useState<any>(null);
     const [plans, setPlans] = useState<any[]>([]);
@@ -27,7 +31,6 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
     const [showProofForm, setShowProofForm] = useState(false);
     const [appliedDiscount, setAppliedDiscount] = useState<number | null>(null);
     const [proof, setProof] = useState({ name: '', bank: '' });
-    const [isPaystackReady, setIsPaystackReady] = useState(false);
 
     const fetchStatus = async () => {
         try {
@@ -82,74 +85,17 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
     };
 
     const handlePayNow = () => {
-        if (!isPaystackReady) {
-            setMsg({ type: 'error', text: 'Payment gateway still loading. Please wait a second.' });
-            return;
-        }
-        
-        const plan = plans.find(p => p.key === selectedPlan);
-        if (!plan) {
-            setMsg({ type: 'error', text: 'Please select a valid plan first.' });
-            return;
-        }
-
-        const finalAmount = appliedDiscount ?? plan.price;
-        const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
-
-        console.log("ARKITEL: Initializing payment with PK starting:", publicKey?.substring(0, 10));
-
-        if (!publicKey || publicKey === "undefined") {
-            setMsg({ type: 'error', text: 'Payment configuration missing (NPPK). Ensure NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY is set.' });
-            return;
-        }
-
-        try {
-            const ref = `ARK-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-            
-            // Explicitly check for Paystack library after load
-            const pPop = (window as any).PaystackPop;
-            if (!pPop) {
-                setMsg({ type: 'error', text: 'Paystack library not ready. Please wait 2 seconds and try again.' });
-                return;
-            }
-
-            const handler = pPop.setup({
-                key: publicKey,
-                email: status?.email || `${(status?.username || 'user').replace(/\s+/g, '_')}@arkitel.app`,
-                amount: Math.round(finalAmount * 100), // kobo
-                currency: 'NGN',
-                ref: ref,
-                callback: function(response: any) {
-                    setApplying(true);
-                    setMsg({ type: 'success', text: 'Verifying payment... Do not close.' });
-                    
-                    apiFetch('/api/monetization/verify-paystack', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            reference: response.reference,
-                            plan_key: selectedPlan
-                        })
-                    }).then(res => {
-                        if (res.ok) {
-                            setMsg({ type: 'success', text: '🎉 Payment Verified! Welcome to Premium.' });
-                            setTimeout(() => window.location.reload(), 2000);
-                        } else {
-                            setMsg({ type: 'error', text: 'Verification failed. Please contact admin.' });
-                        }
-                    }).catch(() => {
-                        setMsg({ type: 'error', text: 'Server error during verification.' });
-                    }).finally(() => {
-                        setApplying(false);
-                    });
-                },
-                onClose: function() {
-                    setMsg({ type: 'error', text: 'Payment window closed.' });
-                }
-            });
-            handler.open();
-        } catch (err) {
-            console.error("Paystack open error", err);
-            setMsg({ type: 'error', text: 'Failed to open payment gateway. Refresh the page.' });
+        const url = PLAN_URLS[selectedPlan];
+        if (url) {
+            setMsg({ type: 'success', text: 'Opening secure payment gateway...' });
+            window.open(url, '_blank');
+            // Give them the option to submit proof after paying
+            setTimeout(() => {
+                setShowProofForm(true);
+                setMsg({ type: '', text: '' });
+            }, 2000);
+        } else {
+            setMsg({ type: 'error', text: 'Please select a valid plan.' });
         }
     };
 
@@ -190,12 +136,6 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
             {children}
             {isLocked && (
                 <>
-                <Script 
-                    src="https://js.paystack.co/v1/inline.js" 
-                    strategy="lazyOnload"
-                    onLoad={() => setIsPaystackReady(true)}
-                />
-
                 <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
                     {/* Backdrop - Minimalist Deep Dark */}
                     <div className="absolute inset-0 bg-[#0a0a0c]/95 backdrop-blur-md" />
@@ -230,11 +170,14 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                         ) : showProofForm ? (
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between px-1">
-                                    <h3 className="font-black text-xs text-white/90 uppercase tracking-widest">Verify Payment</h3>
+                                    <h3 className="font-black text-xs text-white/90 uppercase tracking-widest">Verify Identity</h3>
                                     <button onClick={() => setShowProofForm(false)} className="text-foreground/20 hover:text-white transition-colors">
                                         <X size={16} />
                                     </button>
                                 </div>
+                                <p className="text-[9px] text-foreground/40 font-bold uppercase tracking-wider text-center">
+                                    If you have already paid via the link, please enter your details below so we can activate your account.
+                                </p>
                                 <div className="space-y-2">
                                     <input
                                         placeholder="Name on your Bank Account"
@@ -256,8 +199,8 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                 >
                                     {applying ? 'Processing...' : 'Submit Verification'}
                                 </button>
-                                <button onClick={handlePayNow} className="w-full text-foreground/20 text-[9px] font-black uppercase tracking-[0.2em] hover:text-indigo-400 transition-colors py-2">
-                                    Back to payment
+                                <button onClick={() => setShowProofForm(false)} className="w-full text-foreground/20 text-[9px] font-black uppercase tracking-[0.2em] hover:text-indigo-400 transition-colors py-2 text-center">
+                                    Back to plans
                                 </button>
                             </div>
                         ) : (
@@ -317,11 +260,10 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                     <button
                                         onClick={handlePayNow}
                                         type="button"
-                                        disabled={!isPaystackReady}
-                                        className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white font-black py-4 rounded-2xl transition-all flex items-center justify-center gap-2.5 text-xs shadow-2xl shadow-indigo-500/20 active:scale-95"
+                                        className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-black py-4 rounded-2xl transition-all flex items-center justify-center gap-2.5 text-xs shadow-2xl shadow-indigo-500/20 active:scale-95"
                                     >
                                         <CreditCard size={14} />
-                                        Upgrade to {plans.find(p => p.key === selectedPlan)?.name}
+                                        Pay & Upgrade to {plans.find(p => p.key === selectedPlan)?.name}
                                     </button>
 
                                     <div className="flex gap-2">
@@ -350,14 +292,6 @@ export const MonetizationOverlay: React.FC<MonetizationOverlayProps> = ({ childr
                                     </div>
                                 )}
                             </div>
-                        )}
-                        
-                        {/* Status Label */}
-                        {!isPaystackReady && !showProofForm && !status?.has_proof && (
-                             <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-background/50 backdrop-blur-xl px-2 py-1 rounded-full border border-white/5 animate-pulse">
-                                 <div className="w-1 h-1 rounded-full bg-amber-400" />
-                                 <span className="text-[7px] font-black text-amber-400 uppercase tracking-widest">Gateway Loading</span>
-                             </div>
                         )}
                     </div>
                 </div>
