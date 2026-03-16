@@ -56,7 +56,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                 if (meRes.ok) {
                     const data = await meRes.json();
                     setUser(data);
-                    
+
                     if (statusRes.ok) {
                         const sData = await statusRes.json();
                         setStatus(sData);
@@ -66,7 +66,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                     if (isAdminRoute && data.role !== 'admin' && pathname !== '/admin/login') {
                         router.push('/');
                     }
-                    
+
                     if (!data.passkey_verified && pathname !== '/verify-passkey' && !isAdminRoute) {
                         router.push('/verify-passkey');
                     }
@@ -89,7 +89,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                     .then(data => {
                         if (data) setStatus(data);
                     })
-                    .catch(() => {});
+                    .catch(() => { });
             }
         };
 
@@ -234,17 +234,16 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                         <div className="px-4 py-2 mt-4 space-y-4">
                             <div className="flex items-center justify-between">
                                 <div className="text-[10px] text-foreground/30 uppercase tracking-[0.2em] font-bold">System Status</div>
-                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border border-current uppercase ${
-                                    status?.plan === 'unlimited' ? 'text-rose-400 bg-rose-500/10' :
-                                    status?.plan === 'premium' ? 'text-indigo-400 bg-indigo-500/10' : 
-                                    status?.plan === 'standard' ? 'text-amber-400 bg-amber-500/10' :
-                                    status?.plan === 'basic' ? 'text-emerald-400 bg-emerald-500/10' :
-                                    'text-foreground/40 bg-foreground/5'
-                                }`}>
+                                <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border border-current uppercase ${status?.plan === 'unlimited' ? 'text-rose-400 bg-rose-500/10' :
+                                        status?.plan === 'premium' ? 'text-indigo-400 bg-indigo-500/10' :
+                                            status?.plan === 'standard' ? 'text-amber-400 bg-amber-500/10' :
+                                                status?.plan === 'basic' ? 'text-emerald-400 bg-emerald-500/10' :
+                                                    'text-foreground/40 bg-foreground/5'
+                                    }`}>
                                     {status?.plan || 'Free'}
                                 </span>
                             </div>
-                            
+
                             {status?.plan === 'free' && (
                                 <Link href="/scraper" className="block w-full text-center py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-500 hover:text-white text-[10px] font-black tracking-widest rounded-lg transition-all border border-indigo-500/20 shadow-lg shadow-indigo-500/10">
                                     UPGRADE NOW
@@ -259,7 +258,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                                         <span>{status?.daily_campaign_count || 0} / {status?.max_daily_campaigns || 20}</span>
                                     </div>
                                     <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
-                                        <div 
+                                        <div
                                             className="h-full bg-indigo-500 transition-all duration-1000"
                                             style={{ width: `${Math.min(100, ((status?.daily_campaign_count || 0) / (status?.max_daily_campaigns || 20)) * 100)}%` }}
                                         />
@@ -275,7 +274,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                                                 <span>{status?.daily_keyword_count || 0} / {status?.max_daily_keywords || 5}</span>
                                             </div>
                                             <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
-                                                <div 
+                                                <div
                                                     className="h-full bg-emerald-500 transition-all duration-1000"
                                                     style={{ width: `${Math.min(100, ((status?.daily_keyword_count || 0) / (status?.max_daily_keywords || 5)) * 100)}%` }}
                                                 />

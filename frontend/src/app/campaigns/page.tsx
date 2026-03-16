@@ -44,7 +44,7 @@ export default function CampaignsPage() {
                 const data = await res.json();
                 setUserStatus(data);
             }
-        } catch (e) {}
+        } catch (e) { }
     };
 
     useEffect(() => {
@@ -109,7 +109,7 @@ export default function CampaignsPage() {
                 const data = await res.json();
                 const accs = data.accounts || [];
                 setAccounts(accs);
-                
+
                 // If there's an active/primary account, pre-select it for the user
                 const active = accs.find((a: any) => a.is_active) || accs.find((a: any) => a.status === 'active');
                 if (active && !editingId) {
@@ -334,7 +334,7 @@ export default function CampaignsPage() {
                                     <h4 className="font-bold text-foreground text-sm tracking-tight">{camp.phone_number}</h4>
                                     <div className="flex items-center gap-3">
                                         <div className="flex items-center gap-1.5 text-[10px] text-foreground/40 font-bold uppercase tracking-wider">
-                                            <Calendar size={12} className="text-indigo-500/50" /> 
+                                            <Calendar size={12} className="text-indigo-500/50" />
                                             {(() => {
                                                 try {
                                                     const dateStr = camp.scheduled_time;
@@ -367,15 +367,15 @@ export default function CampaignsPage() {
                                                     if (failed.length > 0) {
                                                         return <span className="text-[9px] font-bold text-red-400 uppercase tracking-widest bg-red-400/10 px-1.5 py-0.5 rounded-md">{failed.length} Failed</span>
                                                     }
-                                                } catch (e) {}
+                                                } catch (e) { }
                                                 return null;
                                             })()}
                                         </div>
                                         <p className="text-[10px] font-bold text-indigo-400">{camp.sent_count || 0} / {camp.total_targets || 0}</p>
                                     </div>
                                     <div className="w-full h-1.5 bg-foreground/5 rounded-full overflow-hidden">
-                                        <div 
-                                            className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out" 
+                                        <div
+                                            className="h-full bg-indigo-500 rounded-full transition-all duration-1000 ease-out"
                                             style={{ width: `${Math.min(100, ((camp.sent_count || 0) / Math.max(1, camp.total_targets || 1)) * 100)}%` }}
                                         />
                                     </div>
@@ -406,7 +406,7 @@ export default function CampaignsPage() {
                                                         </button>
                                                     )
                                                 }
-                                            } catch (e) {}
+                                            } catch (e) { }
                                             return null;
                                         })()}
                                         {camp.status === 'processing' && (
@@ -582,10 +582,10 @@ export default function CampaignsPage() {
                                             <div className="flex items-center justify-between gap-4 mb-2">
                                                 <div className="flex bg-foreground/5 p-1 rounded-xl w-fit">
                                                     {(['all', 'groups', 'channels'] as const).map(t => (
-                                                        <button 
+                                                        <button
                                                             key={t}
-                                                            type="button" 
-                                                            onClick={() => { setFilterType(t); setCurrentPage(1); }} 
+                                                            type="button"
+                                                            onClick={() => { setFilterType(t); setCurrentPage(1); }}
                                                             className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all ${filterType === t ? 'bg-indigo-500 text-white shadow-md' : 'text-foreground/40 hover:text-foreground'}`}
                                                         >
                                                             {t}
@@ -598,7 +598,7 @@ export default function CampaignsPage() {
                                                     onClick={() => {
                                                         const visibleIds = filteredDialogs.map((d: any) => d.id);
                                                         const allSelected = visibleIds.length > 0 && visibleIds.every((id: any) => selectedGroups.includes(id));
-                                                        
+
                                                         if (allSelected) {
                                                             setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
                                                         } else {
@@ -606,13 +606,13 @@ export default function CampaignsPage() {
                                                         }
                                                     }}
                                                     className={`text-[10px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-foreground/10 transition-all rounded-xl border flex items-center gap-2
-                                                        ${filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id)) 
-                                                            ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' 
+                                                        ${filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id))
+                                                            ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20'
                                                             : 'bg-foreground/5 text-foreground border-transparent'
                                                         }`}
                                                 >
-                                                    {filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id)) 
-                                                        ? <><Check size={12} strokeWidth={4} /> Deselect Visible</> 
+                                                    {filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id))
+                                                        ? <><Check size={12} strokeWidth={4} /> Deselect Visible</>
                                                         : 'Select All Visible'
                                                     }
                                                 </button>
@@ -688,5 +688,28 @@ export default function CampaignsPage() {
                 </div>
             )}
         </div>
+    );
+}
+{
+    creationError && (
+        <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold mb-4">
+            <AlertCircle size={14} />
+            {creationError}
+        </div>
+    )
+}
+<div className="flex justify-end gap-4 pt-4 border-t border-border">
+    <button type="button" onClick={() => { setIsCreating(false); setEditingId(null); setCreationError(""); }} className="px-8 py-3.5 rounded-2xl text-sm font-bold text-foreground/40 hover:text-foreground">Abort</button>
+    <button type="submit" disabled={loading || selectedGroups.length === 0} className="bg-indigo-500 hover:bg-indigo-600 text-white px-10 py-3.5 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 disabled:opacity-30">
+        {loading ? <Loader2 size={18} className="animate-spin" /> : (editingId ? 'Update & Deploy' : 'Launch Underground')}
+    </button>
+</div>
+                                </form >
+                            )}
+                        </div >
+                    </div >
+                </div >
+            )}
+        </div >
     );
 }

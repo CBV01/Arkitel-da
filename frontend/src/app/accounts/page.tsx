@@ -1,20 +1,19 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { 
-    Phone, 
-    KeyRound, 
-    CheckCircle2, 
-    Loader2, 
-    X, 
-    Plus, 
-    AlertCircle, 
+import {
+    Phone,
+    KeyRound,
+    CheckCircle2,
+    Loader2,
+    X,
+    Plus,
+    AlertCircle,
     Users,
     Rocket,
     CloudSync,
     Star,
     Check,
-    Globe,
     Search,
     ChevronRight,
     ChevronDown
@@ -43,13 +42,13 @@ export default function AccountsPage() {
     const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
     const [showCountrySelector, setShowCountrySelector] = useState(false);
     const [countrySearch, setCountrySearch] = useState('');
-    
+
     // QR Login State
     const [loginMode, setLoginMode] = useState<'phone' | 'qr'>('phone');
     const [qrUrl, setQrUrl] = useState('');
     const [qrToken, setQrToken] = useState('');
     const [qrStatus, setQrStatus] = useState<'idle' | 'scanning' | 'success' | 'expired'>('idle');
-    
+
     const [otp, setOtp] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -81,7 +80,7 @@ export default function AccountsPage() {
         e.preventDefault();
         setLoading(true);
         setError('');
-        
+
         // Clean phone number (remove spaces, etc)
         const cleanNumber = phoneNumber.replace(/\s+/g, '');
         const fullPhoneNumber = selectedCountry.dial + cleanNumber;
@@ -93,7 +92,7 @@ export default function AccountsPage() {
                 method: 'POST',
                 body: JSON.stringify(body)
             });
-            
+
             let data;
             const text = await res.text();
             try {
@@ -299,8 +298,8 @@ export default function AccountsPage() {
         }
     };
 
-    const filteredCountries = COUNTRIES.filter(c => 
-        c.name.toLowerCase().includes(countrySearch.toLowerCase()) || 
+    const filteredCountries = COUNTRIES.filter(c =>
+        c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
         c.dial.includes(countrySearch)
     );
 
@@ -374,16 +373,14 @@ export default function AccountsPage() {
                         <div key={acc.phone_number} className="bg-[#111115] border border-white/5 rounded-[2rem] p-5 group relative hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 flex flex-col">
                             {/* Header: Status and Active Indicator */}
                             <div className="flex justify-between items-center mb-6">
-                                <span className={`px-3 py-1 text-[8px] font-black rounded-full flex items-center gap-1.5 uppercase tracking-widest transition-all ${
-                                    acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 
-                                    (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                                    'bg-red-500/10 text-red-500 border border-red-500/20'
-                                }`}>
-                                    <div className={`w-1 h-1 rounded-full ${
-                                        acc.status === 'active' ? 'bg-emerald-500 animate-pulse' : 
-                                        (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500' : 
-                                        'bg-red-500'
-                                    }`} />
+                                <span className={`px-3 py-1 text-[8px] font-black rounded-full flex items-center gap-1.5 uppercase tracking-widest transition-all ${acc.status === 'active' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                                        (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                            'bg-red-500/10 text-red-500 border border-red-500/20'
+                                    }`}>
+                                    <div className={`w-1 h-1 rounded-full ${acc.status === 'active' ? 'bg-emerald-500 animate-pulse' :
+                                            (acc.status === 'resting' || acc.status === 'pending') ? 'bg-amber-500' :
+                                                'bg-red-500'
+                                        }`} />
                                     {acc.status === 'active' ? 'ONLINE' : acc.status.toUpperCase()}
                                 </span>
 
@@ -394,7 +391,7 @@ export default function AccountsPage() {
                                             PRIMARY
                                         </div>
                                     ) : (
-                                        <button 
+                                        <button
                                             onClick={() => handleSetActive(acc.phone_number)}
                                             className="px-3 py-1 bg-white/5 hover:bg-white/10 text-foreground/40 hover:text-white rounded-full text-[8px] font-black uppercase tracking-widest transition-all border border-white/5 active:scale-95"
                                         >
@@ -403,18 +400,18 @@ export default function AccountsPage() {
                                     )}
                                 </div>
                             </div>
-                            
+
                             {/* Profile Section - More Compact */}
                             <div className="flex flex-col items-center mb-6">
                                 <div className="relative mb-3 group-hover:scale-105 transition-transform duration-500">
                                     <div className="relative w-16 h-16 rounded-3xl border-2 border-white/5 p-0.5 bg-[#18181b] shadow-xl overflow-hidden flex items-center justify-center">
                                         {acc.profile_photo ? (
-                                            <img 
-                                                src={acc.profile_photo.startsWith('http') ? acc.profile_photo : (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`)} 
-                                                className="w-full h-full rounded-[1.2rem] object-cover" 
-                                                onError={(e) => { 
+                                            <img
+                                                src={acc.profile_photo.startsWith('http') ? acc.profile_photo : (process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}${acc.profile_photo}` : `http://localhost:8000${acc.profile_photo}`)}
+                                                className="w-full h-full rounded-[1.2rem] object-cover"
+                                                onError={(e) => {
                                                     const target = e.target as any;
-                                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(acc.first_name || 'A')}&background=6366f1&color=fff`; 
+                                                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(acc.first_name || 'A')}&background=6366f1&color=fff`;
                                                 }}
                                             />
                                         ) : (
@@ -448,30 +445,30 @@ export default function AccountsPage() {
                                         <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">{acc.country || 'GLOBAL'}</span>
                                     </div>
                                 </div>
-                                
+
                                 <div className="mt-auto grid grid-cols-4 gap-2.5 pt-4 border-t border-white/5">
-                                    <button 
+                                    <button
                                         onClick={() => handleSyncProfile(acc.phone_number)}
                                         className="aspect-square bg-indigo-600/10 hover:bg-indigo-600 text-indigo-500 hover:text-white rounded-xl flex items-center justify-center transition-all border border-indigo-500/10 active:scale-90"
                                         title="Sync Profile"
                                     >
                                         {actionLoading === acc.phone_number + '_sync' ? <Loader2 size={14} className="animate-spin" /> : <CloudSync size={16} />}
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleValidateSession(acc.phone_number)}
                                         className="aspect-square bg-emerald-600/10 hover:bg-emerald-600 text-emerald-500 hover:text-white rounded-xl flex items-center justify-center transition-all border border-emerald-500/10 active:scale-90"
                                         title="Pulse Check"
                                     >
                                         {actionLoading === acc.phone_number + '_valid' ? <Loader2 size={14} className="animate-spin" /> : <Rocket size={16} />}
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleSessionDump(acc.phone_number)}
                                         className="aspect-square bg-white/5 hover:bg-white/20 text-white/40 hover:text-white rounded-xl flex items-center justify-center transition-all border border-white/10 active:scale-90"
                                         title="Export Key"
                                     >
                                         {actionLoading === acc.phone_number + '_dump' ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={16} />}
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => handleDeleteAccount(acc.phone_number)}
                                         className="aspect-square bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-xl flex items-center justify-center transition-all border border-red-500/10 active:scale-90"
                                         title="Delete"
@@ -509,14 +506,14 @@ export default function AccountsPage() {
                             </div>
                         </div>
                     ))}
-                    </div>
+                </div>
             )}
 
             {/* Premium Connection Modal Overay */}
             {isConnecting && (
                 <div className="fixed inset-0 bg-background/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
                     <div className="relative w-full max-w-[380px]">
-                        
+
                         <div className="relative bg-card border border-border rounded-[32px] w-full overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-2 duration-400">
                             {/* Close Button */}
                             <button
@@ -544,13 +541,13 @@ export default function AccountsPage() {
                                         </p>
 
                                         <div className="flex bg-foreground/5 p-1 rounded-xl mb-6">
-                                            <button 
+                                            <button
                                                 onClick={() => setLoginMode('phone')}
                                                 className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${loginMode === 'phone' ? 'bg-indigo-600 text-white' : 'text-foreground/50 hover:text-foreground/80'}`}
                                             >
                                                 Phone Number
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={handleInitQrLogin}
                                                 className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${loginMode === 'qr' ? 'bg-indigo-600 text-white' : 'text-foreground/50 hover:text-foreground/80'}`}
                                             >
@@ -572,7 +569,7 @@ export default function AccountsPage() {
                                                         <Phone size={10} className="text-indigo-500" />
                                                         Your Telegram Number
                                                     </label>
-                                                    
+
                                                     <div className="flex gap-2">
                                                         {/* Country Selector */}
                                                         <div className="relative">
@@ -589,15 +586,15 @@ export default function AccountsPage() {
 
                                                             {showCountrySelector && (
                                                                 <>
-                                                                    <div 
-                                                                        className="fixed inset-0 z-30" 
-                                                                        onClick={() => setShowCountrySelector(false)} 
+                                                                    <div
+                                                                        className="fixed inset-0 z-30"
+                                                                        onClick={() => setShowCountrySelector(false)}
                                                                     />
                                                                     <div className="absolute top-full left-0 mt-2 w-64 bg-card border border-border rounded-xl shadow-2xl z-40 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                                                                         <div className="p-2 border-b border-border">
                                                                             <div className="relative">
                                                                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/30" size={12} />
-                                                                                <input 
+                                                                                <input
                                                                                     type="text"
                                                                                     placeholder="Search countries..."
                                                                                     className="w-full bg-foreground/5 border-none rounded-lg py-1.5 pl-8 pr-3 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
@@ -669,8 +666,8 @@ export default function AccountsPage() {
                                             <div className="space-y-6 animate-in fade-in duration-500">
                                                 <div className="relative mx-auto w-48 h-48 bg-white border border-border rounded-2xl p-3 group overflow-hidden">
                                                     {qrUrl ? (
-                                                        <img 
-                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=0&data=${encodeURIComponent(qrUrl)}`} 
+                                                        <img
+                                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=0&data=${encodeURIComponent(qrUrl)}`}
                                                             alt="QR"
                                                             className={`w-full h-full object-contain transition-opacity duration-1000 ${qrStatus === 'success' ? 'opacity-20' : 'opacity-100'}`}
                                                             onError={(e) => {
@@ -683,7 +680,7 @@ export default function AccountsPage() {
                                                             <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Generating</span>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {qrStatus === 'success' && (
                                                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 animate-in zoom-in-95 duration-500 bg-background/80 backdrop-blur-sm rounded-3xl">
                                                             <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-500/30 rounded-full flex items-center justify-center">
@@ -692,12 +689,12 @@ export default function AccountsPage() {
                                                             <span className="text-sm font-bold text-emerald-500">Authorized!</span>
                                                         </div>
                                                     )}
-                                                    
+
                                                     {qrStatus === 'expired' && (
                                                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 backdrop-blur-sm rounded-3xl animate-in fade-in duration-300">
                                                             <X size={32} className="text-red-500" />
                                                             <span className="text-sm font-bold text-white">QR Expired</span>
-                                                            <button 
+                                                            <button
                                                                 onClick={handleInitQrLogin}
                                                                 className="mt-2 text-[10px] font-black uppercase tracking-widest text-indigo-400 bg-foreground/10 px-4 py-2 rounded-xl"
                                                             >
@@ -706,7 +703,7 @@ export default function AccountsPage() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                
+
                                                 <div className="pt-2">
                                                     <p className="text-[10px] text-foreground/40 font-medium leading-relaxed px-4">
                                                         Scan with <b className="text-foreground">Telegram &gt; Settings &gt; Devices</b> to link instantly.

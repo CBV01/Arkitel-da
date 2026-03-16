@@ -26,40 +26,40 @@ export default function Dashboard() {
   const chartData = stats?.engagement_flow || [0, 0, 0, 0, 0, 0, 0];
   const maxVal = Math.max(...chartData, 10);
   const chartMax = Math.ceil(maxVal / 10) * 10; // Round to nearest 10
-  
-    // Smooth curve calculation (dynamic scaling)
-    const generateSmoothPath = (data: number[]) => {
-      if (!data || data.length < 2) return "";
-      const width = 1000;
-      const height = 200;
-      const padding = 20;
-      const chartHeight = height - padding * 2;
-      const chartWidth = width - padding * 2;
-      const step = chartWidth / (data.length - 1);
-  
-      const getY = (val: number) => {
-          const v = isNaN(val) ? 0 : val;
-          return height - padding - (v / chartMax) * chartHeight;
-      };
-  
-      // If all data points are zero, return a straight line at the bottom
-      if (data.every(v => v === 0)) {
-          return `M ${padding} ${getY(0)} L ${width - padding} ${getY(0)}`;
-      }
-  
-      let path = `M ${padding} ${getY(data[0])}`;
-      
-      for (let i = 0; i < data.length - 1; i++) {
-          const x1 = padding + i * step;
-          const y1 = getY(data[i]);
-          const x2 = padding + (i + 1) * step;
-          const y2 = getY(data[i + 1]);
-          
-          const cx = (x1 + x2) / 2;
-          path += ` C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
-      }
-      return path;
+
+  // Smooth curve calculation (dynamic scaling)
+  const generateSmoothPath = (data: number[]) => {
+    if (!data || data.length < 2) return "";
+    const width = 1000;
+    const height = 200;
+    const padding = 20;
+    const chartHeight = height - padding * 2;
+    const chartWidth = width - padding * 2;
+    const step = chartWidth / (data.length - 1);
+
+    const getY = (val: number) => {
+      const v = isNaN(val) ? 0 : val;
+      return height - padding - (v / chartMax) * chartHeight;
     };
+
+    // If all data points are zero, return a straight line at the bottom
+    if (data.every(v => v === 0)) {
+      return `M ${padding} ${getY(0)} L ${width - padding} ${getY(0)}`;
+    }
+
+    let path = `M ${padding} ${getY(data[0])}`;
+
+    for (let i = 0; i < data.length - 1; i++) {
+      const x1 = padding + i * step;
+      const y1 = getY(data[i]);
+      const x2 = padding + (i + 1) * step;
+      const y2 = getY(data[i + 1]);
+
+      const cx = (x1 + x2) / 2;
+      path += ` C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+    }
+    return path;
+  };
 
   const smoothPath = generateSmoothPath(chartData);
   const areaPath = smoothPath + ` L 980 180 L 20 180 Z`;
@@ -159,7 +159,7 @@ export default function Dashboard() {
         <div className="lg:col-span-2 bg-card border border-border rounded-[32px] p-8 relative overflow-hidden group flex flex-col min-h-[420px]">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-500">
-               <TrendingUp size={24} />
+              <TrendingUp size={24} />
             </div>
             <h3 className="text-2xl font-bold text-foreground tracking-tight">Trends</h3>
           </div>
@@ -188,58 +188,58 @@ export default function Dashboard() {
               </div>
 
               <svg className="w-full h-full pb-10" viewBox="0 0 1000 200" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                  <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
-                </linearGradient>
-                <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#4f46e5" />
-                  <stop offset="100%" stopColor="#818cf8" />
-                </linearGradient>
-              </defs>
-              
-              {/* Fill Area */}
-              <path
-                d={areaPath}
-                fill="url(#areaGradient)"
-                className="transition-all duration-1000"
-              />
+                <defs>
+                  <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+                  </linearGradient>
+                  <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#4f46e5" />
+                    <stop offset="100%" stopColor="#818cf8" />
+                  </linearGradient>
+                </defs>
 
-              {/* Main Line */}
-              <path
-                d={smoothPath}
-                fill="none"
-                stroke="url(#lineGradient)"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000"
-              />
+                {/* Fill Area */}
+                <path
+                  d={areaPath}
+                  fill="url(#areaGradient)"
+                  className="transition-all duration-1000"
+                />
 
-              {/* Data Points / Interaction Nodes */}
-              {chartData.map((val: number, i: number) => {
-                const width = 1000;
-                const height = 200;
-                const padding = 20;
-                const chartHeight = height - padding * 2;
-                const chartWidth = width - padding * 2;
-                const step = chartWidth / (chartData.length - 1);
-                
-                const x = padding + i * step;
-                const y = height - padding - (val / chartMax) * chartHeight;
-                return (
-                  <circle 
-                    key={i} 
-                    cx={x} 
-                    cy={y} 
-                    r="4" 
-                    fill="#ffffff" 
-                    className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer relative z-10"
-                  />
-                );
-              })}
-            </svg>
+                {/* Main Line */}
+                <path
+                  d={smoothPath}
+                  fill="none"
+                  stroke="url(#lineGradient)"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="drop-shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000"
+                />
+
+                {/* Data Points / Interaction Nodes */}
+                {chartData.map((val: number, i: number) => {
+                  const width = 1000;
+                  const height = 200;
+                  const padding = 20;
+                  const chartHeight = height - padding * 2;
+                  const chartWidth = width - padding * 2;
+                  const step = chartWidth / (chartData.length - 1);
+
+                  const x = padding + i * step;
+                  const y = height - padding - (val / chartMax) * chartHeight;
+                  return (
+                    <circle
+                      key={i}
+                      cx={x}
+                      cy={y}
+                      r="4"
+                      fill="#ffffff"
+                      className="stroke-[3] stroke-indigo-600 hover:r-6 transition-all cursor-pointer relative z-10"
+                    />
+                  );
+                })}
+              </svg>
             </div>
           </div>
         </div>
