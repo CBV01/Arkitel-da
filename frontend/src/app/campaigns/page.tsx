@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle, AlertCircle, Pause } from 'lucide-react';
+import { Megaphone, Plus, Clock, Users, X, Send, Calendar, CheckCircle2, Loader2, Search, Check, ChevronLeft, ChevronRight, Trash2, MessageCircle, AlertCircle, Pause, Play } from 'lucide-react';
 import { apiFetch } from '@/lib/auth';
 import { Preloader } from '@/components/Preloader';
 
@@ -14,6 +14,8 @@ export default function CampaignsPage() {
     const [filterType, setFilterType] = useState<'all' | 'groups' | 'channels'>('all');
     const [fetchingDialogs, setFetchingDialogs] = useState(false);
     const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+    const [excludedGroups, setExcludedGroups] = useState<string[]>([]);
+    const [selectionMode, setSelectionMode] = useState<'include' | 'exclude'>('include');
 
     const [campaignData, setCampaignData] = useState({
         name: '',
@@ -186,7 +188,8 @@ export default function CampaignsPage() {
                     interval_hours: parseInt(campaignData.interval_hours),
                     interval_minutes: parseInt(campaignData.interval_minutes),
                     groups: selectedGroups,
-                    target_groups: selectedGroups // For PUT edit
+                    target_groups: selectedGroups, // For PUT edit
+                    exclude_groups: excludedGroups
                 })
             });
             if (res.ok) {
@@ -200,6 +203,7 @@ export default function CampaignsPage() {
                     setEditingId(null);
                     setCampaignData({ name: '', phone_number: '', schedule_time: '', message: '', interval_hours: '0', interval_minutes: '0' });
                     setSelectedGroups([]);
+                    setExcludedGroups([]);
                 }, 2000);
             } else {
                 const errData = await res.json();
@@ -237,6 +241,17 @@ export default function CampaignsPage() {
             groups = [camp.target_groups].filter(Boolean);
         }
         setSelectedGroups(groups);
+
+        let excluded: string[] = [];
+        try {
+            const sanitizedEx = (camp.exclude_groups || '[]').replace(/'/g, '"');
+            excluded = JSON.parse(sanitizedEx);
+            if (!Array.isArray(excluded)) excluded = [excluded];
+        } catch (e) {
+            excluded = [camp.exclude_groups].filter(Boolean);
+        }
+        setExcludedGroups(excluded);
+
         setIsCreating(true);
         fetchDialogs(camp.phone_number);
     };
@@ -246,14 +261,15 @@ export default function CampaignsPage() {
         return text.includes('{') && text.includes('}') && text.includes('|');
     };
 
-    const handleStop = async (id: number) => {
-        if (!confirm("Stop this campaign? It will cease all pending transmissions.")) return;
+    const handleTogglePause = async (id: number, currentStatus: string) => {
+        const action = currentStatus === 'processing' ? 'Pause' : 'Resume';
+        if (!confirm(`${action} this campaign?`)) return;
         try {
-            const res = await apiFetch(`/api/telegram/campaigns/${id}/stop`, { method: 'POST' });
+            const res = await apiFetch(`/api/telegram/campaigns/${id}/toggle-pause`, { method: 'POST' });
             if (res.ok) {
                 fetchCampaigns();
             } else {
-                alert('Failed to stop campaign.');
+                alert(`Failed to ${action.toLowerCase()} campaign.`);
             }
         } catch (e: any) {
             alert(e.message);
@@ -279,7 +295,8 @@ export default function CampaignsPage() {
             case 'completed': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
             case 'processing': return 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20 animate-pulse';
             case 'failed': return 'text-red-500 bg-red-500/10 border-red-500/20';
-            default: return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
+            case 'paused': return 'text-amber-500 bg-amber-500/10 border-amber-500/20';
+            default: return 'text-foreground/50 bg-foreground/5 border-foreground/10';
         }
     };
 
@@ -409,13 +426,13 @@ export default function CampaignsPage() {
                                             } catch (e) { }
                                             return null;
                                         })()}
-                                        {camp.status === 'processing' && (
+                                        {(camp.status === 'processing' || camp.status === 'paused') && (
                                             <button
-                                                onClick={() => handleStop(camp.id)}
-                                                className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
-                                                title="Stop Campaign"
+                                                onClick={() => handleTogglePause(camp.id, camp.status)}
+                                                className={`p-2 rounded-lg transition-all ${camp.status === 'processing' ? 'text-amber-500 hover:text-amber-600 hover:bg-amber-500/10' : 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-500/10'}`}
+                                                title={camp.status === 'processing' ? "Pause Campaign" : "Resume Campaign"}
                                             >
-                                                <Pause size={16} />
+                                                {camp.status === 'processing' ? <Pause size={16} /> : <Play size={16} />}
                                             </button>
                                         )}
                                         <button
@@ -570,12 +587,31 @@ export default function CampaignsPage() {
                                                     />
                                                 </div>
                                             </div>
-                                        </div>
-
-                                        <div className="space-y-3 flex flex-col h-full">
+                                                                      <div className="space-y-3 flex flex-col h-full">
                                             <div className="flex justify-between items-end mt-4">
-                                                <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
-                                                <span className="text-[10px] font-bold text-indigo-500">{selectedGroups.length} Selected</span>
+                                                <div className="flex items-center gap-4">
+                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
+                                                    <div className="flex bg-foreground/5 p-1 rounded-lg">
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setSelectionMode('include')}
+                                                            className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase transition-all ${selectionMode === 'include' ? 'bg-indigo-500 text-white' : 'text-foreground/40'}`}
+                                                        >
+                                                            Include
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setSelectionMode('exclude')}
+                                                            className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase transition-all ${selectionMode === 'exclude' ? 'bg-red-500 text-white' : 'text-foreground/40'}`}
+                                                        >
+                                                            Exclude
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-3">
+                                                    <span className="text-[10px] font-bold text-indigo-500">{selectedGroups.length} Included</span>
+                                                    <span className="text-[10px] font-bold text-red-500">{excludedGroups.length} Excluded</span>
+                                                </div>
                                             </div>
 
                                             {/* Filters & Toggles */}
@@ -597,26 +633,36 @@ export default function CampaignsPage() {
                                                     type="button"
                                                     onClick={() => {
                                                         const visibleIds = filteredDialogs.map((d: any) => d.id);
-                                                        const allSelected = visibleIds.length > 0 && visibleIds.every((id: any) => selectedGroups.includes(id));
-
-                                                        if (allSelected) {
-                                                            setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                        if (selectionMode === 'include') {
+                                                            const allSelected = visibleIds.length > 0 && visibleIds.every((id: any) => selectedGroups.includes(id));
+                                                            if (allSelected) {
+                                                                setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                            } else {
+                                                                setSelectedGroups(prev => Array.from(new Set([...prev, ...visibleIds])));
+                                                                setExcludedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                            }
                                                         } else {
-                                                            setSelectedGroups(prev => Array.from(new Set([...prev, ...visibleIds])));
+                                                            const allExcluded = visibleIds.length > 0 && visibleIds.every((id: any) => excludedGroups.includes(id));
+                                                            if (allExcluded) {
+                                                                setExcludedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                            } else {
+                                                                setExcludedGroups(prev => Array.from(new Set([...prev, ...visibleIds])));
+                                                                setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                            }
                                                         }
                                                     }}
                                                     className={`text-[10px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-foreground/10 transition-all rounded-xl border flex items-center gap-2
-                                                        ${filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id))
-                                                            ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20'
+                                                        ${(selectionMode === 'include' ? filteredDialogs.every((d: any) => selectedGroups.includes(d.id)) : filteredDialogs.every((d: any) => excludedGroups.includes(d.id))) && filteredDialogs.length > 0
+                                                            ? (selectionMode === 'include' ? 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20')
                                                             : 'bg-foreground/5 text-foreground border-transparent'
                                                         }`}
                                                 >
-                                                    {filteredDialogs.length > 0 && filteredDialogs.every((d: any) => selectedGroups.includes(d.id))
+                                                    {((selectionMode === 'include' ? filteredDialogs.every((d: any) => selectedGroups.includes(d.id)) : filteredDialogs.every((d: any) => excludedGroups.includes(d.id))) && filteredDialogs.length > 0)
                                                         ? <><Check size={12} strokeWidth={4} /> Deselect Visible</>
                                                         : 'Select All Visible'
                                                     }
                                                 </button>
-                                            </div>
+                                            </div>            </div>
 
                                             <div className="relative">
                                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/20"><Search size={14} /></div>
@@ -647,10 +693,10 @@ export default function CampaignsPage() {
                                                             <div
                                                                 key={d.id}
                                                                 onClick={() => toggleGroup(d.id)}
-                                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${selectedGroups.includes(d.id) ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-background border-border hover:bg-foreground/[0.02]'}`}
+                                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${selectedGroups.includes(d.id) ? 'bg-indigo-500/10 border-indigo-500/30' : excludedGroups.includes(d.id) ? 'bg-red-500/10 border-red-500/30' : 'bg-background border-border hover:bg-foreground/[0.02]'}`}
                                                             >
                                                                 <div className="flex items-center gap-3 min-w-0">
-                                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 text-white' : 'bg-foreground/5 text-foreground/40'}`}>
+                                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 text-white' : excludedGroups.includes(d.id) ? 'bg-red-500 text-white' : 'bg-foreground/5 text-foreground/40'}`}>
                                                                         {d.title?.charAt(0) || '?'}
                                                                     </div>
                                                                     <div className="min-w-0">
@@ -658,8 +704,8 @@ export default function CampaignsPage() {
                                                                         <p className="text-[10px] text-foreground/30">ID: {d.id}</p>
                                                                     </div>
                                                                 </div>
-                                                                <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 border-indigo-500' : 'border-border'}`}>
-                                                                    {selectedGroups.includes(d.id) && <Check size={10} className="text-white mx-auto mt-0.5" />}
+                                                                <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 border-indigo-500' : excludedGroups.includes(d.id) ? 'bg-red-500 border-red-500' : 'border-border'}`}>
+                                                                    {(selectedGroups.includes(d.id) || excludedGroups.includes(d.id)) && <Check size={10} className="text-white mx-auto mt-0.5" />}
                                                                 </div>
                                                             </div>
                                                         ))
@@ -687,29 +733,6 @@ export default function CampaignsPage() {
                     </div>
                 </div>
             )}
-        </div>
-    );
-}
-{
-    creationError && (
-        <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-500 text-xs font-bold mb-4">
-            <AlertCircle size={14} />
-            {creationError}
-        </div>
-    )
-}
-<div className="flex justify-end gap-4 pt-4 border-t border-border">
-    <button type="button" onClick={() => { setIsCreating(false); setEditingId(null); setCreationError(""); }} className="px-8 py-3.5 rounded-2xl text-sm font-bold text-foreground/40 hover:text-foreground">Abort</button>
-    <button type="submit" disabled={loading || selectedGroups.length === 0} className="bg-indigo-500 hover:bg-indigo-600 text-white px-10 py-3.5 rounded-2xl text-sm font-bold shadow-xl shadow-indigo-500/20 disabled:opacity-30">
-        {loading ? <Loader2 size={18} className="animate-spin" /> : (editingId ? 'Update & Deploy' : 'Launch Underground')}
-    </button>
-</div>
-                                </form >
-                            )}
-                        </div >
-                    </div >
-                </div >
-            )}
-        </div >
+       </div >
     );
 }

@@ -133,6 +133,59 @@ async def lifespan(app: FastAPI):
     await POOL.disconnect_all()
     print("CORE: All clients disconnected. Shutdown complete.")
 
+async def verify_telegram_info(username: str) -> Dict[str, Any]:
+    """
+    Checks t.me/username anonymously to see if it exists and get member count.
+    Used to filter out dead or non-existent scraping results.
+    """
+    if not username: return {"exists": False, "participants_count": 0}
+    clean_user = username.replace('@', '').strip()
+    if not clean_user: return {"exists": False, "participants_count": 0}
+
+    # Safety check for BeautifulSoup availability
+    if not BS4_AVAILABLE:
+        return {"exists": True, "participants_count": 0} # Assume exists if we can't verify
+
+    url = f"https://t.me/{clean_user}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=8) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code != 200:
+                return {"exists": False, "participants_count": 0}
+            
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            title_elem = soup.find("div", class_="tgme_page_title")
+            
+            # If there's no title element, it's usually a "Contact @username" placeholder for a dead/non-existent account
+            if not title_elem:
+                return {"exists": False, "participants_count": 0}
+            
+            extra_elem = soup.find("div", class_="tgme_page_extra")
+            members = 0
+            if extra_elem:
+                text = extra_elem.get_text()
+                # Matches "1 234 members" or "10,000 subscribers"
+                m = re.search(r'([\d\s,]+)\s*(subscribers|members|online)', text, re.IGNORECASE)
+                if m:
+                    members = int(re.sub(r'\D', '', m.group(1)))
+            
+            return {
+                "exists": True, 
+                "participants_count": members, 
+                "title": title_elem.get_text(strip=True)
+            }
+    except:
+        # Fallback to assuming it exists if the check itself fails (e.g. network error)
+        return {"exists": True, "participants_count": 0}
+    
+    # Final default return for safety
+    return {"exists": True, "participants_count": 0}
+
+
+
 async def get_current_admin(user_id: str = Depends(get_current_user_id)):
     print(f"AUTH_DEBUG: Checking admin rights for {user_id}")
     if user_id == "admin_virtual_id":
@@ -554,6 +607,7 @@ class CampaignRequest(BaseModel):
     schedule_time: str
     message: str
     groups: list[str] = []
+    exclude_groups: list[str] = []
     interval_hours: int = 0
     interval_minutes: int = 0
 
@@ -1051,6 +1105,16 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                                 members = int(re.sub(r'\D', '', m_match.group(1)))
                                 
                         
+                        # Check if it actually exists if we found 0 members or if it's from Lyzem (highly prone to dead links)
+                        v_info = await verify_telegram_info(username)
+                        if not v_info["exists"]:
+                            continue
+                        
+                        # Use verified count if available
+                        if v_info["participants_count"] > 0:
+                            members = v_info["participants_count"]
+                            title = v_info["title"] or title
+
                         item = {
                             "id": f"@{username}",
                             "title": title,
@@ -1307,11 +1371,16 @@ async def _scrape_spider(seed_groups: List[Dict[str, Any]], rows: list, max_seed
                             l_lower = l.lower()
                             if l_lower not in seen and l_lower not in ('joinchat', 'share', 'addstickers', 'iv'):
                                 seen.add(l_lower)
+                                # Verification boost for Spider results (expiring links)
+                                v_info = await verify_telegram_info(l_lower)
+                                if not v_info["exists"]:
+                                    continue
+
                                 item2 = {
                                     "id": f"@{l_lower}",
-                                    "title": l,
+                                    "title": v_info["title"] or l,
                                     "username": l_lower,
-                                    "participants_count": 0,
+                                    "participants_count": v_info["participants_count"],
                                     "type": "channel", # guess
                                     "is_private": False,
                                     "country": "Global",
@@ -2228,6 +2297,7 @@ class CampaignEditRequest(BaseModel):
     message_text: Optional[str] = None
     scheduled_time: Optional[str] = None
     target_groups: Optional[List[str]] = None
+    exclude_groups: Optional[List[str]] = None
     interval_hours: Optional[int] = None
     interval_minutes: Optional[int] = None
     phone_number: Optional[str] = None
@@ -2265,6 +2335,9 @@ async def edit_campaign(task_id: int, req: CampaignEditRequest, user_id: str = D
     if req.phone_number is not None:
         updates.append("phone_number = ?")
         params.append(req.phone_number)
+    if req.exclude_groups is not None:
+        updates.append("exclude_groups = ?")
+        params.append(json.dumps(req.exclude_groups))
     
     if updates:
         # Reset to pending on edit so it re-runs
@@ -2370,35 +2443,43 @@ async def bulk_delete_members(req: BulkDeleteRequest, user_id: str = Depends(get
 
 # Removed redundant get_accounts (already refactored earlier)
 
-@app.post("/api/telegram/campaigns/{task_id}/stop")
-async def stop_campaign(task_id: int, user_id: str = Depends(get_current_user_id)):
+@app.post("/api/telegram/campaigns/{task_id}/toggle-pause")
+async def toggle_campaign_pause(task_id: int, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     try:
-        # Verify ownership
-        row = conn.execute("SELECT user_id FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        row = conn.execute("SELECT user_id, status FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Task not found")
         if row["user_id"] != user_id and user_id != "admin_virtual_id":
              raise HTTPException(status_code=403, detail="Unauthorized")
         
-        conn.execute("UPDATE tasks SET status = 'stopped' WHERE id = ?", (task_id,))
+        current_status = row["status"]
+        if current_status == "processing":
+            new_status = 'paused'
+        elif current_status == "paused":
+            new_status = 'pending'
+        else:
+            raise HTTPException(status_code=400, detail="Campaign can only be paused while processing, or resumed while paused.")
+            
+        conn.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
         if hasattr(conn, "commit"): conn.commit()
-        return {"status": "success"}
+        return {"status": "success", "new_status": new_status}
     finally:
         if hasattr(conn, "close"): conn.close()
+
 
 @app.get("/api/telegram/campaigns")
 async def get_campaigns(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     tasks = conn.execute(
-        "SELECT id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, interval_minutes, total_targets, sent_count, batch_number, failed_groups FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC", 
+        "SELECT id, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, interval_minutes, total_targets, sent_count, batch_number, failed_groups, exclude_groups FROM tasks WHERE user_id = ? ORDER BY scheduled_time DESC", 
         (user_id,)
     ).fetchall()
     if hasattr(conn, "close"): conn.close()
     
     return {
         "campaigns": [
-            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5], interval_hours=t[6], interval_minutes=t[7], total_targets=t[8], sent_count=t[9], batch_number=t[10], failed_groups=t[11]) 
+            dict(id=t[0], phone_number=t[1], scheduled_time=t[2], message=t[3], groups=t[4], status=t[5], interval_hours=t[6], interval_minutes=t[7], total_targets=t[8], sent_count=t[9], batch_number=t[10], failed_groups=t[11], exclude_groups=t[12]) 
             for t in tasks
         ]
     }
@@ -2444,8 +2525,8 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
                 clean_time = f"{parts[0]}:{parts[1]}"
 
         conn.execute(
-            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, interval_minutes, total_targets, sent_count, batch_number, failed_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (user_id, req.name, req.phone_number, clean_time, req.message, str(req.groups), "pending", req.interval_hours, req.interval_minutes, len(req.groups), 0, 1, "[]")
+            "INSERT INTO tasks (user_id, name, phone_number, scheduled_time, message_text, target_groups, status, interval_hours, interval_minutes, total_targets, sent_count, batch_number, failed_groups, exclude_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, req.name, req.phone_number, clean_time, req.message, str(req.groups), "pending", req.interval_hours, req.interval_minutes, len(req.groups), 0, 1, "[]", str(req.exclude_groups))
         )
         if hasattr(conn, "commit"): conn.commit()
         return {"status": "success", "message": f"Campaign scheduled for {req.schedule_time} UTC."}
@@ -2861,11 +2942,11 @@ async def root():
 async def task_poller():
     active_tasks = set()
 
-    async def run_single_task(task_id, message, groups_str, phone_num, u_id, interval, scheduled_time):
+    async def run_single_task(task_id, message, groups_str, phone_num, u_id, interval, scheduled_time, exclude_groups_str="[]", processed_groups_str="[]", sent_count_init=0, failed_groups_str="[]"):
         try:
             # Update status to 'processing'
             conn = get_db_connection()
-            conn.execute("UPDATE tasks SET status = 'processing', failed_groups = '[]' WHERE id = ?", (task_id,))
+            conn.execute("UPDATE tasks SET status = 'processing' WHERE id = ?", (task_id,))
             if hasattr(conn, "commit"): conn.commit()
             
             try:
@@ -2892,6 +2973,14 @@ async def task_poller():
             except:
                 target_groups = [groups_str] if groups_str else []
 
+            try:
+                exclude_list = ast.literal_eval(exclude_groups_str) if exclude_groups_str else []
+            except:
+                exclude_list = []
+            
+            # Normalize exclude_list
+            exclude_list = [str(e).strip() for e in (exclude_list if isinstance(exclude_list, list) else [])]
+
             def recursive_spin(text: str) -> str:
                 text_obj = str(text)
                 while '{' in text_obj and '}' in text_obj:
@@ -2899,8 +2988,19 @@ async def task_poller():
                     text_obj = re.sub(r'\{([^{}]*)\}', lambda m: random.choice(m.group(1).split('|')), text_obj)
                 return str(text_obj)
 
-            failed_list = []
-            sent_ok_stats = [0]
+            try:
+                processed_list = ast.literal_eval(processed_groups_str) if processed_groups_str else []
+            except:
+                processed_list = []
+            processed_list = [str(e).strip() for e in (processed_list if isinstance(processed_list, list) else [])]
+
+            try:
+                failed_list = ast.literal_eval(failed_groups_str) if failed_groups_str else []
+            except:
+                failed_list = []
+            if not isinstance(failed_list, list): failed_list = []
+            
+            sent_ok_stats = [sent_count_init]
             # High Fidelity Extraction Loop
             for raw_group in target_groups:
                 # Dynamic Status Check (Abort if User Stopped the Campaign)
@@ -2932,8 +3032,16 @@ async def task_poller():
                 try:
                     # Clean and resolve ID format (int vs str)
                     group = str(raw_group).strip()
-                    if not group: continue
-                    
+                    if group in exclude_list:
+                        log_debug(f"BKG_TASK[{task_id}]: Skipping {group} (Excluded by user)")
+                        continue
+                    if group in processed_list:
+                        log_debug(f"BKG_TASK[{task_id}]: Skipping {group} (Already processed in this batch)")
+                        continue
+
+                    # Mark as processed immediately so we don't repeat on crash
+                    processed_list.append(group)
+
                     target_id = group
                     if group.lstrip('-').isdigit():
                         target_id = int(group)
@@ -2984,6 +3092,15 @@ async def task_poller():
                     # Final Spintax processing
                     final_msg = recursive_spin(final_msg_base).strip()
                     
+                    # SPAM PREVENTION: Check last message
+                    try:
+                        last_msgs = await client.get_messages(entity, limit=1)
+                        if last_msgs and last_msgs[0].sender_id == me_id:
+                            log_debug(f"BKG_TASK[{task_id}]: Skipping {target_id} - Last message was from this account.")
+                            continue
+                    except Exception as e:
+                        log_debug(f"BKG_TASK[{task_id}]: Last message check failed for {target_id}: {e}")
+
                     log_debug(f"BKG_TASK[{task_id}]: Sending to {target_id} via {sender_name}...")
                     
                     try:
@@ -3000,7 +3117,7 @@ async def task_poller():
                         
                         # BATCH LOG UPDATE (Every 5 messages - prevents DB choking)
                         if sent_ok_stats[0] % 5 == 0:
-                            u_conn.execute("UPDATE tasks SET failed_groups = ? WHERE id = ?", (json.dumps(failed_list), task_id))
+                            u_conn.execute("UPDATE tasks SET failed_groups = ?, processed_groups = ? WHERE id = ?", (json.dumps(failed_list), json.dumps(processed_list), task_id))
                             if hasattr(u_conn, "commit"): u_conn.commit()
                         
                         if hasattr(u_conn, "close"): u_conn.close()
@@ -3014,7 +3131,7 @@ async def task_poller():
                         elif "UserIsBlocked" in err_str: reason = "User Blocked"
                         elif "FloodWait" in err_str: reason = "Telegram Limit"
                         
-                        failed_list.append({"id": group, "name": getattr(entity, 'title', group), "reason": reason})
+                        failed_list.append({"id": group, "name": getattr(entity, 'title', group) if 'entity' in locals() else group, "reason": reason})
 
                     # Moderate Anti-Spam Interval
                     await asyncio.sleep(random.randint(15, 30))
@@ -3041,17 +3158,22 @@ async def task_poller():
                     new_time = (datetime.now(timezone.utc) + delta).strftime('%Y-%m-%dT%H:%M')
                     # RESET sent_count TO 0 for next batch cycle
                     conn.execute(
-                        "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = ? WHERE id = ?", 
-                        (new_time, json.dumps(failed_list), task_id)
+                        "UPDATE tasks SET status = 'pending', scheduled_time = ?, batch_number = batch_number + 1, sent_count = 0, failed_groups = '[]', processed_groups = '[]' WHERE id = ?", 
+                        (new_time, task_id)
                     )
                     print(f"BKG: Task {task_id} rescheduled for {new_time} (Successful: {sent_ok_stats[0]})")
                 else:
-                    conn.execute("UPDATE tasks SET status = 'completed', sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
-                    print(f"BKG: Task {task_id} marked COMPLETED (Successful: {sent_ok_stats[0]})")
+                    # Determine final status accurately
+                    final_status = 'completed'
+                    if sent_ok_stats[0] == 0 and len(failed_list) > 0:
+                        final_status = 'failed'
+                    
+                    conn.execute("UPDATE tasks SET status = ?, sent_count = ?, failed_groups = ?, processed_groups = ? WHERE id = ?", (final_status, sent_ok_stats[0], json.dumps(failed_list), json.dumps(processed_list), task_id))
+                    print(f"BKG: Task {task_id} marked {final_status.upper()} (Successful: {sent_ok_stats[0]})")
             else:
                 log_debug(f"BKG: Task {task_id} already marked as {current_status}, skipping auto-complete.")
                 # We still update the final stats so the UI is accurate
-                conn.execute("UPDATE tasks SET sent_count = ?, failed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), task_id))
+                conn.execute("UPDATE tasks SET sent_count = ?, failed_groups = ?, processed_groups = ? WHERE id = ?", (sent_ok_stats[0], json.dumps(failed_list), json.dumps(processed_list), task_id))
                 
             if hasattr(conn, "commit"): conn.commit()
             if hasattr(conn, "close"): conn.close()
@@ -3073,7 +3195,7 @@ async def task_poller():
             
             # 1. Fetch PENDING tasks
             tasks = conn.execute(
-                "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours, scheduled_time FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
+                "SELECT id, message_text, target_groups, phone_number, user_id, interval_hours, scheduled_time, exclude_groups, processed_groups, sent_count, failed_groups FROM tasks WHERE status = 'pending' AND scheduled_time <= ?", 
                 (now_str,)
             ).fetchall()
             

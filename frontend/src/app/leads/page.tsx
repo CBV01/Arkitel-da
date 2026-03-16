@@ -51,6 +51,7 @@ export default function LeadsPage() {
     const [extractingGroup, setExtractingGroup] = useState<string | null>(null);
     const [extractingPhone, setExtractingPhone] = useState('');
     const [accounts, setAccounts] = useState<any[]>([]);
+    const [copyStatus, setCopyStatus] = useState<{[key: string]: boolean}>({});
 
     // Bulk join progress tracker
     const [joinProgress, setJoinProgress] = useState<{
@@ -192,6 +193,17 @@ export default function LeadsPage() {
             setError(err.message);
             setJoining(false);
         }
+    };
+
+    const handleCopy = (id: string | number, text: string) => {
+        navigator.clipboard.writeText(text).then(() => {
+            setCopyStatus(prev => ({ ...prev, [id]: true }));
+            setTimeout(() => {
+                setCopyStatus(prev => ({ ...prev, [id]: false }));
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+        });
     };
 
     const handleBulkDelete = async () => {
@@ -610,21 +622,26 @@ export default function LeadsPage() {
                                     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${l.itemType === 'member' ? 'bg-indigo-500/10 border-indigo-500/20 text-indigo-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}>
                                         {l.itemType === 'member' ? <UsersRound size={18} /> : (l.type === 'channel' ? <Megaphone size={18} /> : <Users size={18} />)}
                                     </div>
-                                    <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex gap-2">
+                                        <div className="flex items-center gap-1.5 transition-all">
+                                            {copyStatus[l.id] && (
+                                                <span className="text-[10px] font-bold text-emerald-500 animate-in fade-in slide-in-from-right-2">Copied!</span>
+                                            )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const text = l.username ? `@${l.username}` : String(l.id);
+                                                    handleCopy(l.id, text);
+                                                }}
+                                                className={`p-1.5 rounded-lg transition-all ${copyStatus[l.id] ? 'bg-emerald-500/10 text-emerald-500' : 'bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 text-foreground/30'}`}
+                                                title="Copy Username/ID"
+                                            >
+                                                {copyStatus[l.id] ? <Check size={14} /> : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>}
+                                            </button>
+                                        </div>
+
                                         {l.itemType === 'community' && (
                                             <>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        const text = l.username ? `@${l.username}` : l.id;
-                                                        navigator.clipboard.writeText(text);
-                                                        alert('Copied to clipboard');
-                                                    }}
-                                                    className="p-1.5 bg-foreground/5 hover:bg-indigo-500/10 hover:text-indigo-500 rounded-lg text-foreground/30 transition-all"
-                                                    title="Copy Username/ID"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
-                                                </button>
                                                 {joinedIds.has(l.id) || (l.username && joinedIds.has(l.username)) ? (
                                                     <div
                                                         className="px-2 py-1 h-7 bg-emerald-500/10 text-emerald-500 rounded-lg text-[10px] font-bold tracking-wider uppercase flex items-center justify-center border border-emerald-500/20 shadow-sm"

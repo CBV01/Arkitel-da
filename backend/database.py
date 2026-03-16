@@ -212,15 +212,18 @@ def init_db():
             user_id TEXT NOT NULL,
             name TEXT,
             phone_number TEXT,
-            scheduled_time TEXT NOT NULL,
-            message_text TEXT NOT NULL,
-            target_groups TEXT NOT NULL,
+            message_text TEXT,
+            target_groups TEXT,
+            scheduled_time TEXT,
             status TEXT DEFAULT 'pending',
             interval_hours INTEGER DEFAULT 0,
+            interval_minutes INTEGER DEFAULT 0,
             total_targets INTEGER DEFAULT 0,
             sent_count INTEGER DEFAULT 0,
             batch_number INTEGER DEFAULT 1,
-            failed_groups TEXT DEFAULT '[]'
+            failed_groups TEXT DEFAULT '[]',
+            exclude_groups TEXT DEFAULT '[]',
+            processed_groups TEXT DEFAULT '[]'
         )""",
         """CREATE TABLE IF NOT EXISTS leads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,6 +379,18 @@ def init_db():
     # Migration for tasks table: interval_minutes
     try:
         conn.execute("ALTER TABLE tasks ADD COLUMN interval_minutes INTEGER DEFAULT 0")
+    except:
+        pass
+
+    # Migration for tasks table: exclude_groups
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN exclude_groups TEXT DEFAULT '[]'")
+    except:
+        pass
+
+    # Migration for tasks table: processed_groups
+    try:
+        conn.execute("ALTER TABLE tasks ADD COLUMN processed_groups TEXT DEFAULT '[]'")
     except:
         pass
 
