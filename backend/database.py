@@ -313,6 +313,13 @@ def init_db():
             has_premium_access INTEGER DEFAULT 0,
             perks TEXT -- JSON string of perks
         )""",
+        """CREATE TABLE IF NOT EXISTS templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
     ]
 
     conn = cast(Any, get_db_connection())
@@ -356,7 +363,8 @@ def init_db():
         ("daily_campaign_count", "INTEGER DEFAULT 0"),
         ("max_daily_keywords", "INTEGER DEFAULT 5"),
         ("daily_keyword_count", "INTEGER DEFAULT 0"),
-        ("last_reset_date", "TEXT")
+        ("last_reset_date", "TEXT"),
+        ("permanent_excludes", "TEXT DEFAULT '[]'")
     ]
     for col_name, col_def in user_cols:
         try:

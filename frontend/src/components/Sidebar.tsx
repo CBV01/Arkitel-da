@@ -16,7 +16,8 @@ import {
     ChevronLeft,
     LogOut,
     Shield,
-    Bookmark
+    Bookmark,
+    FileText
 } from "lucide-react";
 import { getToken, removeToken, apiFetch } from "@/lib/auth";
 import { BroadcastBanner } from "./BroadcastBanner";
@@ -117,6 +118,7 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
         { name: "Campaigns", href: "/campaigns", icon: Megaphone },
         { name: "Scraper", href: "/scraper", icon: Search },
         { name: "Leads", href: "/leads", icon: Bookmark },
+        { name: "Templates", href: "/templates", icon: FileText },
     ];
 
     if (user?.role === 'admin') {

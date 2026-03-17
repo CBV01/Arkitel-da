@@ -614,6 +614,13 @@ class CampaignRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     password: str
 
+class TemplateRequest(BaseModel):
+    name: str
+    content: str
+
+class PermanentExcludeRequest(BaseModel):
+    ids: list[str]
+
 # --- Authentication Endpoints ---
 
 @app.post("/api/auth/register")
@@ -1128,8 +1135,8 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                             "source": "lyzem"
                         }
                         results.append(item)
-                        # Fire and forget save to not block the stream
-                        if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
+                        # Auto-saving disabled - user must manually select and save to leads
+                        # if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item))) # type: ignore
                         if queue:
                             await queue.put({"type": "result", "layer": 2, "data": item})  # type: ignore
                             
@@ -2441,6 +2448,48 @@ async def bulk_delete_members(req: BulkDeleteRequest, user_id: str = Depends(get
 
 
 
+# --- TEMPLATES ENDPOINTS ---
+@app.get("/api/telegram/templates")
+async def get_templates(user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    rows = conn.execute("SELECT id, name, content FROM templates WHERE user_id = ? ORDER BY created_at DESC", (user_id,)).fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"templates": [dict(id=r[0], name=r[1], content=r[2]) for r in rows]}
+
+@app.post("/api/telegram/templates")
+async def create_template(req: TemplateRequest, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    conn.execute("INSERT INTO templates (user_id, name, content) VALUES (?, ?, ?)", (user_id, req.name, req.content))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
+@app.delete("/api/telegram/templates/{template_id}")
+async def delete_template(template_id: int, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM templates WHERE id = ? AND user_id = ?", (template_id, user_id))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
+# --- PERMANENT EXCLUDES ---
+@app.get("/api/users/permanent-excludes")
+async def get_permanent_excludes(user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    row = conn.execute("SELECT permanent_excludes FROM users WHERE id = ?", (user_id,)).fetchone()
+    if hasattr(conn, "close"): conn.close()
+    if row:
+        return {"ids": json.loads(row[0] or "[]")}
+    return {"ids": []}
+
+@app.post("/api/users/permanent-excludes")
+async def update_permanent_excludes(req: PermanentExcludeRequest, user_id: str = Depends(get_current_user_id)):
+    conn = get_db_connection()
+    conn.execute("UPDATE users SET permanent_excludes = ? WHERE id = ?", (json.dumps(req.ids), user_id))
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success"}
+
 # Removed redundant get_accounts (already refactored earlier)
 
 @app.post("/api/telegram/campaigns/{task_id}/toggle-pause")
@@ -2978,8 +3027,22 @@ async def task_poller():
             except:
                 exclude_list = []
             
+            # Fetch and merge permanent excludes for this user
+            try:
+                ex_conn = get_db_connection()
+                u_ex_row = ex_conn.execute("SELECT permanent_excludes FROM users WHERE id = ?", (u_id,)).fetchone()
+                if u_ex_row and u_ex_row[0]:
+                    try:
+                        p_ex = json.loads(u_ex_row[0])
+                        if isinstance(p_ex, list):
+                            exclude_list.extend(p_ex)
+                    except: pass
+                if hasattr(ex_conn, "close"): ex_conn.close()
+            except Exception as e:
+                print(f"BKG_TASK[{task_id}]: Error loading permanent excludes: {e}")
+
             # Normalize exclude_list
-            exclude_list = [str(e).strip() for e in (exclude_list if isinstance(exclude_list, list) else [])]
+            exclude_list = list(set([str(e).strip() for e in (exclude_list if isinstance(exclude_list, list) else [])]))
 
             def recursive_spin(text: str) -> str:
                 text_obj = str(text)

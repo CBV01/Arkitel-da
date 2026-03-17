@@ -38,6 +38,8 @@ export default function CampaignsPage() {
     const pageSize = 15;
 
     const [userStatus, setUserStatus] = useState<any>(null);
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [permanentExcludes, setPermanentExcludes] = useState<string[]>([]);
 
     const fetchStatus = async () => {
         try {
@@ -51,6 +53,8 @@ export default function CampaignsPage() {
 
     useEffect(() => {
         fetchStatus();
+        fetchTemplates();
+        fetchPermanentExcludes();
     }, []);
 
     useEffect(() => {
@@ -104,6 +108,36 @@ export default function CampaignsPage() {
         }
     };
 
+    const fetchTemplates = async () => {
+        try {
+            const res = await apiFetch('/api/telegram/templates');
+            if (res.ok) {
+                const data = await res.json();
+                setTemplates(data.templates || []);
+            }
+        } catch (e) { }
+    };
+
+    const fetchPermanentExcludes = async () => {
+        try {
+            const res = await apiFetch('/api/users/permanent-excludes');
+            if (res.ok) {
+                const data = await res.json();
+                setPermanentExcludes(data.ids || []);
+                setExcludedGroups(data.ids || []);
+            }
+        } catch (e) { }
+    };
+
+    const updatePermanentExcludes = async (ids: string[]) => {
+        try {
+            await apiFetch('/api/users/permanent-excludes', {
+                method: 'POST',
+                body: JSON.stringify({ ids })
+            });
+        } catch (e) { }
+    };
+
     const fetchAccounts = async () => {
         try {
             const res = await apiFetch('/api/telegram/accounts');
@@ -153,13 +187,32 @@ export default function CampaignsPage() {
     }, []);
 
     const toggleGroup = (id: string) => {
-        setSelectedGroups(prev => {
-            if (prev.includes(id)) {
-                return prev.filter(g => g !== id);
-            } else {
-                return [...prev, id];
-            }
-        });
+        if (selectionMode === 'include') {
+            setSelectedGroups(prev => {
+                if (prev.includes(id)) {
+                    return prev.filter(g => g !== id);
+                } else {
+                    // Remove from exclude if we include it
+                    setExcludedGroups(ex => ex.filter(g => g !== id));
+                    return [...prev, id];
+                }
+            });
+        } else {
+            setExcludedGroups(prev => {
+                let next;
+                if (prev.includes(id)) {
+                    next = prev.filter(g => g !== id);
+                } else {
+                    // Remove from selected if we exclude it
+                    setSelectedGroups(sel => sel.filter(g => g !== id));
+                    next = [...prev, id];
+                }
+                // Save to permanent excludes immediately
+                updatePermanentExcludes(next);
+                setPermanentExcludes(next);
+                return next;
+            });
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -310,7 +363,7 @@ export default function CampaignsPage() {
 
     return (
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <header className="flex justify-between items-center mb-10">
+            <header className="flex justify-between items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold mb-1 tracking-tight text-foreground">Campaigns</h2>
                     <p className="text-sm text-foreground/40 font-medium">Underground scheduling for autonomous broadcasts.</p>
@@ -373,8 +426,8 @@ export default function CampaignsPage() {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col md:flex-row md:items-center gap-4 md:gap-8 mt-4 md:mt-0">
-                                <div className="flex-1 w-full md:w-48">
+                            <div className="flex flex-1 items-center gap-6 mt-4 md:mt-0 px-2 lg:px-4 border-l border-border/50 ml-6">
+                                <div className="flex-1 min-w-[140px] max-w-[200px]">
                                     <div className="flex justify-between items-center mb-1.5">
                                         <div className="flex items-center gap-2">
                                             <p className="text-[9px] uppercase tracking-widest text-foreground/40 font-bold">Delivery Progress</p>
@@ -404,7 +457,7 @@ export default function CampaignsPage() {
                                 </div>
 
                                 <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto">
-                                    <div className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest border ${getStatusColor(camp.status)}`}>
+                                    <div className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-[0.15em] border ${getStatusColor(camp.status)}`}>
                                         {camp.status}
                                     </div>
 
@@ -463,10 +516,10 @@ export default function CampaignsPage() {
                     <div className="bg-card border border-border rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
 
-                        <div className="flex justify-between items-center p-6 border-b border-border shrink-0">
-                            <div className="flex items-center gap-4">
-                                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
-                                    <Megaphone size={24} />
+                        <div className="flex justify-between items-center p-4 border-b border-border shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-500">
+                                    <Megaphone size={20} />
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-xl text-foreground tracking-tight">{editingId ? 'Modify Transmission' : 'Create Underground Campaign'}</h3>
@@ -476,7 +529,7 @@ export default function CampaignsPage() {
                             <button onClick={() => { setIsCreating(false); setEditingId(null); }} className="text-foreground/20 hover:text-foreground p-2 hover:bg-foreground/5 rounded-full"><X size={24} /></button>
                         </div>
 
-                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+                        <div className="p-5 overflow-y-auto custom-scrollbar flex-1">
                             {success ? (
                                 <div className="text-center py-20">
                                     <div className="w-20 h-20 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={40} /></div>
@@ -484,8 +537,8 @@ export default function CampaignsPage() {
                                     <p className="text-sm text-foreground/40">Your campaign has been successfully queued.</p>
                                 </div>
                             ) : (
-                                <form onSubmit={handleSubmit} className="space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="space-y-5">
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Sending Account</label>
@@ -497,7 +550,7 @@ export default function CampaignsPage() {
                                                         setCampaignData({ ...campaignData, phone_number: val });
                                                         fetchDialogs(val);
                                                     }}
-                                                    className="w-full bg-input border border-border rounded-xl py-3.5 px-4 text-sm text-foreground focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                                    className="w-full bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground focus:ring-2 focus:ring-indigo-500/50 outline-none"
                                                 >
                                                     <option value="">Select an account...</option>
                                                     {accounts.map((acc, idx) => (<option key={idx} value={acc.phone_number}>{acc.phone_number}</option>))}
@@ -516,7 +569,7 @@ export default function CampaignsPage() {
                                                     />
                                                 </div>
                                                 <div className="space-y-2">
-                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Repeat (Hrs/Min)</label>
+                                                    <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">Repeat (Hrs/Min)</label>
                                                     <div className="flex gap-2">
                                                         <select
                                                             value={campaignData.interval_hours}
@@ -544,7 +597,7 @@ export default function CampaignsPage() {
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-4">
+                                            <div className="space-y-3">
                                                 <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-3">
                                                     <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                                                         <MessageCircle size={14} /> Optimization Guide (ChatGPT Prompt)
@@ -572,7 +625,22 @@ export default function CampaignsPage() {
                                                 </div>
                                                 <div className="space-y-2">
                                                     <div className="flex justify-between items-center px-1">
-                                                        <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Message Payload</label>
+                                                        <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">Message Payload</label>
+                                                        {templates.length > 0 && (
+                                                            <select 
+                                                                className="text-[10px] bg-background border border-border rounded-md px-2 py-1 font-bold text-indigo-500 outline-none focus:ring-1 focus:ring-indigo-500/20"
+                                                                onChange={(e) => {
+                                                                    const t = templates.find(x => x.id.toString() === e.target.value);
+                                                                    if (t) setCampaignData({ ...campaignData, message: t.content });
+                                                                    e.target.value = ""; // Reset
+                                                                }}
+                                                            >
+                                                                <option value="">Load Template...</option>
+                                                                {templates.map(t => (
+                                                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
                                                         {!isSpintaxValid(campaignData.message) && campaignData.message.length > 0 && (
                                                             <span className="text-[9px] font-bold text-amber-500 uppercase">Non-Spintax detected</span>
                                                         )}
@@ -591,7 +659,7 @@ export default function CampaignsPage() {
                                         <div className="space-y-4 flex flex-col h-full">
                                             <div className="flex justify-between items-end">
                                                 <div className="flex items-center gap-4">
-                                                    <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
+                                                    <label className="text-[10px] font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
                                                     <div className="flex bg-foreground/5 p-1 rounded-lg">
                                                         <button
                                                             type="button"
@@ -616,7 +684,7 @@ export default function CampaignsPage() {
                                             </div>
 
                                             {/* Filters & Toggles */}
-                                            <div className="flex items-center justify-between gap-4">
+                                            <div className="flex items-center justify-between gap-3">
                                                 <div className="flex bg-foreground/5 p-1 rounded-xl w-fit">
                                                     {(['all', 'groups', 'channels'] as const).map(t => (
                                                         <button
@@ -635,21 +703,25 @@ export default function CampaignsPage() {
                                                     onClick={() => {
                                                         const visibleIds = filteredDialogs.map((d: any) => d.id);
                                                         if (selectionMode === 'include') {
-                                                            const allSelected = visibleIds.length > 0 && visibleIds.every((id: any) => selectedGroups.includes(id));
+                                                            const selectableIds = visibleIds.filter((id: any) => !excludedGroups.includes(id));
+                                                            const allSelected = selectableIds.length > 0 && selectableIds.every((id: any) => selectedGroups.includes(id));
                                                             if (allSelected) {
                                                                 setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
                                                             } else {
-                                                                setSelectedGroups(prev => Array.from(new Set([...prev, ...visibleIds])));
-                                                                setExcludedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                                setSelectedGroups(prev => Array.from(new Set([...prev, ...selectableIds])));
                                                             }
                                                         } else {
                                                             const allExcluded = visibleIds.length > 0 && visibleIds.every((id: any) => excludedGroups.includes(id));
+                                                            let nextExcludes;
                                                             if (allExcluded) {
-                                                                setExcludedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
+                                                                nextExcludes = excludedGroups.filter(id => !visibleIds.includes(id));
                                                             } else {
-                                                                setExcludedGroups(prev => Array.from(new Set([...prev, ...visibleIds])));
+                                                                nextExcludes = Array.from(new Set([...excludedGroups, ...visibleIds]));
                                                                 setSelectedGroups(prev => prev.filter(id => !visibleIds.includes(id)));
                                                             }
+                                                            setExcludedGroups(nextExcludes);
+                                                            setPermanentExcludes(nextExcludes);
+                                                            updatePermanentExcludes(nextExcludes);
                                                         }
                                                     }}
                                                     className={`text-[10px] font-bold uppercase tracking-widest px-4 py-2 hover:bg-foreground/10 transition-all rounded-xl border flex items-center gap-2
