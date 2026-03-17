@@ -463,7 +463,7 @@ export default function CampaignsPage() {
                     <div className="bg-card border border-border rounded-[32px] w-full max-w-4xl shadow-2xl relative animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col overflow-hidden">
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
 
-                        <div className="flex justify-between items-center p-8 border-b border-border shrink-0">
+                        <div className="flex justify-between items-center p-6 border-b border-border shrink-0">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
                                     <Megaphone size={24} />
@@ -476,7 +476,7 @@ export default function CampaignsPage() {
                             <button onClick={() => { setIsCreating(false); setEditingId(null); }} className="text-foreground/20 hover:text-foreground p-2 hover:bg-foreground/5 rounded-full"><X size={24} /></button>
                         </div>
 
-                        <div className="p-8 overflow-y-auto custom-scrollbar flex-1">
+                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
                             {success ? (
                                 <div className="text-center py-20">
                                     <div className="w-20 h-20 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={40} /></div>
@@ -484,9 +484,9 @@ export default function CampaignsPage() {
                                     <p className="text-sm text-foreground/40">Your campaign has been successfully queued.</p>
                                 </div>
                             ) : (
-                                <form onSubmit={handleSubmit} className="space-y-8">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="space-y-6">
+                                <form onSubmit={handleSubmit} className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-5">
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Sending Account</label>
                                                 <select
@@ -545,7 +545,7 @@ export default function CampaignsPage() {
                                             </div>
 
                                             <div className="space-y-4">
-                                                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-4">
+                                                <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-3">
                                                     <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                                                         <MessageCircle size={14} /> Optimization Guide (ChatGPT Prompt)
                                                     </h4>
@@ -587,19 +587,20 @@ export default function CampaignsPage() {
                                                     />
                                                 </div>
                                             </div>
-                                                                      <div className="space-y-3 flex flex-col h-full">
-                                            <div className="flex justify-between items-end mt-4">
+                                        </div>
+                                        <div className="space-y-4 flex flex-col h-full">
+                                            <div className="flex justify-between items-end">
                                                 <div className="flex items-center gap-4">
                                                     <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Target Groups</label>
                                                     <div className="flex bg-foreground/5 p-1 rounded-lg">
-                                                        <button 
+                                                        <button
                                                             type="button"
                                                             onClick={() => setSelectionMode('include')}
                                                             className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase transition-all ${selectionMode === 'include' ? 'bg-indigo-500 text-white' : 'text-foreground/40'}`}
                                                         >
                                                             Include
                                                         </button>
-                                                        <button 
+                                                        <button
                                                             type="button"
                                                             onClick={() => setSelectionMode('exclude')}
                                                             className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase transition-all ${selectionMode === 'exclude' ? 'bg-red-500 text-white' : 'text-foreground/40'}`}
@@ -615,7 +616,7 @@ export default function CampaignsPage() {
                                             </div>
 
                                             {/* Filters & Toggles */}
-                                            <div className="flex items-center justify-between gap-4 mb-2">
+                                            <div className="flex items-center justify-between gap-4">
                                                 <div className="flex bg-foreground/5 p-1 rounded-xl w-fit">
                                                     {(['all', 'groups', 'channels'] as const).map(t => (
                                                         <button
@@ -662,7 +663,7 @@ export default function CampaignsPage() {
                                                         : 'Select All Visible'
                                                     }
                                                 </button>
-                                            </div>            </div>
+                                            </div>
 
                                             <div className="relative">
                                                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground/20"><Search size={14} /></div>
