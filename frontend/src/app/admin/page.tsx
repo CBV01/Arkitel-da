@@ -984,21 +984,32 @@ export default function AdminDashboard() {
                                                             value={u.plan} 
                                                             onChange={async (e) => {
                                                                 const newPlan = e.target.value;
-                                                                // Optimistically update local state FIRST so UI doesn't snap back
+                                                                // 1. Optimistically update local state immediately so dropdown doesn't snap back
+                                                                const now = new Date();
+                                                                const expires = new Date(now);
+                                                                expires.setDate(expires.getDate() + 30);
                                                                 setMonetizationUsers(prev => prev.map(mu => 
-                                                                    mu.id === u.id ? { ...mu, plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 } : mu
+                                                                    mu.id === u.id ? { 
+                                                                        ...mu, 
+                                                                        plan: newPlan, 
+                                                                        is_approved: newPlan === 'free' ? 0 : 1,
+                                                                        plan_activated_at: newPlan === 'free' ? null : now.toISOString(),
+                                                                        plan_expires_at: newPlan === 'free' ? null : expires.toISOString()
+                                                                    } : mu
                                                                 ));
+                                                                // 2. Save to backend
                                                                 const res = await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
                                                                     method: 'POST',
                                                                     body: JSON.stringify({ plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 })
                                                                 });
                                                                 if (res.ok) {
-                                                                    setSuccessMsg(`Plan set to ${newPlan.toUpperCase()} for ${u.username}`);
+                                                                    setSuccessMsg(`✅ Plan set to ${newPlan.toUpperCase()} for ${u.username}`);
                                                                     setTimeout(() => setSuccessMsg(''), 4000);
                                                                 } else {
                                                                     setErrorMsg('Failed to update plan. Try again.');
                                                                     setTimeout(() => setErrorMsg(''), 4000);
                                                                 }
+                                                                // 3. Confirm with backend data
                                                                 fetchMonetizationData();
                                                             }}
                                                             className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition-all ${u.plan !== 'free' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/20'}`}
@@ -1009,12 +1020,12 @@ export default function AdminDashboard() {
                                                             <option value="premium">Premium</option>
                                                             <option value="unlimited">Unlimited (Admin Only)</option>
                                                         </select>
-                                                        {u.plan_activated_at && (
+                                                        {u.plan !== 'free' && u.plan_activated_at && (
                                                             <div className="text-[9px] font-bold text-foreground/40 mt-1 uppercase tracking-tighter">
                                                                 Start: {new Date(u.plan_activated_at).toLocaleDateString()}
                                                             </div>
                                                         )}
-                                                        {u.plan_expires_at && (
+                                                        {u.plan !== 'free' && u.plan_expires_at && (
                                                             <div className="text-[9px] font-bold text-red-400 mt-0.5 uppercase tracking-tighter">
                                                                 End: {new Date(u.plan_expires_at).toLocaleDateString()}
                                                             </div>
@@ -1058,29 +1069,37 @@ export default function AdminDashboard() {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    {u.is_approved === 0 && (
+                                                    {/* Approve button ONLY shows when user submitted proof AND is not yet approved */}
+                                                    {u.payment_proof && u.is_approved === 0 && (
                                                         <button 
                                                             onClick={async () => {
-                                                                // Use the plan currently selected in the dropdown (default basic if still free)
-                                                                const planToApprove = u.plan === 'free' ? 'basic' : u.plan; 
-                                                                if (confirm(`Approve "${planToApprove.toUpperCase()}" plan for ${u.username}?`)) {
-                                                                    // 1. Optimistically update local state right away so UI reflects change
+                                                                // Approve the plan the user paid for (stored in u.plan from their payment submission)
+                                                                const planToApprove = u.plan === 'free' ? 'basic' : u.plan;
+                                                                if (confirm(`Approve ${u.username}'s payment and activate "${planToApprove.toUpperCase()}" plan?`)) {
+                                                                    // Optimistically update UI immediately
+                                                                    const now = new Date();
+                                                                    const expires = new Date(now);
+                                                                    expires.setDate(expires.getDate() + 30);
                                                                     setMonetizationUsers(prev => prev.map(mu => 
-                                                                        mu.id === u.id ? { ...mu, plan: planToApprove, is_approved: 1 } : mu
+                                                                        mu.id === u.id ? { 
+                                                                            ...mu, 
+                                                                            is_approved: 1,
+                                                                            plan: planToApprove,
+                                                                            plan_activated_at: now.toISOString(),
+                                                                            plan_expires_at: expires.toISOString()
+                                                                        } : mu
                                                                     ));
-                                                                    // 2. Send to backend
                                                                     const res = await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
                                                                         method: 'POST',
                                                                         body: JSON.stringify({ plan: planToApprove, is_approved: 1 })
                                                                     });
                                                                     if (res.ok) {
-                                                                        setSuccessMsg(`✅ Approved ${u.username} for ${planToApprove}!`);
-                                                                        setTimeout(() => setSuccessMsg(''), 4000);
+                                                                        setSuccessMsg(`✅ ${u.username} approved on ${planToApprove} plan!`);
+                                                                        setTimeout(() => setSuccessMsg(''), 5000);
                                                                     } else {
-                                                                        setErrorMsg('Approval failed. Check server logs.');
+                                                                        setErrorMsg('Approval failed. Check server.');
                                                                         setTimeout(() => setErrorMsg(''), 4000);
                                                                     }
-                                                                    // 3. Re-fetch to verify backend committed the change
                                                                     fetchMonetizationData();
                                                                 }
                                                             }}
@@ -1088,6 +1107,12 @@ export default function AdminDashboard() {
                                                         >
                                                             <CheckCircle2 size={12} /> Approve
                                                         </button>
+                                                    )}
+                                                    {/* Show approved badge when already approved */}
+                                                    {u.is_approved === 1 && (
+                                                        <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                                                            <CheckCircle2 size={12} /> Active
+                                                        </span>
                                                     )}
                                                 </td>
                                             </tr>
