@@ -2731,6 +2731,14 @@ async def get_leads(user_id: str = Depends(get_current_user_id)):
 
 # --- Admin Endpoints ---
 
+@app.post("/api/admin/maintenance/clear-templates")
+async def clear_templates(admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM templates")
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success", "message": "All user templates have been purged."}
+
 @app.post("/api/admin/maintenance/clear-leads")
 async def clear_leads(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()

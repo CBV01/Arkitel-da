@@ -20,7 +20,10 @@ import {
     Ticket,
     CheckCircle2,
     AlertCircle,
-    FileText
+    FileText,
+    Copy,
+    Eye,
+    ExternalLink
 } from 'lucide-react';
 import { Preloader } from '@/components/Preloader';
 
@@ -58,6 +61,7 @@ export default function AdminDashboard() {
     const [loadingMonetization, setLoadingMonetization] = useState(false);
     const [newCoupon, setNewCoupon] = useState({ code: '', price: 5000, max_daily_campaigns: '', max_daily_keywords: '', scrape_limit: '' });
     const [editingPlan, setEditingPlan] = useState<any>(null);
+    const [viewingTemplate, setViewingTemplate] = useState<any>(null);
 
     const fetchAdminData = async () => {
         try {
@@ -666,7 +670,7 @@ export default function AdminDashboard() {
                             </thead>
                             <tbody className="divide-y divide-white/5">
                                 {globalTemplates.map((t) => (
-                                    <tr key={t.id} className="hover:bg-white/[0.02] transition-colors">
+                                    <tr key={t.id} className="hover:bg-white/[0.02] transition-colors group">
                                         <td className="px-6 py-4">
                                             <div className="text-sm font-bold text-foreground">{t.creator}</div>
                                             <div className="text-[10px] font-mono text-foreground/30">{t.user_id}</div>
@@ -675,7 +679,28 @@ export default function AdminDashboard() {
                                             <div className="text-sm font-bold text-indigo-400">{t.name}</div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="text-xs text-foreground/60 max-w-[400px] truncate">{t.content}</div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-xs text-foreground/60 max-w-[300px] truncate">{t.content}</div>
+                                                <div className="flex items-center gap-1 opacity-10 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={() => setViewingTemplate(t)}
+                                                        className="p-1.5 hover:bg-white/10 rounded-md text-foreground/40 hover:text-white"
+                                                        title="View Content"
+                                                    >
+                                                        <Eye size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(t.content);
+                                                            setSuccessMsg("Copied to clipboard!");
+                                                        }}
+                                                        className="p-1.5 hover:bg-white/10 rounded-md text-foreground/40 hover:text-indigo-400"
+                                                        title="Copy Content"
+                                                    >
+                                                        <Copy size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="text-[10px] text-foreground/40">{new Date(t.created_at).toLocaleString()}</div>
@@ -1064,6 +1089,21 @@ export default function AdminDashboard() {
                                 <span className="text-sm font-bold">Purge Task History</span>
                                 <Activity size={18} className="opacity-20 group-hover:opacity-100" />
                             </button>
+                            <button
+                                onClick={async () => {
+                                    if (confirm("DELETE ALL USER TEMPLATES? This cannot be undone.")) {
+                                        const res = await apiFetch("/api/admin/maintenance/clear-templates", { method: 'POST' });
+                                        if (res.ok) {
+                                            alert("All user templates successfully deleted.");
+                                            setGlobalTemplates([]);
+                                        }
+                                    }
+                                }}
+                                className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 hover:bg-purple-500/10 hover:text-purple-500 transition-all group border border-white/5"
+                            >
+                                <span className="text-sm font-bold">Clear All User Templates</span>
+                                <FileText size={18} className="opacity-20 group-hover:opacity-100" />
+                            </button>
                         </div>
                     </div>
 
@@ -1274,6 +1314,91 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             )}
+
+            {/* Template Viewing Modal */}
+            {viewingTemplate && (
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+                    <div className="bg-[#0a0a0b] border border-white/10 rounded-[32px] w-full max-w-lg shadow-2xl relative p-8">
+                        <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
+                                    <FileText size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-lg">{viewingTemplate.name}</h3>
+                                    <p className="text-[10px] text-foreground/40 uppercase font-bold tracking-widest">Saved by {viewingTemplate.creator}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setViewingTemplate(null)} className="p-2 hover:bg-white/10 rounded-xl text-foreground/40 hover:text-white transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/5 rounded-2xl p-6 mb-6 max-h-[400px] overflow-y-auto custom-scrollbar">
+                            <pre className="text-sm text-foreground/80 whitespace-pre-wrap font-sans leading-relaxed">
+                                {viewingTemplate.content}
+                            </pre>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(viewingTemplate.content);
+                                    setSuccessMsg("System: Message body copied to clipboard.");
+                                    setViewingTemplate(null);
+                                }}
+                                className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                            >
+                                <Copy size={16} />
+                                Copy Message
+                            </button>
+                            <button 
+                                onClick={() => setViewingTemplate(null)}
+                                className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all font-bold"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Notification Toast */}
+            {successMsg && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[400] flex items-center gap-3 px-6 py-3 bg-emerald-500 text-white rounded-full shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <CheckCircle2 size={16} />
+                    <span className="text-sm font-bold">{successMsg}</span>
+                    <button onClick={() => setSuccessMsg('')} className="ml-2 hover:opacity-50 transition-opacity">
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+            
+            {errorMsg && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[400] flex items-center gap-3 px-6 py-3 bg-red-500 text-white rounded-full shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <AlertCircle size={16} />
+                    <span className="text-sm font-bold">{errorMsg}</span>
+                    <button onClick={() => setErrorMsg('')} className="ml-2 hover:opacity-50 transition-opacity">
+                        <X size={14} />
+                    </button>
+                </div>
+            )}
+
+            <style jsx global>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: rgba(255, 255, 255, 0.2);
+                }
+            `}</style>
         </div>
     );
 }
