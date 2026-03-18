@@ -1325,8 +1325,19 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                 except Exception as q_err:
                     err_str = str(q_err).lower()
                     if "flood" in err_str or "wait" in err_str:
-                        print(f"SCRAPER[telegram] acc={acc_phone} hit FloodWait on '{q}', rotating account.")
-                        break # Break variation loop, move to next connected account
+                        # Extract the required wait seconds from Telethon error (e.g. "A wait of 34 seconds is required")
+                        import re
+                        match = re.search(r'wait of (\d+)', err_str)
+                        wait_sec = int(match.group(1)) if match else 5
+                        
+                        # Cap extreme waits so stream doesn't infinitely hang, but wait out the standard 5-60s bans
+                        if wait_sec > 60:
+                            print(f"SCRAPER[telegram] acc={acc_phone} hit HUGE {wait_sec}s FloodWait. Skipping to next account.")
+                            break
+                        
+                        print(f"SCRAPER[telegram] acc={acc_phone} hit {wait_sec}s FloodWait on '{q}', pausing then continuing...")
+                        await asyncio.sleep(wait_sec + 1)
+                        continue # DO NOT BREAK! Continue the 50 variations to hit max yield!
                     else:
                         print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
                         continue
