@@ -1273,7 +1273,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
                     # Phrase-based Global Message Search (Discovery Hack)
-                    if len(q.split()) > 1 or any(x in q.lower() for x in ["need", "who", "build", "looking"]):
+                    # Only run this expensive message search on the INITIAL base query, not on every variation suffix!
+                    if q == base_query and (len(q.split()) > 1 or any(x in q.lower() for x in ["need", "who", "build", "looking"])):
                         from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
                         from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
                         try:
@@ -1284,32 +1285,39 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                                 max_date=None,
                                 offset_id=0,
                                 offset_peer=InputPeerEmpty(),
-                                limit=20
+                                limit=15
                             ))
                             for msg in msg_results.messages:
                                 try:
-                                    chat = await msg.get_chat()
+                                    # Use cached .chat if available, fallback to get_chat()
+                                    chat = getattr(msg, 'chat', None)
+                                    if chat is None and hasattr(msg, 'get_chat'):
+                                        chat = await msg.get_chat()
                                     if not chat: continue
                                     cid = str(getattr(chat, 'id', '0'))
+                                    
                                     if cid not in unique_groups:
                                         msg_username = getattr(chat, 'username', None)
                                         is_member = not getattr(chat, 'left', True)
-                                        item = {
-                                            "id": cid,
-                                            "title": getattr(chat, 'title', 'Unknown'),
-                                            "username": msg_username,
-                                            "participants_count": getattr(chat, 'participants_count', 0),
-                                            "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
-                                            "is_private": msg_username is None,
-                                            "country": "Global",
-                                            "global_shows": 1,
-                                            "user_shows": 1,
-                                            "source": "telegram_msg",
-                                            "is_member": is_member
-                                        }
-                                        unique_groups[cid] = item
-                                        if queue:
-                                            await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
+                                        # Only include if it's a valid public or private group/channel
+                                        if getattr(chat, 'broadcast', False) or getattr(chat, 'megagroup', False) or msg_username:
+                                            item = {
+                                                "id": cid,
+                                                "title": getattr(chat, 'title', 'Unknown'),
+                                                "username": msg_username,
+                                                "participants_count": getattr(chat, 'participants_count', 0),
+                                                "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
+                                                "is_private": msg_username is None,
+                                                "country": "Global",
+                                                "global_shows": 1,
+                                                "user_shows": 1,
+                                                "source": "telegram_msg",
+                                                "is_member": is_member
+                                            }
+                                            unique_groups[cid] = item
+                                            if queue:
+                                                await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
+                                            await asyncio.sleep(0.1) # Micro-sleep between chats
                                 except: continue
                         except: pass
 
