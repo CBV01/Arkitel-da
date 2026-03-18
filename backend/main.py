@@ -20,6 +20,7 @@ from typing import Optional, List, Dict, Any, Union, cast
 import re
 import ast
 import traceback
+import functools
 from contextlib import asynccontextmanager
 import httpx  # pyre-ignore[21]
 try:
@@ -53,6 +54,7 @@ def log_debug(msg: str):
     LOG_BUFFER.append(formatted)
 
 # --- Tiered Plan Configurations (Dynamic from DB) ---
+@functools.lru_cache(maxsize=1)
 def get_plan_configs() -> Dict[str, Dict[str, Any]]:
     configs: Dict[str, Dict[str, Any]] = {
         "free": {"max_daily_campaigns": 20, "max_accounts": 1, "max_daily_keywords": 5, "scrape_limit": 50, "max_templates": 1, "has_premium_access": False},
@@ -82,7 +84,9 @@ def get_plan_configs() -> Dict[str, Dict[str, Any]]:
     
     return configs
 
-PLAN_CONFIGS: Dict[str, Dict[str, Any]] = get_plan_configs() # Initial load
+def get_current_plan_configs() -> Dict[str, Dict[str, Any]]:
+    # Bridge for cached lookup
+    return get_plan_configs()
 
 def check_and_reset_daily_limits(conn, user_id, user_row):
     """Resets daily counts if the day has changed."""
@@ -742,7 +746,7 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
     if hasattr(conn, "close"): conn.close()
     
     plan = (user["plan"] if user else "free") or "free"
-    plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+    plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
     
     # Use user-specific override or fallback to plan default
     max_acc = user["max_accounts"] if user and user["max_accounts"] is not None else plan_cfg["max_accounts"]
@@ -1051,9 +1055,9 @@ async def dump_session_string(phone_number: str, user_id: str = Depends(get_curr
     return {"phone_number": phone_number, "session_string": row[0]}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 # HYBRID SCRAPER HELPERS  (Layer 2 & 3: web directories)
-# ─────────────────────────────────────────────────────────────────────────────
+# Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 SCRAPER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -1213,7 +1217,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
         for n in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
             search_queries.append(f"{base_query}{n}")
 
-    print(f"SCRAPER[telegram] {len(search_queries)} variations × {len(rows)} accounts = "
+    print(f"SCRAPER[telegram] {len(search_queries)} variations Ãƒâ€” {len(rows)} accounts = "
           f"up to {len(search_queries) * len(rows) * 100} raw results")
 
     for row in rows:
@@ -1463,7 +1467,7 @@ async def scrape_keyword_stream(
         check_and_reset_daily_limits(conn, user_id, user_row)
         
         plan = user_row["plan"] or "free"
-        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
         
         # Check Premium Access
         if not plan_cfg["has_premium_access"]:
@@ -1587,7 +1591,7 @@ async def scrape_keyword(
 ):
     conn = get_db_connection()
     if user_id == "admin_virtual_id":
-        plan_cfg = PLAN_CONFIGS["unlimited"]
+        plan_cfg = get_plan_configs()["unlimited"]
         max_keywords = 9999
         current_keywords = 0
         scrape_limit = 9999
@@ -1604,7 +1608,7 @@ async def scrape_keyword(
         
         check_and_reset_daily_limits(conn, user_id, user_row)
         plan = (user_row["plan"] or "free")
-        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
         
         max_keywords = int(user_row["max_daily_keywords"] or plan_cfg["max_daily_keywords"])
         current_keywords = int(user_row["daily_keyword_count"] or 0)
@@ -1646,7 +1650,7 @@ async def scrape_keyword(
         telegram_task, lyzem_task, return_exceptions=True
     )
 
-    # Merge — Telegram results keyed by numeric ID, directory results keyed by @username
+    # Merge Ã¢â‚¬â€ Telegram results keyed by numeric ID, directory results keyed by @username
     unique_groups: Dict[str, Dict[str, Any]] = {}
 
     if isinstance(telegram_results, dict):
@@ -1683,7 +1687,7 @@ async def scrape_keyword(
     if hasattr(conn2, "commit"): conn2.commit()
     if hasattr(conn2, "close"): conn2.close()
 
-    print(f"SCRAPER: Done — {len(final_list)} unique results for '{base_query}' "
+    print(f"SCRAPER: Done Ã¢â‚¬â€ {len(final_list)} unique results for '{base_query}' "
           f"(TG:{len(telegram_results) if isinstance(telegram_results, dict) else 0} "
           f"Lyzem:{len(lyzem_results) if isinstance(lyzem_results, list) else 0} "
           f"Spider:{len(spider_results)})")
@@ -1731,7 +1735,7 @@ async def bulk_join_stream(
     token: str = ""
 ):
     """
-    SSE Streaming Bulk Join – emits real-time progress events.
+    SSE Streaming Bulk Join Ã¢â‚¬â€œ emits real-time progress events.
     Uses token query param instead of Authorization header (EventSource limitation).
     group_ids: JSON-encoded list of group IDs.
     """
@@ -1817,7 +1821,7 @@ async def bulk_join_stream(
                     
                     if isinstance(e, FloodWaitError):
                         wait_seconds: int = cast(int, getattr(e, 'seconds', 0))
-                        yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'🚨 RATE LIMIT: Telegram says wait {wait_seconds}s. Use the manual Copy button if you are in a hurry.'})}\n\n"
+                        yield f"data: {_json.dumps({'type': 'progress', 'idx': idx, 'total': total, 'msg': f'Ã°Å¸Å¡Â¨ RATE LIMIT: Telegram says wait {wait_seconds}s. Use the manual Copy button if you are in a hurry.'})}\n\n"
                         # We stop the automated process for FloodWait to protect the account
                         break
                     
@@ -1923,7 +1927,7 @@ async def get_saved_members(user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
     user_row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
     plan = user_row["plan"] if user_row else "free"
-    plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+    plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
     
     if not plan_cfg["has_premium_access"] and user_id != "admin_virtual_id":
         if hasattr(conn, "close"): conn.close()
@@ -1981,7 +1985,7 @@ class UserVitalsUpdateRequest(BaseModel):
 @app.get("/api/admin/monetization/users")
 async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    # Join with plans to get default limits if user record is stale or has defaults
+    # Join with plans to get default limits dynamically
     query = """
         SELECT u.*, p.max_templates as plan_max_templates,
                p.max_daily_campaigns as plan_max_campaigns,
@@ -1998,7 +2002,7 @@ async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
         id=r["id"], 
         username=r["username"], 
         plan=r["plan"], 
-        # Favor plan defaults (synchronized) unless a specific override exists in users table
+        # Dynamically pulling from plan if user fields are the system default (1 or NULL)
         max_templates=r["plan_max_templates"] if r["max_templates"] == 1 or r["max_templates"] is None else r["max_templates"],
         max_daily_campaigns=r["plan_max_campaigns"] if r["max_daily_campaigns"] is None else r["max_daily_campaigns"],
         max_daily_keywords=r["plan_max_keywords"] if r["max_daily_keywords"] is None else r["max_daily_keywords"],
@@ -2016,13 +2020,15 @@ async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
 @app.post("/api/admin/monetization/users/{uid}/vitals")
 async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    plan_cfg = PLAN_CONFIGS.get(req.plan, PLAN_CONFIGS["free"])
+    plan_configs = get_current_plan_configs()
+    plan_cfg = get_plan_configs().get(req.plan, get_plan_configs()["free"])
     
     # Use provided values or defaults from plan
     s_limit = req.scrape_limit if req.scrape_limit is not None else plan_cfg["scrape_limit"]
     m_acc = req.max_accounts if req.max_accounts is not None else plan_cfg["max_accounts"]
     m_camp = req.max_daily_campaigns if req.max_daily_campaigns is not None else plan_cfg["max_daily_campaigns"]
     m_key = req.max_daily_keywords if req.max_daily_keywords is not None else plan_cfg["max_daily_keywords"]
+    m_tmpl = plan_cfg["max_templates"]
     
     # Handle Subscription Dates and Payment Logging
     activated_at = None
@@ -2051,11 +2057,15 @@ async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: s
         """UPDATE users SET 
            plan = ?, scrape_limit = ?, max_accounts = ?, 
            max_daily_campaigns = ?, max_daily_keywords = ?, 
-           is_approved = ?, plan_activated_at = ?, plan_expires_at = ?
+           is_approved = ?, plan_activated_at = ?, plan_expires_at = ?,
+           max_templates = ?
            WHERE id = ?""",
-        (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, activated_at, expires_at, uid)
+        (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, activated_at, expires_at, m_tmpl, uid)
     )
     if hasattr(conn, "commit"): conn.commit()
+    # Force refresh plan configs global if needed
+    get_plan_configs.cache_clear()
+    
     if hasattr(conn, "close"): conn.close()
     return {"status": "success", "activated_at": activated_at, "expires_at": expires_at}
 
@@ -2105,9 +2115,9 @@ async def delete_coupon_admin(code: str, admin_id: str = Depends(get_current_adm
 @app.get("/api/monetization/status")
 async def get_user_status(user_id: str = Depends(get_current_user_id)):
     if user_id == "admin_virtual_id":
-        cfg = PLAN_CONFIGS["unlimited"]
+        cfg = get_plan_configs()["unlimited"]
         # Fetch 'unlimited' config
-        cfg = PLAN_CONFIGS.get("unlimited", PLAN_CONFIGS["free"])
+        cfg = get_plan_configs().get("unlimited", get_plan_configs()["free"])
         return {
             "status": "success",
             "plan": "unlimited",
@@ -2141,7 +2151,7 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
         if hasattr(conn, "close"): conn.close()
     
     # Tier mapping
-    p_cfg = PLAN_CONFIGS.get(row["plan"] or "free", PLAN_CONFIGS["free"])
+    p_cfg = get_plan_configs().get(row["plan"] or "free", get_plan_configs()["free"])
     
     return {
         "status": "success",
@@ -2234,7 +2244,7 @@ async def verify_paystack(req: PaystackVerifyRequest, user_id: str = Depends(get
             if response.status_code == 200 and res_data.get("status") and res_data["data"]["status"] == "success":
                 # Payment confirmed! Upgrade user.
                 plan_key = req.plan_key
-                plan_cfg = PLAN_CONFIGS.get(plan_key, PLAN_CONFIGS["basic"])
+                plan_cfg = get_plan_configs().get(plan_key, get_plan_configs()["basic"])
                 
                 # Subscription timing
                 now = datetime.now()
@@ -2290,7 +2300,7 @@ async def paystack_webhook(request: Request):
             user = conn.execute("SELECT id FROM users WHERE username = ? OR id = ?", (cust_email, data.get("metadata", {}).get("user_id"))).fetchone()
             if user:
                 u_id = user["id"]
-                plan_cfg = PLAN_CONFIGS.get(plan_key, PLAN_CONFIGS["basic"])
+                plan_cfg = get_plan_configs().get(plan_key, get_plan_configs()["basic"])
                 now = datetime.now()
                 act_date = now.strftime('%Y-%m-%dT%H:%M')
                 exp_date = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
@@ -2347,7 +2357,7 @@ async def get_saved_groups(user_id: str = Depends(get_current_user_id)):
     # Premium check
     user_row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
     plan = user_row["plan"] if user_row else "free"
-    plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+    plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
     
     if not plan_cfg["has_premium_access"] and user_id != "admin_virtual_id":
         if hasattr(conn, "close"): conn.close()
@@ -2479,7 +2489,7 @@ async def extract_members(req: ExtractRequest, user_id: str = Depends(get_curren
                 raise HTTPException(status_code=404, detail="User not found")
             
             plan = user_row["plan"] or "free"
-            plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+            plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
             if not plan_cfg.get("has_premium_access"):
                 raise HTTPException(status_code=403, detail="Member Extraction is a Premium feature. Upgrade to Standard or Premium to unlock.")
 
@@ -2566,7 +2576,7 @@ async def create_template(req: TemplateRequest, user_id: str = Depends(get_curre
         # Check limits
         u_row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
         plan = u_row["plan"] if u_row else "free"
-        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
         max_templates = plan_cfg.get("max_templates", 1)
         
         current_count = conn.execute("SELECT COUNT(*) FROM templates WHERE user_id = ?", (user_id,)).fetchone()[0]
@@ -2675,7 +2685,7 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         check_and_reset_daily_limits(conn, user_id, user_row)
         
         plan = user_row["plan"] or "free"
-        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
         
         max_daily = int(user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"])
         current_daily = int(user_row["daily_campaign_count"] or 0)
@@ -3132,8 +3142,7 @@ async def admin_update_plan(req: PlanUpdateRequest, admin_id: str = Depends(get_
     if hasattr(conn, "close"): conn.close()
     
     # Reload global configs
-    global PLAN_CONFIGS
-    PLAN_CONFIGS = get_plan_configs()
+    get_plan_configs.cache_clear()
     return {"status": "success"}
 
 @app.get("/")
@@ -3233,7 +3242,7 @@ async def task_poller():
                     if u_row:
                         u_plan = u_row["plan"] or "free"
                         u_count = u_row["daily_campaign_count"] or 0
-                        u_cfg = PLAN_CONFIGS.get(u_plan, PLAN_CONFIGS["free"])
+                        u_cfg = get_plan_configs().get(u_plan, get_plan_configs()["free"])
                         u_max = u_row["max_daily_campaigns"] or u_cfg["max_daily_campaigns"]
                         
                         if u_plan != "unlimited" and u_count >= u_max:

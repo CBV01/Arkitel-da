@@ -427,11 +427,12 @@ def init_db():
         pass
 
     # Update seeding to match user's explicit request: Free(1), Basic(1), Standard(2), Premium(2), Unlimited(999)
+    # Prices: Basic: 2000, Standard: 3500, Premium: 5000
     default_plans = [
         ("free", "Free Starter", 0, 20, 1, 5, 50, 1, 0, json.dumps(["20 Daily Campaigns", "1 Template", "5 Scrape Keywords", "Basic Support"])),
-        ("basic", "Growth Basic", 3000, 50, 2, 10, 100, 1, 1, json.dumps(["50 Daily Campaigns", "1 Template", "10 Scrape Keywords", "Priority Support"])),
-        ("standard", "Pro Standard", 7500, 150, 5, 25, 250, 2, 1, json.dumps(["150 Daily Campaigns", "2 Templates", "25 Scrape Keywords", "24/7 Support", "Ad-Free Experience"])),
-        ("premium", "Enterprise Premium", 15000, 300, 10, 50, 500, 2, 1, json.dumps(["300 Daily Campaigns", "2 Templates", "Unlimited Keywords", "Dedicated Manager"])),
+        ("basic", "Growth Basic", 2000, 50, 2, 10, 100, 1, 1, json.dumps(["50 Daily Campaigns", "1 Template", "10 Scrape Keywords", "Priority Support"])),
+        ("standard", "Pro Standard", 3500, 150, 5, 25, 250, 2, 1, json.dumps(["150 Daily Campaigns", "2 Templates", "25 Scrape Keywords", "24/7 Support", "Ad-Free Experience"])),
+        ("premium", "Enterprise Premium", 5000, 300, 10, 50, 500, 2, 1, json.dumps(["300 Daily Campaigns", "2 Templates", "Unlimited Keywords", "Dedicated Manager"])),
         ("unlimited", "Owner Unlimited", 0, 999999, 99, 999999, 1000, 999, 1, json.dumps(["Absolute Control", "999 Templates", "Admin Privilege"]))
     ]
     for p in default_plans:
