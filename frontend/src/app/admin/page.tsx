@@ -19,7 +19,8 @@ import {
     CreditCard,
     Ticket,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    FileText
 } from 'lucide-react';
 import { Preloader } from '@/components/Preloader';
 
@@ -945,6 +946,10 @@ export default function AdminDashboard() {
                                                         <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/5">
                                                             <span className="text-[8px] text-foreground/30 font-black">ACC:</span>
                                                             <span className="text-[10px] font-bold text-blue-400">{u.max_accounts}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md border border-white/5">
+                                                            <span className="text-[8px] text-foreground/30 font-black">TMPL:</span>
+                                                            <span className="text-[10px] font-bold text-rose-400">{u.max_templates || 1}</span>
                                                         </div>
                                                     </div>
                                                 </td>

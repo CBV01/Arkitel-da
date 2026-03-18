@@ -2085,6 +2085,15 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
     # Calculate usage percentages for UI
     p_cfg = PLAN_CONFIGS.get(row["plan"] or "free", PLAN_CONFIGS["free"])
     
+    # Template Count
+    t_count = conn.execute("SELECT COUNT(*) FROM templates WHERE user_id = ?", (user_id,)).fetchone()[0]
+    
+    if hasattr(conn, "close"): conn.close()
+    if not row: raise HTTPException(status_code=404, detail="User not found")
+    
+    # Calculate usage percentages for UI
+    p_cfg = PLAN_CONFIGS.get(row["plan"] or "free", PLAN_CONFIGS["free"])
+    
     return {
         "plan": row["plan"],
         "username": row["username"], 
@@ -2095,8 +2104,11 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
         "daily_campaign_count": row["daily_campaign_count"] or 0,
         "max_daily_keywords": row["max_daily_keywords"] or p_cfg["max_daily_keywords"],
         "daily_keyword_count": row["daily_keyword_count"] or 0,
+        "max_templates": p_cfg.get("max_templates", 1),
+        "template_count": t_count,
         "is_approved": row["is_approved"],
-        "has_proof": bool(row["payment_proof"])
+        "has_proof": bool(row["payment_proof"]),
+        "plan_expires_at": row["plan_expires_at"]
     }
 
 @app.post("/api/monetization/apply-coupon")
@@ -3292,12 +3304,14 @@ async def task_poller():
                     )
                     print(f"BKG: Task {task_id} rescheduled for {new_time} (Successful: {sent_ok_stats[0]})")
                 else:
-                    # Determine final status accurately
+                    # Mark completion - User wants 'completed' even if some failed. 
                     final_status = 'completed'
-                    if sent_ok_stats[0] == 0 and len(failed_list) > 0:
-                        final_status = 'failed'
+                    log_debug(f"BKG_TASK[{task_id}]: Finalizing. Status={final_status}, Sent={sent_ok_stats[0]}, Failed={len(failed_list)}")
                     
-                    conn.execute("UPDATE tasks SET status = ?, sent_count = ?, failed_groups = ?, processed_groups = ? WHERE id = ?", (final_status, sent_ok_stats[0], json.dumps(failed_list), json.dumps(processed_list), task_id))
+                    conn.execute(
+                        "UPDATE tasks SET status = ?, sent_count = ?, failed_groups = ?, processed_groups = ? WHERE id = ?",
+                        (final_status, sent_ok_stats[0], json.dumps(failed_list), json.dumps(processed_list), task_id)
+                    )
                     print(f"BKG: Task {task_id} marked {final_status.upper()} (Successful: {sent_ok_stats[0]})")
             else:
                 log_debug(f"BKG: Task {task_id} already marked as {current_status}, skipping auto-complete.")
