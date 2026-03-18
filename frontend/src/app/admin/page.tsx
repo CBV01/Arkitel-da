@@ -452,6 +452,10 @@ export default function AdminDashboard() {
                                             <span className="font-mono text-white">{plan.scrape_limit}</span>
                                         </div>
                                         <div className="flex justify-between text-xs">
+                                            <span className="text-foreground/40 font-bold uppercase tracking-widest">Template Limit</span>
+                                            <span className="font-mono text-indigo-400 font-bold">{plan.max_templates}</span>
+                                        </div>
+                                        <div className="flex justify-between text-xs">
                                             <span className="text-foreground/40 font-bold uppercase tracking-widest">Premium Status</span>
                                             <span className={`font-mono ${plan.has_premium_access ? 'text-emerald-400' : 'text-foreground/20'}`}>
                                                 {plan.has_premium_access ? 'YES' : 'NO'}
