@@ -1982,7 +1982,8 @@ async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
         total_scraped=r["total_scraped"], 
         payment_proof=r["payment_proof"],
         plan_activated_at=r["plan_activated_at"],
-        plan_expires_at=r["plan_expires_at"]
+        plan_expires_at=r["plan_expires_at"],
+        max_templates=r["max_templates"]
     ) for r in rows]}
 
 @app.post("/api/admin/monetization/users/{uid}/vitals")

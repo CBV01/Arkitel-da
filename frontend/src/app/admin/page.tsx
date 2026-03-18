@@ -265,7 +265,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex bg-white/[0.03] backdrop-blur-3xl p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
-                    {['overview', 'users', 'packages', 'monetization', 'templates', 'settings', 'maintenance'].map((tab) => (
+                    {['overview', 'users', 'packages', 'monetization', 'templates', 'search-logs', 'settings', 'maintenance'].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -274,7 +274,7 @@ export default function AdminDashboard() {
                                 : 'text-foreground/40 hover:text-foreground hover:bg-white/5'
                                 }`}
                         >
-                            {tab}
+                            {tab.replace('-', ' ')}
                         </button>
                     ))}
                 </div>
