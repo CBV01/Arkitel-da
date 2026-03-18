@@ -289,18 +289,18 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             code TEXT UNIQUE NOT NULL,
             price INTEGER DEFAULT 0,
+            max_daily_campaigns INTEGER,
+            max_daily_keywords INTEGER,
+            scrape_limit INTEGER,
             is_active INTEGER DEFAULT 1,
-            expires_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
-        """CREATE TABLE IF NOT EXISTS payments (
+        """CREATE TABLE IF NOT EXISTS keyword_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            amount INTEGER,
-            payment_method TEXT,
-            proof_details TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            user_id TEXT,
+            username TEXT,
+            keyword TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
         """CREATE TABLE IF NOT EXISTS plans (
             key TEXT PRIMARY KEY,

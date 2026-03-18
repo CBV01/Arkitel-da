@@ -1599,10 +1599,16 @@ async def scrape_keyword(
              if hasattr(conn, "close"): conn.close()
              raise HTTPException(status_code=403, detail="Daily search limit reached.")
         
-        # Increment search count
+        # Increment search count and Log Keyword
         if plan != "unlimited":
             conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
-            if hasattr(conn, "commit"): conn.commit()
+            
+        # Global log for admin
+        conn.execute(
+            "INSERT INTO keyword_logs (user_id, username, keyword) VALUES (?, ?, ?)",
+            (user_id, user_row["username"], query.strip())
+        )
+        if hasattr(conn, "commit"): conn.commit()
 
         if phone_number:
             rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
@@ -2729,7 +2735,22 @@ async def get_leads(user_id: str = Depends(get_current_user_id)):
         ]
     }
 
+@app.get("/api/admin/keyword-logs")
+async def get_keyword_logs(admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    logs = conn.execute("SELECT * FROM keyword_logs ORDER BY created_at DESC LIMIT 500").fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"logs": [dict(l) for l in logs]}
+
 # --- Admin Endpoints ---
+
+@app.post("/api/admin/maintenance/clear-keyword-logs")
+async def clear_keyword_logs(admin_id: str = Depends(get_current_admin)):
+    conn = get_db_connection()
+    conn.execute("DELETE FROM keyword_logs")
+    if hasattr(conn, "commit"): conn.commit()
+    if hasattr(conn, "close"): conn.close()
+    return {"status": "success", "message": "All keyword search history has been purged."}
 
 @app.post("/api/admin/maintenance/clear-templates")
 async def clear_templates(admin_id: str = Depends(get_current_admin)):

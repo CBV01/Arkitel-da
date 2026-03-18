@@ -40,6 +40,19 @@ export default function AdminDashboard() {
     const [sendingBroadcast, setSendingBroadcast] = useState(false);
     const [selectedUser, setSelectedUser] = useState<any>(null);
     const [globalTemplates, setGlobalTemplates] = useState<any[]>([]);
+    const [keywordLogs, setKeywordLogs] = useState<any[]>([]);
+
+    const fetchKeywordLogs = async () => {
+        try {
+            const res = await apiFetch('/api/admin/keyword-logs');
+            if (res.ok) {
+                const data = await res.json();
+                setKeywordLogs(data.logs || []);
+            }
+        } catch (e) {
+            console.error("Keyword log fetch failed");
+        }
+    };
 
     const fetchGlobalTemplates = async () => {
         try {
@@ -153,6 +166,8 @@ export default function AdminDashboard() {
             fetchPlans();
         } else if (activeTab === 'templates') { // Added condition for templates tab
             fetchGlobalTemplates();
+        } else if (activeTab === 'search-logs') {
+            fetchKeywordLogs();
         }
     }, [activeTab]);
 
@@ -434,7 +449,7 @@ export default function AdminDashboard() {
                                             <h3 className="text-lg font-bold text-foreground capitalize">{plan.name}</h3>
                                             <div className="text-2xl font-black text-indigo-400">#{plan.price}</div>
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={() => setEditingPlan(plan)}
                                             className="p-3 rounded-xl bg-white/5 text-foreground/40 hover:text-white hover:bg-indigo-500 transition-all shadow-lg"
                                         >
@@ -983,9 +998,14 @@ export default function AdminDashboard() {
                                                             <option value="premium">Premium (300c)</option>
                                                             <option value="unlimited">Unlimited (Admin Only)</option>
                                                         </select>
-                                                        {u.plan_expires_at && (
+                                                        {u.plan_activated_at && (
                                                             <div className="text-[9px] font-bold text-foreground/40 mt-1 uppercase tracking-tighter">
-                                                                Exp: {new Date(u.plan_expires_at).toLocaleDateString()}
+                                                                Start: {new Date(u.plan_activated_at).toLocaleDateString()}
+                                                            </div>
+                                                        )}
+                                                        {u.plan_expires_at && (
+                                                            <div className="text-[9px] font-bold text-red-400 mt-0.5 uppercase tracking-tighter">
+                                                                End: {new Date(u.plan_expires_at).toLocaleDateString()}
                                                             </div>
                                                         )}
                                                     </div>
@@ -1104,6 +1124,21 @@ export default function AdminDashboard() {
                                 <span className="text-sm font-bold">Clear All User Templates</span>
                                 <FileText size={18} className="opacity-20 group-hover:opacity-100" />
                             </button>
+                            <button
+                                onClick={async () => {
+                                    if (confirm("Purge all user search keywords?")) {
+                                        const res = await apiFetch("/api/admin/maintenance/clear-keyword-logs", { method: 'POST' });
+                                        if (res.ok) {
+                                            alert("Keyword logs purged.");
+                                            setKeywordLogs([]);
+                                        }
+                                    }
+                                }}
+                                className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 hover:bg-amber-500/10 hover:text-amber-500 transition-all group border border-white/5"
+                            >
+                                <span className="text-sm font-bold">Clear Keyword History</span>
+                                <Search size={18} className="opacity-20 group-hover:opacity-100" />
+                            </button>
                         </div>
                     </div>
 
@@ -1200,6 +1235,58 @@ export default function AdminDashboard() {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'search-logs' && (
+                <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
+                    <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-500">
+                                <Search size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-xl text-white">Scraper Search Queries</h3>
+                                <p className="text-xs text-foreground/40 uppercase font-black tracking-[0.2em] mt-1">Live audit log of all keywords used</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar">
+                        <table className="w-full text-left">
+                            <thead className="text-[10px] uppercase tracking-[0.2em] text-foreground/30 border-b border-white/5 sticky top-0 bg-[#0d0d0e] z-10">
+                                <tr>
+                                    <th className="px-8 py-5 font-black">User Identity</th>
+                                    <th className="px-8 py-5 font-black">Active Keyword</th>
+                                    <th className="px-8 py-5 font-black">Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5 bg-white/[0.01]">
+                                {keywordLogs.map((log) => (
+                                    <tr key={log.id} className="hover:bg-amber-500/[0.03] transition-colors group">
+                                        <td className="px-8 py-5">
+                                            <div className="text-sm font-bold text-white group-hover:text-amber-400 transition-colors">{log.username}</div>
+                                            <div className="text-[10px] font-mono text-foreground/20 mt-0.5 tracking-tighter">ID: {log.user_id}</div>
+                                        </td>
+                                        <td className="px-8 py-5">
+                                            <div className="px-4 py-2 bg-amber-500/5 border border-amber-500/10 rounded-xl text-sm font-mono text-amber-500 inline-block font-black tracking-widest shadow-lg shadow-amber-500/5">
+                                                {log.keyword}
+                                            </div>
+                                        </td>
+                                        <td className="px-8 py-5">
+                                            <div className="text-[10px] text-foreground/40 font-bold uppercase tracking-widest">{new Date(log.created_at).toLocaleString()}</div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {keywordLogs.length === 0 && (
+                                    <tr>
+                                        <td colSpan={3} className="px-8 py-24 text-center text-foreground/20 italic font-mono text-xs tracking-[0.2em] uppercase">
+                                            No search intelligence captured yet
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             )}
@@ -1317,46 +1404,46 @@ export default function AdminDashboard() {
 
             {/* Template Viewing Modal */}
             {viewingTemplate && (
-                <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-                    <div className="bg-[#0a0a0b] border border-white/10 rounded-[32px] w-full max-w-lg shadow-2xl relative p-8">
-                        <div className="flex items-center justify-between mb-6">
+                <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-[#2a2a2c] border border-white/10 rounded-[24px] w-full max-w-lg shadow-2xl relative p-6">
+                        <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-3">
-                                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
-                                    <FileText size={20} />
+                                <div className="p-2.5 bg-indigo-500/10 rounded-xl text-indigo-400">
+                                    <FileText size={18} />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-lg">{viewingTemplate.name}</h3>
-                                    <p className="text-[10px] text-foreground/40 uppercase font-bold tracking-widest">Saved by {viewingTemplate.creator}</p>
+                                    <h3 className="font-bold text-base text-white">{viewingTemplate.name}</h3>
+                                    <p className="text-[9px] text-foreground/40 uppercase font-black tracking-widest">User: {viewingTemplate.creator}</p>
                                 </div>
                             </div>
-                            <button onClick={() => setViewingTemplate(null)} className="p-2 hover:bg-white/10 rounded-xl text-foreground/40 hover:text-white transition-colors">
-                                <X size={20} />
+                            <button onClick={() => setViewingTemplate(null)} className="p-1.5 hover:bg-white/5 rounded-lg text-foreground/30 hover:text-white transition-colors">
+                                <X size={18} />
                             </button>
                         </div>
 
-                        <div className="bg-white/5 border border-white/5 rounded-2xl p-6 mb-6 max-h-[400px] overflow-y-auto custom-scrollbar">
-                            <pre className="text-sm text-foreground/80 whitespace-pre-wrap font-sans leading-relaxed">
+                        <div className="bg-[#1e1e1f] border border-white/5 rounded-xl p-5 mb-5 max-h-[350px] overflow-y-auto custom-scrollbar">
+                            <pre className="text-sm text-foreground/70 whitespace-pre-wrap font-sans leading-relaxed tracking-wide">
                                 {viewingTemplate.content}
                             </pre>
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="flex gap-2">
                             <button 
                                 onClick={() => {
                                     navigator.clipboard.writeText(viewingTemplate.content);
-                                    setSuccessMsg("System: Message body copied to clipboard.");
+                                    setSuccessMsg("System: Message copied.");
                                     setViewingTemplate(null);
                                 }}
-                                className="flex-1 bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
                             >
-                                <Copy size={16} />
-                                Copy Message
+                                <Copy size={14} />
+                                Copy Template
                             </button>
                             <button 
                                 onClick={() => setViewingTemplate(null)}
-                                className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all font-bold"
+                                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-xl transition-all font-bold text-xs"
                             >
-                                Close
+                                Dismiss
                             </button>
                         </div>
                     </div>
