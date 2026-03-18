@@ -405,17 +405,30 @@ def init_db():
     except:
         pass
 
-    # Seed default plans
+    # Migration for plans table: max_templates
+    try:
+        conn.execute("ALTER TABLE plans ADD COLUMN max_templates INTEGER DEFAULT 1")
+    except:
+        pass
+
+    # Migration for users table: max_templates
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN max_templates INTEGER DEFAULT 1")
+    except:
+        pass
+
+    # Update seeding to match user's explicit request: Free(1), Basic(1), Standard(2), Premium(2), Unlimited(999)
     default_plans = [
         ("free", "Free Starter", 0, 20, 1, 5, 50, 1, 0, json.dumps(["20 Daily Campaigns", "1 Template", "5 Scrape Keywords", "Basic Support"])),
         ("basic", "Growth Basic", 3000, 50, 2, 10, 100, 1, 1, json.dumps(["50 Daily Campaigns", "1 Template", "10 Scrape Keywords", "Priority Support"])),
         ("standard", "Pro Standard", 7500, 150, 5, 25, 250, 2, 1, json.dumps(["150 Daily Campaigns", "2 Templates", "25 Scrape Keywords", "24/7 Support", "Ad-Free Experience"])),
-        ("premium", "Enterprise Premium", 15000, 300, 10, 50, 500, 3, 1, json.dumps(["300 Daily Campaigns", "3 Templates", "Unlimited Keywords", "Dedicated Manager"])),
+        ("premium", "Enterprise Premium", 15000, 300, 10, 50, 500, 2, 1, json.dumps(["300 Daily Campaigns", "2 Templates", "Unlimited Keywords", "Dedicated Manager"])),
         ("unlimited", "Owner Unlimited", 0, 999999, 99, 999999, 1000, 999, 1, json.dumps(["Absolute Control", "999 Templates", "Admin Privilege"]))
     ]
     for p in default_plans:
+        # Use INSERT OR REPLACE if the key matches, to force update existing seeds
         conn.execute(
-            "INSERT OR IGNORE INTO plans (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, max_templates, has_premium_access, perks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO plans (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, max_templates, has_premium_access, perks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             p
         )
 
