@@ -310,6 +310,7 @@ def init_db():
             max_accounts INTEGER DEFAULT 1,
             max_daily_keywords INTEGER DEFAULT 5,
             scrape_limit INTEGER DEFAULT 50,
+            max_templates INTEGER DEFAULT 1,
             has_premium_access INTEGER DEFAULT 0,
             perks TEXT -- JSON string of perks
         )""",
@@ -364,7 +365,9 @@ def init_db():
         ("max_daily_keywords", "INTEGER DEFAULT 5"),
         ("daily_keyword_count", "INTEGER DEFAULT 0"),
         ("last_reset_date", "TEXT"),
-        ("permanent_excludes", "TEXT DEFAULT '[]'")
+        ("permanent_excludes", "TEXT DEFAULT '[]'"),
+        ("plan_activated_at", "TEXT"),
+        ("plan_expires_at", "TEXT")
     ]
     for col_name, col_def in user_cols:
         try:
@@ -404,16 +407,16 @@ def init_db():
 
     # Seed default plans
     plans = [
-        ('free', 'Free', 0, 20, 1, 5, 50, 0, '["20 campaigns / day", "1 Telegram account", "50 leads per search", "5 keyword searches / day"]'),
-        ('basic', 'Basic', 2000, 50, 1, 10, 50, 1, '["50 campaigns / day", "1 Telegram account", "50 leads per search", "10 keyword searches / day"]'),
-        ('standard', 'Standard', 3500, 150, 2, 15, 150, 1, '["150 campaigns / day", "2 Telegram accounts", "150 leads per search", "15 keyword searches / day"]'),
-        ('premium', 'Premium', 5000, 300, 3, 30, 350, 1, '["300 campaigns / day", "3 Telegram accounts", "350 leads per search", "30 keyword searches / day"]'),
-        ('unlimited', 'Unlimited', 10000, 999999, 99, 999999, 1000, 1, '["Unlimited everything", "Priority support"]')
+        ('free', 'Free', 0, 20, 1, 5, 50, 1, 0, '["20 campaigns / day", "1 Telegram account", "50 leads per search", "5 keyword searches / day", "1 Message Template"]'),
+        ('basic', 'Basic', 2000, 50, 1, 10, 50, 1, 1, '["50 campaigns / day", "1 Telegram account", "50 leads per search", "10 keyword searches / day", "1 Message Template"]'),
+        ('standard', 'Standard', 3500, 150, 2, 15, 150, 2, 1, '["150 campaigns / day", "2 Telegram accounts", "150 leads per search", "15 keyword searches / day", "2 Message Templates"]'),
+        ('premium', 'Premium', 5000, 300, 3, 30, 350, 3, 1, '["300 campaigns / day", "3 Telegram accounts", "350 leads per search", "30 keyword searches / day", "3 Message Templates"]'),
+        ('unlimited', 'Unlimited', 10000, 999999, 99, 999999, 1000, 999, 1, '["Unlimited everything", "Priority support"]')
     ]
     for p in plans:
         conn.execute("""INSERT OR IGNORE INTO plans 
-                      (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, has_premium_access, perks) 
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", p)
+                      (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, max_templates, has_premium_access, perks) 
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", p)
 
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")

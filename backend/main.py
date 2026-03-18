@@ -55,8 +55,8 @@ def log_debug(msg: str):
 # --- Tiered Plan Configurations (Dynamic from DB) ---
 def get_plan_configs() -> Dict[str, Dict[str, Any]]:
     configs: Dict[str, Dict[str, Any]] = {
-        "free": {"max_daily_campaigns": 20, "max_accounts": 1, "max_daily_keywords": 5, "scrape_limit": 50, "has_premium_access": False},
-        "unlimited": {"max_daily_campaigns": 999999, "max_accounts": 99, "max_daily_keywords": 999999, "scrape_limit": 1000, "has_premium_access": True}
+        "free": {"max_daily_campaigns": 20, "max_accounts": 1, "max_daily_keywords": 5, "scrape_limit": 50, "max_templates": 1, "has_premium_access": False},
+        "unlimited": {"max_daily_campaigns": 999999, "max_accounts": 99, "max_daily_keywords": 999999, "scrape_limit": 1000, "max_templates": 999, "has_premium_access": True}
     }
     conn = None
     try:
@@ -70,6 +70,7 @@ def get_plan_configs() -> Dict[str, Dict[str, Any]]:
                 "max_accounts": r["max_accounts"],
                 "max_daily_keywords": r["max_daily_keywords"],
                 "scrape_limit": r["scrape_limit"],
+                "max_templates": r["max_templates"],
                 "has_premium_access": bool(r["has_premium_access"]),
                 "perks": json.loads(r["perks"]) if r["perks"] else []
             }
@@ -95,6 +96,24 @@ def check_and_reset_daily_limits(conn, user_id, user_row):
         )
         if hasattr(conn, "commit"): conn.commit()
         return True
+    
+    # Subscription Expiry Check
+    expiry_date_str = user_row["plan_expires_at"]
+    if expiry_date_str and user_row["plan"] != "free":
+        try:
+            # Format: 2024-03-24T12:00
+            expiry_dt = datetime.fromisoformat(expiry_date_str.replace('Z', ''))
+            if datetime.now() > expiry_dt:
+                log_debug(f"SUBSCRIPTION: Plan expired for {user_id}. Resetting to Free.")
+                conn.execute(
+                    "UPDATE users SET plan = 'free', plan_expires_at = NULL, is_approved = 0 WHERE id = ?",
+                    (user_id,)
+                )
+                if hasattr(conn, "commit"): conn.commit()
+                return True
+        except:
+            pass
+
     return False
 
 @asynccontextmanager
@@ -1955,7 +1974,9 @@ async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
         daily_keyword_count=r["daily_keyword_count"],
         is_approved=r["is_approved"], 
         total_scraped=r["total_scraped"], 
-        payment_proof=r["payment_proof"]
+        payment_proof=r["payment_proof"],
+        plan_activated_at=r["plan_activated_at"],
+        plan_expires_at=r["plan_expires_at"]
     ) for r in rows]}
 
 @app.post("/api/admin/monetization/users/{uid}/vitals")
@@ -1968,17 +1989,26 @@ async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: s
     m_acc = req.max_accounts if req.max_accounts is not None else plan_cfg["max_accounts"]
     m_camp = req.max_daily_campaigns if req.max_daily_campaigns is not None else plan_cfg["max_daily_campaigns"]
     m_key = req.max_daily_keywords if req.max_daily_keywords is not None else plan_cfg["max_daily_keywords"]
+    
+    # Handle Subscription Dates
+    activated_at = None
+    expires_at = None
+    if req.plan != 'free' and req.is_approved:
+        now = datetime.now()
+        activated_at = now.strftime('%Y-%m-%dT%H:%M')
+        expires_at = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
 
     conn.execute(
         """UPDATE users SET 
            plan = ?, scrape_limit = ?, max_accounts = ?, 
            max_daily_campaigns = ?, max_daily_keywords = ?, 
-           is_approved = ? WHERE id = ?""",
-        (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, uid)
+           is_approved = ?, plan_activated_at = ?, plan_expires_at = ?
+           WHERE id = ?""",
+        (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, activated_at, expires_at, uid)
     )
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
-    return {"status": "success"}
+    return {"status": "success", "activated_at": activated_at, "expires_at": expires_at}
 
 @app.get("/api/admin/monetization/coupons")
 async def get_coupons_admin(admin_id: str = Depends(get_current_admin)):
@@ -2144,15 +2174,21 @@ async def verify_paystack(req: PaystackVerifyRequest, user_id: str = Depends(get
                 plan_key = req.plan_key
                 plan_cfg = PLAN_CONFIGS.get(plan_key, PLAN_CONFIGS["basic"])
                 
+                # Subscription timing
+                now = datetime.now()
+                act_date = now.strftime('%Y-%m-%dT%H:%M')
+                exp_date = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
+
                 conn = get_db_connection()
                 try:
                     conn.execute(
                         """UPDATE users SET 
                            plan = ?, is_approved = 1, payment_proof = ?, 
                            scrape_limit = NULL, max_accounts = NULL, 
-                           max_daily_campaigns = NULL, max_daily_keywords = NULL 
+                           max_daily_campaigns = NULL, max_daily_keywords = NULL,
+                           plan_activated_at = ?, plan_expires_at = ?
                            WHERE id = ?""",
-                        (plan_key, f"Paystack:{req.reference}", user_id)
+                        (plan_key, f"Paystack:{req.reference}", act_date, exp_date, user_id)
                     )
                     conn.execute(
                         "INSERT INTO payments (user_id, amount, proof_details, status) VALUES (?, ?, ?, ?)",
@@ -2193,10 +2229,15 @@ async def paystack_webhook(request: Request):
             if user:
                 u_id = user["id"]
                 plan_cfg = PLAN_CONFIGS.get(plan_key, PLAN_CONFIGS["basic"])
+                now = datetime.now()
+                act_date = now.strftime('%Y-%m-%dT%H:%M')
+                exp_date = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
+                
                 conn.execute(
-                    """UPDATE users SET plan = ?, is_approved = 1, payment_proof = ? 
+                    """UPDATE users SET plan = ?, is_approved = 1, payment_proof = ?,
+                       plan_activated_at = ?, plan_expires_at = ?
                        WHERE id = ? AND (plan = 'free' OR plan IS NULL)""",
-                    (plan_key, f"Webhook:{ref}", u_id)
+                    (plan_key, f"Webhook:{ref}", act_date, exp_date, u_id)
                 )
                 if hasattr(conn, "commit"): conn.commit()
         finally:
@@ -2459,10 +2500,35 @@ async def get_templates(user_id: str = Depends(get_current_user_id)):
 @app.post("/api/telegram/templates")
 async def create_template(req: TemplateRequest, user_id: str = Depends(get_current_user_id)):
     conn = get_db_connection()
-    conn.execute("INSERT INTO templates (user_id, name, content) VALUES (?, ?, ?)", (user_id, req.name, req.content))
-    if hasattr(conn, "commit"): conn.commit()
-    if hasattr(conn, "close"): conn.close()
+    try:
+        # Check limits
+        u_row = conn.execute("SELECT plan FROM users WHERE id = ?", (user_id,)).fetchone()
+        plan = u_row["plan"] if u_row else "free"
+        plan_cfg = PLAN_CONFIGS.get(plan, PLAN_CONFIGS["free"])
+        max_templates = plan_cfg.get("max_templates", 1)
+        
+        current_count = conn.execute("SELECT COUNT(*) FROM templates WHERE user_id = ?", (user_id,)).fetchone()[0]
+        if current_count >= max_templates:
+            raise HTTPException(status_code=403, detail=f"Your {plan.capitalize()} plan only allows {max_templates} templates.")
+
+        conn.execute("INSERT INTO templates (user_id, name, content) VALUES (?, ?, ?)", (user_id, req.name, req.content))
+        if hasattr(conn, "commit"): conn.commit()
+    finally:
+        if hasattr(conn, "close"): conn.close()
     return {"status": "success"}
+
+@app.get("/api/admin/templates")
+async def admin_get_all_templates(admin_id: str = Depends(get_current_admin)):
+    """Allows admin to see all templates from all users."""
+    conn = get_db_connection()
+    rows = conn.execute("""
+        SELECT t.*, u.username as creator 
+        FROM templates t 
+        JOIN users u ON t.user_id = u.id 
+        ORDER BY t.created_at DESC
+    """).fetchall()
+    if hasattr(conn, "close"): conn.close()
+    return {"templates": [dict(r) for r in rows]}
 
 @app.delete("/api/telegram/templates/{template_id}")
 async def delete_template(template_id: int, user_id: str = Depends(get_current_user_id)):

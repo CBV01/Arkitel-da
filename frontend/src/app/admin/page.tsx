@@ -35,6 +35,19 @@ export default function AdminDashboard() {
     const [broadcastType, setBroadcastType] = useState('info');
     const [sendingBroadcast, setSendingBroadcast] = useState(false);
     const [selectedUser, setSelectedUser] = useState<any>(null);
+    const [globalTemplates, setGlobalTemplates] = useState<any[]>([]);
+
+    const fetchGlobalTemplates = async () => {
+        try {
+            const res = await apiFetch('/api/admin/templates');
+            if (res.ok) {
+                const data = await res.json();
+                setGlobalTemplates(data.templates || []);
+            }
+        } catch (e) {
+            console.error("Failed to fetch global templates");
+        }
+    };
     const [userDetails, setUserDetails] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
@@ -133,6 +146,8 @@ export default function AdminDashboard() {
             fetchMonetizationData();
         } else if (activeTab === 'packages') {
             fetchPlans();
+        } else if (activeTab === 'templates') { // Added condition for templates tab
+            fetchGlobalTemplates();
         }
     }, [activeTab]);
 
@@ -230,7 +245,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div className="flex bg-white/[0.03] backdrop-blur-3xl p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
-                    {['overview', 'users', 'packages', 'monetization', 'settings', 'maintenance'].map((tab) => (
+                    {['overview', 'users', 'packages', 'monetization', 'templates', 'settings', 'maintenance'].map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -589,6 +604,58 @@ export default function AdminDashboard() {
                     )}
                 </div>
             )}
+            {activeTab === 'templates' && (
+                <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden">
+                    <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400">
+                                <FileText size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-xl">Global Templates</h3>
+                                <p className="text-xs text-foreground/40 uppercase font-bold tracking-widest mt-1">View all user-created message templates</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="text-[10px] uppercase tracking-[0.2em] text-foreground/30 border-b border-white/5">
+                                <tr>
+                                    <th className="px-6 py-4 font-bold">Creator</th>
+                                    <th className="px-6 py-4 font-bold">Template Name</th>
+                                    <th className="px-6 py-4 font-bold">Content Preview</th>
+                                    <th className="px-6 py-4 font-bold">Created At</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {globalTemplates.map((t) => (
+                                    <tr key={t.id} className="hover:bg-white/[0.02] transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-bold text-foreground">{t.creator}</div>
+                                            <div className="text-[10px] font-mono text-foreground/30">{t.user_id}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-sm font-bold text-indigo-400">{t.name}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-xs text-foreground/60 max-w-[400px] truncate">{t.content}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="text-[10px] text-foreground/40">{new Date(t.created_at).toLocaleString()}</div>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {globalTemplates.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-12 text-center text-foreground/20 italic">No templates found</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+            
             {activeTab === 'settings' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-white/5 border border-white/5 p-8 rounded-3xl space-y-6">
@@ -835,26 +902,31 @@ export default function AdminDashboard() {
                                                     <div className="text-[10px] text-foreground/30 font-mono">ID: {u.id}</div>
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    <select 
-                                                        value={u.plan} 
-                                                        onChange={async (e) => {
-                                                            const newPlan = e.target.value;
-                                                            // For manual plan changes, we let the backend handle the defaults
-                                                            await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
-                                                                method: 'POST',
-                                                                body: JSON.stringify({ plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 })
-                                                                // Pass is_approved=1 for any paid plan
-                                                            });
-                                                            fetchMonetizationData();
-                                                        }}
-                                                        className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition-all ${u.plan !== 'free' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/20'}`}
-                                                    >
-                                                        <option value="free">Free</option>
-                                                        <option value="basic">Basic (50c)</option>
-                                                        <option value="standard">Standard (150c)</option>
-                                                        <option value="premium">Premium (300c)</option>
-                                                        <option value="unlimited">Unlimited (Admin Only)</option>
-                                                    </select>
+                                                    <div className="flex flex-col">
+                                                        <select 
+                                                            value={u.plan} 
+                                                            onChange={async (e) => {
+                                                                const newPlan = e.target.value;
+                                                                await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                    method: 'POST',
+                                                                    body: JSON.stringify({ plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 })
+                                                                });
+                                                                fetchMonetizationData();
+                                                            }}
+                                                            className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition-all ${u.plan !== 'free' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/20'}`}
+                                                        >
+                                                            <option value="free">Free</option>
+                                                            <option value="basic">Basic (50c)</option>
+                                                            <option value="standard">Standard (150c)</option>
+                                                            <option value="premium">Premium (300c)</option>
+                                                            <option value="unlimited">Unlimited (Admin Only)</option>
+                                                        </select>
+                                                        {u.plan_expires_at && (
+                                                            <div className="text-[9px] font-bold text-foreground/40 mt-1 uppercase tracking-tighter">
+                                                                Exp: {new Date(u.plan_expires_at).toLocaleDateString()}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-wrap gap-2 max-w-[180px]">
@@ -889,16 +961,19 @@ export default function AdminDashboard() {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    {u.payment_proof && u.plan === 'free' && (
+                                                    {u.payment_proof && u.is_approved === 0 && (
                                                         <button 
                                                             onClick={async () => {
-                                                                // Default to premium on manual approval unless specified
-                                                                await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
-                                                                    method: 'POST',
-                                                                    body: JSON.stringify({ plan: 'premium', is_approved: 1 })
-                                                                });
-                                                                setSuccessMsg(`Approved ${u.username}!`);
-                                                                fetchMonetizationData();
+                                                                // Always use the plan currently selected in the dropdown
+                                                                const planToApprove = u.plan === 'free' ? 'premium' : u.plan; 
+                                                                if (confirm(`Approve ${planToApprove} plan for ${u.username}?`)) {
+                                                                    await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                        method: 'POST',
+                                                                        body: JSON.stringify({ plan: planToApprove, is_approved: 1 })
+                                                                    });
+                                                                    setSuccessMsg(`Approved ${u.username} for ${planToApprove}!`);
+                                                                    fetchMonetizationData();
+                                                                }
                                                             }}
                                                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-[10px] font-bold uppercase transition-all hover:bg-emerald-400 active:scale-95 shadow-lg shadow-emerald-500/20"
                                                         >
