@@ -2020,54 +2020,78 @@ async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
 @app.post("/api/admin/monetization/users/{uid}/vitals")
 async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    plan_configs = get_current_plan_configs()
-    plan_cfg = get_plan_configs().get(req.plan, get_plan_configs()["free"])
-    
-    # Use provided values or defaults from plan
-    s_limit = req.scrape_limit if req.scrape_limit is not None else plan_cfg["scrape_limit"]
-    m_acc = req.max_accounts if req.max_accounts is not None else plan_cfg["max_accounts"]
-    m_camp = req.max_daily_campaigns if req.max_daily_campaigns is not None else plan_cfg["max_daily_campaigns"]
-    m_key = req.max_daily_keywords if req.max_daily_keywords is not None else plan_cfg["max_daily_keywords"]
-    m_tmpl = plan_cfg["max_templates"]
-    
-    # Handle Subscription Dates and Payment Logging
-    activated_at = None
-    expires_at = None
-    
-    # Check current status to see if this is a new upgrade
-    curr_user = conn.execute("SELECT plan, is_approved, username FROM users WHERE id = ?", (uid,)).fetchone()
-    already_paid = (curr_user and curr_user["is_approved"] == 1 and curr_user["plan"] != 'free')
-    
-    if req.plan != 'free' and req.is_approved:
-        now = datetime.now()
-        activated_at = now.strftime('%Y-%m-%dT%H:%M')
-        expires_at = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
+    try:
+        # Always look up the plan config live from DB to avoid stale cache issues
+        plan_row = conn.execute("SELECT * FROM plans WHERE key = ?", (req.plan,)).fetchone()
         
-        # If this is a transition from UNPAID to PAID, log the payment
-        if not already_paid:
-            price = plan_cfg.get("price", 0)
-            uname = curr_user["username"] if curr_user else "Unknown"
-            conn.execute(
-                "INSERT INTO payments (user_id, username, plan, amount) VALUES (?, ?, ?, ?)",
-                (uid, uname, req.plan, price)
-            )
-            log_debug(f"MONEY: Logged payment of #{price} for {uname} (Plan: {req.plan})")
-
-    conn.execute(
-        """UPDATE users SET 
-           plan = ?, scrape_limit = ?, max_accounts = ?, 
-           max_daily_campaigns = ?, max_daily_keywords = ?, 
-           is_approved = ?, plan_activated_at = ?, plan_expires_at = ?,
-           max_templates = ?
-           WHERE id = ?""",
-        (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, activated_at, expires_at, m_tmpl, uid)
-    )
-    if hasattr(conn, "commit"): conn.commit()
-    # Force refresh plan configs global if needed
-    get_plan_configs.cache_clear()
+        # Safe defaults in case plan doesn't exist in DB
+        DEFAULTS = {
+            "free":      {"scrape_limit": 50,   "max_accounts": 1,  "max_daily_campaigns": 20,  "max_daily_keywords": 5,   "max_templates": 1,   "price": 0},
+            "basic":     {"scrape_limit": 100,  "max_accounts": 2,  "max_daily_campaigns": 50,  "max_daily_keywords": 10,  "max_templates": 1,   "price": 2000},
+            "standard":  {"scrape_limit": 250,  "max_accounts": 5,  "max_daily_campaigns": 150, "max_daily_keywords": 25,  "max_templates": 2,   "price": 3500},
+            "premium":   {"scrape_limit": 500,  "max_accounts": 10, "max_daily_campaigns": 300, "max_daily_keywords": 50,  "max_templates": 2,   "price": 5000},
+            "unlimited": {"scrape_limit": 1000, "max_accounts": 99, "max_daily_campaigns": 999999, "max_daily_keywords": 999999, "max_templates": 999, "price": 0},
+        }
+        
+        if plan_row:
+            plan_cfg = dict(plan_row)
+        else:
+            plan_cfg = DEFAULTS.get(req.plan, DEFAULTS["free"])
+        
+        # Use provided override values or fall back to plan defaults
+        s_limit = req.scrape_limit if req.scrape_limit is not None else plan_cfg["scrape_limit"]
+        m_acc   = req.max_accounts if req.max_accounts is not None else plan_cfg["max_accounts"]
+        m_camp  = req.max_daily_campaigns if req.max_daily_campaigns is not None else plan_cfg["max_daily_campaigns"]
+        m_key   = req.max_daily_keywords if req.max_daily_keywords is not None else plan_cfg["max_daily_keywords"]
+        m_tmpl  = plan_cfg.get("max_templates", 1)
+        
+        # Handle Subscription Dates
+        activated_at = None
+        expires_at   = None
+        
+        # Check current user status for payment logging
+        curr_user = conn.execute("SELECT plan, is_approved, username FROM users WHERE id = ?", (uid,)).fetchone()
+        already_paid = (curr_user and curr_user["is_approved"] == 1 and curr_user["plan"] != 'free')
+        
+        if req.plan != 'free' and req.is_approved:
+            now = datetime.now()
+            activated_at = now.strftime('%Y-%m-%dT%H:%M')
+            expires_at   = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
+            
+            # Log payment only on first-time upgrade
+            if not already_paid:
+                try:
+                    price = plan_cfg.get("price", 0)
+                    uname = curr_user["username"] if curr_user else "Unknown"
+                    conn.execute(
+                        "INSERT INTO payments (user_id, username, plan, amount) VALUES (?, ?, ?, ?)",
+                        (uid, uname, req.plan, price)
+                    )
+                    log_debug(f"MONEY: Logged payment of #{price} for {uname} (Plan: {req.plan})")
+                except Exception as pay_err:
+                    log_debug(f"MONEY: Payment log skipped (table may not exist): {pay_err}")
+        
+        # Perform the actual user update
+        conn.execute(
+            """UPDATE users SET 
+               plan = ?, scrape_limit = ?, max_accounts = ?, 
+               max_daily_campaigns = ?, max_daily_keywords = ?, 
+               is_approved = ?, plan_activated_at = ?, plan_expires_at = ?,
+               max_templates = ?
+               WHERE id = ?""",
+            (req.plan, s_limit, m_acc, m_camp, m_key, req.is_approved, activated_at, expires_at, m_tmpl, uid)
+        )
+        if hasattr(conn, "commit"): conn.commit()
+        log_debug(f"ADMIN: Updated user {uid} to plan '{req.plan}', approved={req.is_approved}")
+        return {"status": "success", "activated_at": activated_at, "expires_at": expires_at}
     
-    if hasattr(conn, "close"): conn.close()
-    return {"status": "success", "activated_at": activated_at, "expires_at": expires_at}
+    except Exception as e:
+        log_debug(f"ERROR in update_user_vitals: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
+    finally:
+        if hasattr(conn, "close"): conn.close()
 
 @app.get("/api/admin/monetization/coupons")
 async def get_coupons_admin(admin_id: str = Depends(get_current_admin)):
