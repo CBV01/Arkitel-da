@@ -541,9 +541,20 @@ export default function AdminDashboard() {
                                                 type="number" 
                                                 value={editingPlan.scrape_limit}
                                                 onChange={(e) => setEditingPlan({...editingPlan, scrape_limit: parseInt(e.target.value)})}
-                                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none"
+                                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:border-indigo-500 transition-all" 
                                             />
                                         </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Template Limit</label>
+                                            <input 
+                                                type="number" 
+                                                value={editingPlan.max_templates}
+                                                onChange={(e) => setEditingPlan({...editingPlan, max_templates: parseInt(e.target.value)})}
+                                                className="w-full bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold outline-none focus:border-indigo-500 transition-all" 
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
                                         <div className="space-y-2">
                                             <label className="text-xs font-bold text-foreground/30 uppercase tracking-widest">Keyword Searches</label>
                                             <input 

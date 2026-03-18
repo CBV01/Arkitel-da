@@ -406,17 +406,18 @@ def init_db():
         pass
 
     # Seed default plans
-    plans = [
-        ('free', 'Free', 0, 20, 1, 5, 50, 1, 0, '["20 campaigns / day", "1 Telegram account", "50 leads per search", "5 keyword searches / day", "1 Message Template"]'),
-        ('basic', 'Basic', 2000, 50, 1, 10, 50, 1, 1, '["50 campaigns / day", "1 Telegram account", "50 leads per search", "10 keyword searches / day", "1 Message Template"]'),
-        ('standard', 'Standard', 3500, 150, 2, 15, 150, 2, 1, '["150 campaigns / day", "2 Telegram accounts", "150 leads per search", "15 keyword searches / day", "2 Message Templates"]'),
-        ('premium', 'Premium', 5000, 300, 3, 30, 350, 3, 1, '["300 campaigns / day", "3 Telegram accounts", "350 leads per search", "30 keyword searches / day", "3 Message Templates"]'),
-        ('unlimited', 'Unlimited', 10000, 999999, 99, 999999, 1000, 999, 1, '["Unlimited everything", "Priority support"]')
+    default_plans = [
+        ("free", "Free Starter", 0, 20, 1, 5, 50, 1, 0, json.dumps(["20 Daily Campaigns", "1 Template", "5 Scrape Keywords", "Basic Support"])),
+        ("basic", "Growth Basic", 3000, 50, 2, 10, 100, 1, 1, json.dumps(["50 Daily Campaigns", "1 Template", "10 Scrape Keywords", "Priority Support"])),
+        ("standard", "Pro Standard", 7500, 150, 5, 25, 250, 2, 1, json.dumps(["150 Daily Campaigns", "2 Templates", "25 Scrape Keywords", "24/7 Support", "Ad-Free Experience"])),
+        ("premium", "Enterprise Premium", 15000, 300, 10, 50, 500, 3, 1, json.dumps(["300 Daily Campaigns", "3 Templates", "Unlimited Keywords", "Dedicated Manager"])),
+        ("unlimited", "Owner Unlimited", 0, 999999, 99, 999999, 1000, 999, 1, json.dumps(["Absolute Control", "999 Templates", "Admin Privilege"]))
     ]
-    for p in plans:
-        conn.execute("""INSERT OR IGNORE INTO plans 
-                      (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, max_templates, has_premium_access, perks) 
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", p)
+    for p in default_plans:
+        conn.execute(
+            "INSERT OR IGNORE INTO plans (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, max_templates, has_premium_access, perks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            p
+        )
 
     # Seed default settings
     conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")

@@ -3028,6 +3028,7 @@ class PlanUpdateRequest(BaseModel):
     max_accounts: int
     max_daily_keywords: int
     scrape_limit: int
+    max_templates: int
     has_premium_access: bool
     perks: List[str]
 
@@ -3050,9 +3051,9 @@ async def admin_update_plan(req: PlanUpdateRequest, admin_id: str = Depends(get_
     conn = get_db_connection()
     conn.execute(
         """INSERT OR REPLACE INTO plans 
-           (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, has_premium_access, perks) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (req.key, req.name, req.price, req.max_daily_campaigns, req.max_accounts, req.max_daily_keywords, req.scrape_limit, 1 if req.has_premium_access else 0, json.dumps(req.perks))
+           (key, name, price, max_daily_campaigns, max_accounts, max_daily_keywords, scrape_limit, max_templates, has_premium_access, perks) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (req.key, req.name, req.price, req.max_daily_campaigns, req.max_accounts, req.max_daily_keywords, req.scrape_limit, req.max_templates, 1 if req.has_premium_access else 0, json.dumps(req.perks))
     )
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
