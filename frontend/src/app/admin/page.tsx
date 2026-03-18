@@ -591,22 +591,43 @@ export default function AdminDashboard() {
 
                                     <button
                                         onClick={async () => {
-                                            const payload = {
-                                                ...editingPlan,
-                                                has_premium_access: editingPlan.has_premium_access === 1 || editingPlan.has_premium_access === true,
-                                                perks: JSON.parse(editingPlan.perks || '[]')
-                                            };
-                                            const res = await apiFetch('/api/admin/plans/update', {
-                                                method: 'POST',
-                                                body: JSON.stringify(payload)
-                                            });
-                                            if (res.ok) {
-                                                setSuccessMsg(`${editingPlan.name} updated in core database.`);
-                                                setEditingPlan(null);
-                                                fetchPlans();
+                                            try {
+                                                const perksArray = Array.isArray(editingPlan.perks) 
+                                                    ? editingPlan.perks 
+                                                    : JSON.parse(editingPlan.perks || '[]');
+
+                                                const payload = {
+                                                    key: editingPlan.key,
+                                                    name: editingPlan.name,
+                                                    price: parseInt(editingPlan.price),
+                                                    max_daily_campaigns: parseInt(editingPlan.max_daily_campaigns),
+                                                    max_accounts: parseInt(editingPlan.max_accounts),
+                                                    max_daily_keywords: parseInt(editingPlan.max_daily_keywords),
+                                                    scrape_limit: parseInt(editingPlan.scrape_limit),
+                                                    max_templates: parseInt(editingPlan.max_templates),
+                                                    has_premium_access: editingPlan.has_premium_access === 1 || editingPlan.has_premium_access === true,
+                                                    perks: perksArray
+                                                };
+
+                                                const res = await apiFetch('/api/admin/plans/update', {
+                                                    method: 'POST',
+                                                    body: JSON.stringify(payload)
+                                                });
+
+                                                if (res.ok) {
+                                                    setSuccessMsg(`${editingPlan.name} status updated in core engine.`);
+                                                    setEditingPlan(null);
+                                                    fetchPlans();
+                                                } else {
+                                                    const errData = await res.json().catch(() => ({}));
+                                                    alert(`Update failed: ${errData.detail || 'Unknown Error'}`);
+                                                }
+                                            } catch (err) {
+                                                console.error("Save Error:", err);
+                                                alert("Failed to parse configuration for " + editingPlan.name);
                                             }
                                         }}
-                                        className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all"
+                                        className="w-full bg-indigo-500 hover:bg-indigo-400 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all uppercase tracking-widest text-xs"
                                     >
                                         Commit Changes to Database
                                     </button>

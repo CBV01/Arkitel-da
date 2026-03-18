@@ -267,6 +267,20 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                                     </div>
                                 </div>
 
+                                {/* Templates usage - Now outside free check for visibility */}
+                                <div className="space-y-1">
+                                    <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
+                                        <span>Templates Saved</span>
+                                        <span>{status?.template_count || 0} / {status?.max_templates || 1}</span>
+                                    </div>
+                                    <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full bg-blue-500 transition-all duration-1000"
+                                            style={{ width: `${Math.min(100, ((status?.template_count || 0) / (status?.max_templates || 1)) * 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+
                                 {status?.plan !== 'free' && (
                                     <>
                                         {/* Keyword Limit */}
@@ -283,21 +297,6 @@ export function Sidebar({ children }: { children: React.ReactNode }) {
                                             </div>
                                         </div>
 
-                                        {/* Templates usage */}
-                                        <div className="space-y-1">
-                                            <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase">
-                                                <span>Templates Saved</span>
-                                                <span>{status?.template_count || 0} / {status?.max_templates || 1}</span>
-                                            </div>
-                                            <div className="h-1 w-full bg-foreground/5 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-indigo-400 transition-all duration-1000"
-                                                    style={{ width: `${Math.min(100, ((status?.template_count || 0) / (status?.max_templates || 1)) * 100)}%` }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Scrape Power */}
                                         <div className="flex justify-between text-[9px] font-bold text-foreground/30 uppercase pt-1">
                                             <span>Scrape Limit</span>
                                             <span className="text-foreground/60">{status?.scrape_limit || 50} / search</span>
