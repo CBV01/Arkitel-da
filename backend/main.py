@@ -2906,14 +2906,11 @@ async def admin_delete_user(user_id: str, admin_id: str = Depends(get_current_ad
         
     conn = get_db_connection()
     try:
-        # Check if user is an admin - prevent deleting real admins as a safety measure
         user = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
         if user and user[0] == 'admin':
             raise HTTPException(status_code=400, detail="Cannot delete another admin account.")
             
-        # Delete user
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        # Cascade manually for SQLite/Turso:
         conn.execute("DELETE FROM accounts WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM tasks WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM leads WHERE user_id = ?", (user_id,))
@@ -2937,50 +2934,54 @@ async def get_debug_logs(admin_id: str = Depends(get_current_admin)):
 @app.get("/api/admin/stats")
 async def admin_get_stats(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-    total_accounts = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
-    total_tasks = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-    total_leads = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
-    
-    # Monetization stats
-    total_rev = conn.execute("SELECT SUM(amount) FROM payments WHERE status = 'approved'").fetchone()[0] or 0
-    pending_approvals = conn.execute("SELECT COUNT(*) FROM users WHERE payment_proof IS NOT NULL AND plan = 'free'").fetchone()[0]
+    try:
+        total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        total_accounts = conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]
+        total_tasks = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        total_leads = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+        
+        # Revenue - safely guarded in case payments table was just added and not yet in live DB
+        try:
+            total_rev = conn.execute("SELECT SUM(amount) FROM payments WHERE status = 'approved'").fetchone()[0] or 0
+        except Exception:
+            total_rev = 0
+        
+        pending_approvals = conn.execute("SELECT COUNT(*) FROM users WHERE payment_proof IS NOT NULL AND plan = 'free'").fetchone()[0]
 
-    # Per user stats
-    user_stats = conn.execute('''
-        SELECT u.id, u.username, u.is_active, u.plan,
-               (SELECT COUNT(*) FROM accounts WHERE user_id = u.id) as accounts,
-               (SELECT COUNT(*) FROM tasks WHERE user_id = u.id) as tasks,
-               (SELECT COUNT(*) FROM leads WHERE user_id = u.id) as leads
-        FROM users u
-    ''').fetchall()
-    
-    # System Resource Metrics
-    pool_active = len(POOL._clients)
-    
-    # Active broadcasts
-    broadcasts = conn.execute("SELECT * FROM broadcasts ORDER BY created_at DESC").fetchall()
-    
-    if hasattr(conn, "close"): conn.close()
-    
-    return {
-        "global": {
-            "users": total_users,
-            "accounts": total_accounts,
-            "tasks": total_tasks,
-            "leads": total_leads,
-            "revenue": total_rev,
-            "pending": pending_approvals
-        },
-        "broadcasts": [dict(id=b["id"], message=b["message"], type=b["type"], created_at=b["created_at"]) for b in broadcasts],
-        "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), plan=s[3], accounts=s[4], tasks=s[5], leads=s[6]) for s in user_stats],
-        "service_health": {
-             "database": "Healthy",
-             "poller": "Active",
-             "api": "Operational",
-             "pool_active_nodes": pool_active
+        user_stats = conn.execute('''
+            SELECT u.id, u.username, u.is_active, u.plan,
+                   (SELECT COUNT(*) FROM accounts WHERE user_id = u.id) as accounts,
+                   (SELECT COUNT(*) FROM tasks WHERE user_id = u.id) as tasks,
+                   (SELECT COUNT(*) FROM leads WHERE user_id = u.id) as leads
+            FROM users u
+        ''').fetchall()
+        
+        pool_active = len(POOL._clients)
+        broadcasts = conn.execute("SELECT * FROM broadcasts ORDER BY created_at DESC").fetchall()
+        
+        return {
+            "global": {
+                "users": total_users,
+                "accounts": total_accounts,
+                "tasks": total_tasks,
+                "leads": total_leads,
+                "revenue": total_rev,
+                "pending": pending_approvals
+            },
+            "broadcasts": [dict(id=b["id"], message=b["message"], type=b["type"], created_at=b["created_at"]) for b in broadcasts],
+            "per_user": [dict(id=s[0], username=s[1], is_active=bool(s[2]), plan=s[3], accounts=s[4], tasks=s[5], leads=s[6]) for s in user_stats],
+            "service_health": {
+                 "database": "Healthy",
+                 "poller": "Active",
+                 "api": "Operational",
+                 "pool_active_nodes": pool_active
+            }
         }
-    }
+    except Exception as e:
+        log_debug(f"ERROR admin_get_stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if hasattr(conn, "close"): conn.close()
 
 @app.delete("/api/admin/users/{user_id}/leads")
 async def admin_clear_user_leads(user_id: str, admin_id: str = Depends(get_current_admin)):
