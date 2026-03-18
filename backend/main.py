@@ -1226,7 +1226,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
             client = await POOL.get_client(user_id, acc_phone)
             for q in search_queries:
                 try:
-                    if queue: await queue.put({"type": "progress", "msg": f"TG Search: Testing '{q}'..."}) # type: ignore
+                    if queue: await queue.put({"type": "progress", "msg": f"TG Search ({acc_phone[-4:]}): Testing '{q}'..."}) # type: ignore
                     search_result = await client(SearchRequest(q=q, limit=500))
 
                     for chat in search_result.chats:
@@ -1268,14 +1268,11 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             "is_member": is_member
                         }
                         unique_groups[chat_id_str] = item
-                        # Auto-saving disabled - user must manually select and save to leads
-                        # if user_id: asyncio.create_task(asyncio.to_thread(lambda: save_scraped_group(user_id, item)))
 
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
                     # Phrase-based Global Message Search (Discovery Hack)
-                    # If query has multiple words or is an intent phrase, search globally for messages
                     if len(q.split()) > 1 or any(x in q.lower() for x in ["need", "who", "build", "looking"]):
                         from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
                         from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
@@ -1295,15 +1292,15 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                                     if not chat: continue
                                     cid = str(getattr(chat, 'id', '0'))
                                     if cid not in unique_groups:
-                                        username = getattr(chat, 'username', None)
+                                        msg_username = getattr(chat, 'username', None)
                                         is_member = not getattr(chat, 'left', True)
                                         item = {
                                             "id": cid,
                                             "title": getattr(chat, 'title', 'Unknown'),
-                                            "username": username,
+                                            "username": msg_username,
                                             "participants_count": getattr(chat, 'participants_count', 0),
                                             "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
-                                            "is_private": username is None,
+                                            "is_private": msg_username is None,
                                             "country": "Global",
                                             "global_shows": 1,
                                             "user_shows": 1,
@@ -1316,10 +1313,15 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                                 except: continue
                         except: pass
 
-                    await asyncio.sleep(0.4)
+                    await asyncio.sleep(0.8) # Polite delay to avoid instant flood
                 except Exception as q_err:
-                    print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
-                    continue
+                    err_str = str(q_err).lower()
+                    if "flood" in err_str or "wait" in err_str:
+                        print(f"SCRAPER[telegram] acc={acc_phone} hit FloodWait on '{q}', rotating account.")
+                        break # Break variation loop, move to next connected account
+                    else:
+                        print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
+                        continue
         except Exception as e:
             print(f"SCRAPER[telegram] account {acc_phone} connection error: {e}")
         # REMOVED disconnect() to keep POOL connections alive for campaigns
@@ -1511,12 +1513,12 @@ async def scrape_keyword_stream(
         if phone_number:
             rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ?", (phone_number,)).fetchall()
         else:
-            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' ORDER BY is_active DESC LIMIT 1").fetchall()
+            rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE status = 'active' ORDER BY is_active DESC").fetchall()
     elif phone_number:
         rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE phone_number = ? AND user_id = ?", (phone_number, user_id)).fetchall()
     else:
-        # Prioritize explicitly active account, fallback to any active status account
-        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY is_active DESC LIMIT 1", (user_id,)).fetchall()
+        # Use ALL active accounts to maximize yield for the sweep
+        rows = conn.execute("SELECT session_string, api_id, api_hash, phone_number FROM accounts WHERE user_id = ? AND status = 'active' ORDER BY is_active DESC", (user_id,)).fetchall()
     if hasattr(conn, "close"): conn.close()
     if not rows: raise HTTPException(status_code=404, detail="No active accounts found.")
 
