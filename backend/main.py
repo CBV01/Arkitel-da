@@ -2057,7 +2057,10 @@ async def delete_coupon_admin(code: str, admin_id: str = Depends(get_current_adm
 async def get_user_status(user_id: str = Depends(get_current_user_id)):
     if user_id == "admin_virtual_id":
         cfg = PLAN_CONFIGS["unlimited"]
+        # Fetch 'unlimited' config
+        cfg = PLAN_CONFIGS.get("unlimited", PLAN_CONFIGS["free"])
         return {
+            "status": "success",
             "plan": "unlimited",
             "scrape_limit": cfg["scrape_limit"],
             "max_accounts": cfg["max_accounts"],
@@ -2065,37 +2068,35 @@ async def get_user_status(user_id: str = Depends(get_current_user_id)):
             "daily_campaign_count": 0,
             "max_daily_keywords": cfg["max_daily_keywords"],
             "daily_keyword_count": 0,
+            "max_templates": cfg["max_templates"],
+            "template_count": 0,
             "email": "admin@arkitel.app",
             "is_approved": 1,
             "has_proof": True
         }
 
     conn = get_db_connection()
-    row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    
-    if row:
-        # Reset daily counts if needed (Midnight UTC)
-        if check_and_reset_daily_limits(conn, user_id, row):
-            # Refresh row data if a reset occurred
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if row:
+            # Reset daily counts if needed
+            check_and_reset_daily_limits(conn, user_id, row)
+            # Fetch latest count after possible reset
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        t_count = conn.execute("SELECT COUNT(*) FROM templates WHERE user_id = ?", (user_id,)).fetchone()[0]
+    finally:
+        if hasattr(conn, "close"): conn.close()
     
-    if hasattr(conn, "close"): conn.close()
-    if not row: raise HTTPException(status_code=404, detail="User not found")
-    
-    # Calculate usage percentages for UI
-    p_cfg = PLAN_CONFIGS.get(row["plan"] or "free", PLAN_CONFIGS["free"])
-    
-    # Template Count
-    t_count = conn.execute("SELECT COUNT(*) FROM templates WHERE user_id = ?", (user_id,)).fetchone()[0]
-    
-    if hasattr(conn, "close"): conn.close()
-    if not row: raise HTTPException(status_code=404, detail="User not found")
-    
-    # Calculate usage percentages for UI
+    # Tier mapping
     p_cfg = PLAN_CONFIGS.get(row["plan"] or "free", PLAN_CONFIGS["free"])
     
     return {
-        "plan": row["plan"],
+        "status": "success",
+        "plan": row["plan"] or "free",
         "username": row["username"], 
         "email": row["email"] or f"{row['username']}@arkitel.app",
         "scrape_limit": row["scrape_limit"] or p_cfg["scrape_limit"],
