@@ -984,18 +984,29 @@ export default function AdminDashboard() {
                                                             value={u.plan} 
                                                             onChange={async (e) => {
                                                                 const newPlan = e.target.value;
-                                                                await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                // Optimistically update local state FIRST so UI doesn't snap back
+                                                                setMonetizationUsers(prev => prev.map(mu => 
+                                                                    mu.id === u.id ? { ...mu, plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 } : mu
+                                                                ));
+                                                                const res = await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
                                                                     method: 'POST',
                                                                     body: JSON.stringify({ plan: newPlan, is_approved: newPlan === 'free' ? 0 : 1 })
                                                                 });
+                                                                if (res.ok) {
+                                                                    setSuccessMsg(`Plan set to ${newPlan.toUpperCase()} for ${u.username}`);
+                                                                    setTimeout(() => setSuccessMsg(''), 4000);
+                                                                } else {
+                                                                    setErrorMsg('Failed to update plan. Try again.');
+                                                                    setTimeout(() => setErrorMsg(''), 4000);
+                                                                }
                                                                 fetchMonetizationData();
                                                             }}
                                                             className={`bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] font-black uppercase transition-all ${u.plan !== 'free' ? 'text-indigo-400 border-indigo-400/30' : 'text-foreground/20'}`}
                                                         >
                                                             <option value="free">Free</option>
-                                                            <option value="basic">Basic (50c)</option>
-                                                            <option value="standard">Standard (150c)</option>
-                                                            <option value="premium">Premium (300c)</option>
+                                                            <option value="basic">Basic</option>
+                                                            <option value="standard">Standard</option>
+                                                            <option value="premium">Premium</option>
                                                             <option value="unlimited">Unlimited (Admin Only)</option>
                                                         </select>
                                                         {u.plan_activated_at && (
@@ -1047,17 +1058,29 @@ export default function AdminDashboard() {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4">
-                                                    {u.payment_proof && u.is_approved === 0 && (
+                                                    {u.is_approved === 0 && (
                                                         <button 
                                                             onClick={async () => {
-                                                                // Always use the plan currently selected in the dropdown
-                                                                const planToApprove = u.plan === 'free' ? 'premium' : u.plan; 
-                                                                if (confirm(`Approve ${planToApprove} plan for ${u.username}?`)) {
-                                                                    await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
+                                                                // Use the plan currently selected in the dropdown (default basic if still free)
+                                                                const planToApprove = u.plan === 'free' ? 'basic' : u.plan; 
+                                                                if (confirm(`Approve "${planToApprove.toUpperCase()}" plan for ${u.username}?`)) {
+                                                                    // 1. Optimistically update local state right away so UI reflects change
+                                                                    setMonetizationUsers(prev => prev.map(mu => 
+                                                                        mu.id === u.id ? { ...mu, plan: planToApprove, is_approved: 1 } : mu
+                                                                    ));
+                                                                    // 2. Send to backend
+                                                                    const res = await apiFetch(`/api/admin/monetization/users/${u.id}/vitals`, {
                                                                         method: 'POST',
                                                                         body: JSON.stringify({ plan: planToApprove, is_approved: 1 })
                                                                     });
-                                                                    setSuccessMsg(`Approved ${u.username} for ${planToApprove}!`);
+                                                                    if (res.ok) {
+                                                                        setSuccessMsg(`✅ Approved ${u.username} for ${planToApprove}!`);
+                                                                        setTimeout(() => setSuccessMsg(''), 4000);
+                                                                    } else {
+                                                                        setErrorMsg('Approval failed. Check server logs.');
+                                                                        setTimeout(() => setErrorMsg(''), 4000);
+                                                                    }
+                                                                    // 3. Re-fetch to verify backend committed the change
                                                                     fetchMonetizationData();
                                                                 }
                                                             }}
