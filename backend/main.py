@@ -1478,10 +1478,25 @@ async def scrape_keyword_stream(
             if hasattr(conn, "close"): conn.close()
             raise HTTPException(status_code=403, detail="Daily usage limit reached for scraping. Reset at Midnight UTC.")
 
-        # Increment keyword use
+        # Increment keyword use and Log Search Intelligence
         if plan != "unlimited":
             conn.execute("UPDATE users SET daily_keyword_count = daily_keyword_count + 1 WHERE id = ?", (user_id,))
-            if hasattr(conn, "commit"): conn.commit()
+            
+        # Unified global logging for Admin
+        try:
+            uname = "Admin"
+            if user_id != "admin_virtual_id":
+                user_row = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+                if user_row: uname = user_row["username"]
+            
+            conn.execute(
+                "INSERT INTO keyword_logs (user_id, username, keyword) VALUES (?, ?, ?)",
+                (user_id, uname, query.strip())
+            )
+        except Exception as e:
+            print(f"FAILED TO LOG KEYWORD: {e}")
+
+        if hasattr(conn, "commit"): conn.commit()
 
     if plan == "unlimited" or user_id == "admin_virtual_id":
         final_limit: int = 999999999
@@ -1966,24 +1981,36 @@ class UserVitalsUpdateRequest(BaseModel):
 @app.get("/api/admin/monetization/users")
 async def get_monetization_users(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM users").fetchall()
+    # Join with plans to get default limits if user record is stale or has defaults
+    query = """
+        SELECT u.*, p.max_templates as plan_max_templates,
+               p.max_daily_campaigns as plan_max_campaigns,
+               p.max_daily_keywords as plan_max_keywords,
+               p.scrape_limit as plan_scrape_limit,
+               p.max_accounts as plan_max_accounts
+        FROM users u
+        LEFT JOIN plans p ON u.plan = p.key
+    """
+    rows = conn.execute(query).fetchall()
     if hasattr(conn, "close"): conn.close()
+    
     return {"users": [dict(
         id=r["id"], 
         username=r["username"], 
         plan=r["plan"], 
-        scrape_limit=r["scrape_limit"], 
-        max_accounts=r["max_accounts"], 
-        max_daily_campaigns=r["max_daily_campaigns"],
+        # Favor plan defaults (synchronized) unless a specific override exists in users table
+        max_templates=r["plan_max_templates"] if r["max_templates"] == 1 or r["max_templates"] is None else r["max_templates"],
+        max_daily_campaigns=r["plan_max_campaigns"] if r["max_daily_campaigns"] is None else r["max_daily_campaigns"],
+        max_daily_keywords=r["plan_max_keywords"] if r["max_daily_keywords"] is None else r["max_daily_keywords"],
+        scrape_limit=r["plan_scrape_limit"] if r["scrape_limit"] is None else r["scrape_limit"],
+        max_accounts=r["plan_max_accounts"] if r["max_accounts"] is None else r["max_accounts"],
         daily_campaign_count=r["daily_campaign_count"],
-        max_daily_keywords=r["max_daily_keywords"],
         daily_keyword_count=r["daily_keyword_count"],
         is_approved=r["is_approved"], 
         total_scraped=r["total_scraped"], 
         payment_proof=r["payment_proof"],
         plan_activated_at=r["plan_activated_at"],
-        plan_expires_at=r["plan_expires_at"],
-        max_templates=r["max_templates"]
+        plan_expires_at=r["plan_expires_at"]
     ) for r in rows]}
 
 @app.post("/api/admin/monetization/users/{uid}/vitals")
