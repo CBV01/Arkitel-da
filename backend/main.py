@@ -2024,13 +2024,28 @@ async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: s
     m_camp = req.max_daily_campaigns if req.max_daily_campaigns is not None else plan_cfg["max_daily_campaigns"]
     m_key = req.max_daily_keywords if req.max_daily_keywords is not None else plan_cfg["max_daily_keywords"]
     
-    # Handle Subscription Dates
+    # Handle Subscription Dates and Payment Logging
     activated_at = None
     expires_at = None
+    
+    # Check current status to see if this is a new upgrade
+    curr_user = conn.execute("SELECT plan, is_approved, username FROM users WHERE id = ?", (uid,)).fetchone()
+    already_paid = (curr_user and curr_user["is_approved"] == 1 and curr_user["plan"] != 'free')
+    
     if req.plan != 'free' and req.is_approved:
         now = datetime.now()
         activated_at = now.strftime('%Y-%m-%dT%H:%M')
         expires_at = (now + timedelta(days=30)).strftime('%Y-%m-%dT%H:%M')
+        
+        # If this is a transition from UNPAID to PAID, log the payment
+        if not already_paid:
+            price = plan_cfg.get("price", 0)
+            uname = curr_user["username"] if curr_user else "Unknown"
+            conn.execute(
+                "INSERT INTO payments (user_id, username, plan, amount) VALUES (?, ?, ?, ?)",
+                (uid, uname, req.plan, price)
+            )
+            log_debug(f"MONEY: Logged payment of #{price} for {uname} (Plan: {req.plan})")
 
     conn.execute(
         """UPDATE users SET 

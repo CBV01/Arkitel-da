@@ -302,6 +302,15 @@ def init_db():
             keyword TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
+        """CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            username TEXT,
+            plan TEXT,
+            amount INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'approved',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )""",
         """CREATE TABLE IF NOT EXISTS plans (
             key TEXT PRIMARY KEY,
             name TEXT NOT NULL,
