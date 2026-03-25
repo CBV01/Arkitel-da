@@ -302,78 +302,79 @@ async def debug_db():
 async def resolve_tg_entity(client, target):
     """Smarter handle resolver for Telegram joining & Campaigns."""
     try:
-        # 1. Try resolving directly (ID or Username)
-        resolved_id = target
+        # 1. Normalize target
         target_str = str(target).strip()
-        
-        if target_str.lstrip('-').isdigit():
-            resolved_id = int(target_str)
+        if not target_str:
+            return None
             
-        # Optional: DB lookup by ID to find username (much more stable)
+        log_debug(f"RESOLVE: Attempting to resolve '{target_str}'...")
+
+        # 2. Try numeric ID directly
+        if target_str.lstrip('-').isdigit():
+            try:
+                # Try as-is
+                entity = await client.get_entity(int(target_str))
+                return entity
+            except Exception:
+                # If it's a positive number, try adding -100 prefix (common for Channels/Supergroups)
+                if not target_str.startswith('-'):
+                    try:
+                        entity = await client.get_entity(int(f"-100{target_str}"))
+                        return entity
+                    except: pass
+        
+        # 3. Try resolving as invite link / URL
+        if "t.me/" in target_str or "telegram.me/" in target_str:
+            clean_url = target_str.replace("https://", "").replace("http://", "")
+            # Handle joinchat links (private)
+            if "joinchat/" in clean_url or "/+" in clean_url:
+                hash_val = clean_url.split('/')[-1].replace('+', '')
+                return ("invite", hash_val)
+            else:
+                # Extract username from public link
+                username = clean_url.split('/')[-1]
+                target_str = username # Continue with username logic
+
+        # 4. Handle usernames (@name or name)
+        username = target_str.lstrip('@')
+        if not username.replace('_', '').isalnum():
+            # If it's not a valid username format, maybe it's still a numeric ID we missed?
+            pass
+        else:
+            try:
+                # Try getting by username
+                entity = await client.get_entity(username)
+                return entity
+            except Exception as e:
+                log_debug(f"RESOLVE: Username '{username}' direct resolve failed: {e}")
+                # Fallback: Search globally to "prime" the session
+                try:
+                    from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
+                    from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
+                    
+                    # Search globally for this username
+                    await client(SearchGlobalRequest(q=username, filter=InputMessagesFilterEmpty(), limit=1))
+                    # Try again after search
+                    entity = await client.get_entity(username)
+                    return entity
+                except Exception as e2:
+                    log_debug(f"RESOLVE: Global search fallback for '{username}' failed: {e2}")
+
+        # 5. DB lookup as last resort (if we have a mapping stored)
         try:
             conn = get_db_connection()
-            # Try exact ID match first
+            # Try finding a username for this ID if we have it
             row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (target_str,)).fetchone()
-            if not row:
-                # Try with -100 prefix variations
-                if target_str.isdigit():
-                    row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (f"-100{target_str}",)).fetchone()
-                elif target_str.startswith("-100"):
-                    # Use replace to avoid index errors in some linters
-                    clean_id = target_str.replace("-100", "", 1)
-                    row = conn.execute("SELECT username FROM scraped_groups WHERE id = ?", (clean_id,)).fetchone()
-            
             if row and row[0]:
-                resolved_id = row[0]
+                try:
+                    entity = await client.get_entity(row[0])
+                    return entity
+                except: pass
             if hasattr(conn, "close"): conn.close()
         except: pass
 
-        try:
-            entity = await client.get_entity(resolved_id)
-            # If we got a User object but asked for a positive int, it's likely a channel missing the -100 prefix.
-            if isinstance(entity, User) and isinstance(resolved_id, int) and resolved_id > 0:
-                raise ValueError("Resolved to User, but likely meant a Channel/Group. Forcing -100 prefix check.")
-            return entity
-        except Exception as e:
-            # If it's a positive number, try adding -100 prefix (common for Channels/Supergroups)
-            if isinstance(resolved_id, int) and resolved_id > 0:
-                try:
-                    alt_id = int(f"-100{resolved_id}")
-                    entity = await client.get_entity(alt_id)
-                    return entity
-                except: pass
-            pass
-
-        # 2. Try cleaning username
-        if target_str.startswith('@') or not target_str.replace('-','').isdigit():
-            username = target_str.replace('@', '', 1)
-            try:
-                entity = await client.get_entity(username)
-                return entity
-            except: pass
-        
-        # 3. Try resolving as invite link
-        if "t.me/" in target_str:
-            if "joinchat/" in target_str or "t.me/+" in target_str:
-                hash_val = target_str.split('/')[-1].replace('+', '')
-                return ("invite", hash_val)
-            else:
-                username = target_str.split('/')[-1]
-                try:
-                    entity = await client.get_entity(username)
-                    return entity
-                except: pass
-
-        # 4. Final Hail Mary: Search for it globally to "prime" the session
-        try:
-            from telethon.tl.functions.contacts import SearchRequest # type: ignore
-            await client(SearchRequest(q=target_str, limit=5))
-            entity = await client.get_entity(target_str)
-            return entity
-        except: pass
-
     except Exception as gl_e:
-        log_debug(f"RESOLVE_GL_ERR for {target}: {str(gl_e)}")
+        log_debug(f"RESOLVE_FATAL_ERR for {target}: {str(gl_e)}")
 
     return None
 
@@ -494,42 +495,59 @@ class TelegramPool:
             self._locks[session_key] = asyncio.Lock()
             
         async with self._locks[session_key]:
-            # Use a separate key type for cache to avoid tuple confusion
-            # We map the session object to the phone number
+            # Trust existing connected clients first to avoid over-pinging get_me()
             if session_key in self._clients:
                 client = self._clients[session_key]
                 if client.is_connected():
-                    try:
-                        await client.get_me() 
-                        return client
-                    except Exception:
-                        print(f"POOL: Node {phone_number} stale. Disconnecting...")
-                        try: await client.disconnect()
-                        except: pass
+                    # Optional: only check authenticity if it's been idle for a long time
+                    # For now, trust the connected socket to stay snappy and avoid FloodWait on pings
+                    return client
+                else: 
+                    log_debug(f"POOL: Node {phone_number} socket closed. Reconnecting...")
                 
             log_debug(f"POOL: Deploying persistent kernel for {phone_number} (Owner: {owner_id})")
             new_client = TelegramClient(StringSession(session_str), api_id, api_hash)
+            
+            # Use a slightly longer timeout for connection to prevent flakes on slow proxies/VPS
             await new_client.connect()
             
-            if not await new_client.is_user_authorized():
+            # Multi-check for authorization (Don't disconnect instantly on flakes)
+            auth_retries = 2
+            authorized = False
+            while auth_retries > 0:
+                try:
+                    authorized = await new_client.is_user_authorized()
+                    break
+                except Exception as auth_flake:
+                    auth_retries -= 1
+                    if auth_retries > 0:
+                        await asyncio.sleep(1)
+                    else:
+                        log_debug(f"POOL: Auth check fatal for {phone_number}: {auth_flake}")
+
+            if not authorized:
                 await new_client.disconnect()
-                # Update DB status
+                # Update DB state to reflect expiry for UI
                 conn = get_db_connection()
-                conn.execute("UPDATE accounts SET status = 'expired', status_detail = 'Auth token invalid' WHERE phone_number = ?", (phone_number,))
+                conn.execute("UPDATE accounts SET status = 'expired', status_detail = 'Session expired/invalid' WHERE phone_number = ?", (phone_number,))
                 if hasattr(conn, "commit"): conn.commit()
                 if hasattr(conn, "close"): conn.close()
                 raise HTTPException(status_code=401, detail=f"Session for {phone_number} has expired.")
                 
-            # Success check & Mark active
+            # Node Success: Heartbeat for username sync
             try:
-                me = await new_client.get_me()
+                me = await new_client.get_me() if not hasattr(new_client, 'me_cache') else getattr(new_client, 'me_cache')
+                new_client.me_cache = me # type: ignore # Simple custom cache
                 log_debug(f"POOL: Node {phone_number} ( @{getattr(me,'username','?')} ) online.")
             except: pass
             
-            conn = get_db_connection()
-            conn.execute("UPDATE accounts SET status = 'active' WHERE phone_number = ?", (phone_number,))
-            if hasattr(conn, "commit"): conn.commit()
-            if hasattr(conn, "close"): conn.close()
+            # Persist status
+            try:
+                conn = get_db_connection()
+                conn.execute("UPDATE accounts SET status = 'active' WHERE phone_number = ?", (phone_number,))
+                if hasattr(conn, "commit"): conn.commit()
+                if hasattr(conn, "close"): conn.close()
+            except: pass
             
             self._clients[session_key] = new_client
             return new_client
