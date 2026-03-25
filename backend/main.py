@@ -886,32 +886,51 @@ class ScrapeKeywordRequest(BaseModel):
 
 @app.post("/api/telegram/dialogs")
 async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_current_user_id)):
+    """Fetch all groups and channels for a given phone number, with robust error handling."""
     try:
-        client = await POOL.get_client(user_id, req.phone_number)
-        dialogs_list = []
+        phone = req.phone_number.strip()
+        if not phone:
+            return {"dialogs": [], "error": "No phone number provided"}
+
+        log_debug(f"DIALOGS: Fetching kernel for {phone} (User: {user_id})...")
+        client = await POOL.get_client(user_id, phone)
         
-        # Pull dialogs safely, catching flood or timeout issues at the generator level
+        dialogs_list = []
+        count = 0
+        
         try:
-            async for dialog in client.iter_dialogs(limit=1000):
+            # use a reasonable limit to prevent timeout, but enough to see all groups
+            async for dialog in client.iter_dialogs(limit=1500):
                 if dialog.is_group or dialog.is_channel:
-                    name = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or str(dialog.id)
+                    did = str(dialog.id)
+                    title = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or did
                     dialogs_list.append({
-                        "id": str(dialog.id),
-                        "name": name,
-                        "title": name,
-                        "is_group": dialog.is_group,
-                        "is_channel": dialog.is_channel
+                        "id": did,
+                        "name": title,
+                        "title": title,
+                        "is_group": bool(dialog.is_group),
+                        "is_channel": bool(dialog.is_channel)
                     })
+                    count += 1
+            
+            log_debug(f"DIALOGS: Successfully scanned {count} entities for {phone}.")
         except Exception as dialog_err:
-            log_debug(f"DIALOGS_GENERATOR_ERROR for {req.phone_number}: {str(dialog_err)}")
-            # We already fetched some dialogs, just stop and return what we have instead of crashing the whole page.
+            # If it's a FloodWait, we might have partial results
+            log_debug(f"DIALOGS_ITER_ERROR for {phone}: {str(dialog_err)}")
+            # We return what we found even if it errored midway
             pass
             
         return {"dialogs": dialogs_list}
+    except HTTPException as he:
+        # Pass through 401/403/404 from get_client
+        log_debug(f"DIALOGS_AUTH_ERROR for {req.phone_number}: {he.detail}")
+        return {"dialogs": [], "error": he.detail}
     except Exception as e:
-        log_debug(f"DIALOGS_ERROR for {req.phone_number}: {str(e)}")
-        # Send empty array to avoid breaking the frontend dropdown UI state
-        return {"dialogs": []}
+        log_debug(f"DIALOGS_FATAL_ERROR for {req.phone_number}: {str(e)}")
+        # If it's a fatal disconnect, try to clear the pool entry so it regenerates next time
+        if req.phone_number in POOL._clients:
+            del POOL._clients[req.phone_number]
+        return {"dialogs": [], "error": str(e)}
 
 
 @app.post("/api/telegram/qr/init")
@@ -1273,8 +1292,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
                     # Phrase-based Global Message Search (Discovery Hack)
-                    # Only run this expensive message search on the INITIAL base query, not on every variation suffix!
-                    if q == base_query and (len(q.split()) > 1 or any(x in q.lower() for x in ["need", "who", "build", "looking"])):
+                    # Running this on all variations maximizes discovery from 50 groups to 800+
+                    if True: # Re-enabled for all search queries to restore full volume yield
                         from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
                         from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
                         try:

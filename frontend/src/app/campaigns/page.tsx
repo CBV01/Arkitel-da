@@ -100,9 +100,15 @@ export default function CampaignsPage() {
             if (res.ok) {
                 const data = JSON.parse(text);
                 setDialogs(data.dialogs || []);
+                if (data.error && (data.dialogs || []).length === 0) {
+                    setCreationError(`Account Error: ${data.error}`);
+                } else {
+                    setCreationError("");
+                }
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to fetch dialogs", err);
+            setCreationError(`Failed to load groups: ${err.message}`);
         } finally {
             setFetchingDialogs(false);
         }
