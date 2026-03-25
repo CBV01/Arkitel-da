@@ -897,20 +897,35 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
         
         dialogs_list = []
         try:
-            # use a reasonable limit, but include archived and recently migrated groups
-            async for dialog in client.iter_dialogs(limit=3000, archived=True, ignore_migrated=False):
-                if dialog.is_group or dialog.is_channel:
-                    did = str(dialog.id)
-                    title = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or did
-                    dialogs_list.append({
-                        "id": did,
-                        "name": title,
-                        "title": title,
-                        "is_group": bool(dialog.is_group),
-                        "is_channel": bool(dialog.is_channel)
-                    })
-            
-            log_debug(f"DIALOGS: Successfully scanned {len(dialogs_list)} entities for {phone} (including archived).")
+            # use a reasonable limit, and include archived
+            # Wrap in a timeout to prevent hanging on large accounts
+            async with asyncio.timeout(30):
+                async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
+                    if dialog.is_group or dialog.is_channel:
+                        did = str(dialog.id)
+                        title = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or did
+                        
+                        # Better categorization
+                        is_group = bool(dialog.is_group)
+                        is_channel = bool(dialog.is_channel)
+                        
+                        # In Telethon, supergroups have is_channel=True but are effectively groups
+                        # We can check if it's a megagroup if it's a channel
+                        is_supergroup = False
+                        if is_channel and hasattr(dialog.entity, 'megagroup'):
+                            is_supergroup = bool(dialog.entity.megagroup)
+                        
+                        dialogs_list.append({
+                            "id": did,
+                            "name": title,
+                            "title": title,
+                            "is_group": is_group or is_supergroup,
+                            "is_channel": is_channel and not is_supergroup
+                        })
+                
+                log_debug(f"DIALOGS: Successfully scanned {len(dialogs_list)} entities for {phone}.")
+        except asyncio.TimeoutError:
+            log_debug(f"DIALOGS_TIMEOUT for {phone}: Returning partial list of {len(dialogs_list)}")
         except Exception as dialog_err:
             log_debug(f"DIALOGS_ITER_ERROR for {phone}: {str(dialog_err)}")
             pass

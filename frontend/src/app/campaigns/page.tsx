@@ -91,20 +91,29 @@ export default function CampaignsPage() {
         setFetchingDialogs(true);
         setDialogs([]);
         setCurrentPage(1); // Reset to first page
+        setCreationError(""); // Clear previous errors
+        
         try {
             const res = await apiFetch('/api/telegram/dialogs', {
                 method: 'POST',
                 body: JSON.stringify({ phone_number: phone })
             });
+            
             const text = await res.text();
+            let data: any = {};
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error("Failed to parse JSON", text);
+            }
+
             if (res.ok) {
-                const data = JSON.parse(text);
                 setDialogs(data.dialogs || []);
                 if (data.error && (data.dialogs || []).length === 0) {
                     setCreationError(`Account Error: ${data.error}`);
-                } else {
-                    setCreationError("");
                 }
+            } else {
+                setCreationError(data.detail || data.error || `Server returned ${res.status}: ${res.statusText}`);
             }
         } catch (err: any) {
             console.error("Failed to fetch dialogs", err);
@@ -362,8 +371,8 @@ export default function CampaignsPage() {
     const filteredDialogs = dialogs.filter((d: any) => {
         const matchesSearch = d.title?.toLowerCase().includes(searchTerm.toLowerCase()) || d.id?.toString().includes(searchTerm);
         if (!matchesSearch) return false;
-        if (filterType === 'groups') return d.is_group;
-        if (filterType === 'channels') return d.is_channel && !d.is_group;
+        if (filterType === 'groups') return d.is_group || (d.is_channel && d.name?.toLowerCase().includes('group'));
+        if (filterType === 'channels') return d.is_channel && !d.is_group && !d.name?.toLowerCase().includes('group');
         return true;
     });
 
