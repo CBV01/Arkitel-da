@@ -1299,7 +1299,7 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             # ZERO-COST REFINEMENT: Cross-reference chats ALREADY in the response.
                             # No extra API calls = 50x speed and no Bans.
                             res_chats = getattr(msg_results, 'chats', [])
-                            chat_map = {c.id: c for c in res_chats} if res_chats else {}
+                            if not res_chats: continue
                             
                             res_messages = getattr(msg_results, 'messages', [])
                             for msg in res_messages:
@@ -1308,7 +1308,8 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                                     peer_id = getattr(p_id, 'channel_id', None) or getattr(p_id, 'chat_id', None)
                                     if not peer_id: continue
                                     
-                                    chat = chat_map[peer_id] if peer_id in chat_map else None
+                                    # Safe loop-based lookup avoids complex dict inference lints
+                                    chat = next((c for c in res_chats if getattr(c, 'id', None) == peer_id), None)
                                     if not chat: continue
                                     
                                     cid = str(chat.id)
