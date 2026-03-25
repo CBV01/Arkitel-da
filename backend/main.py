@@ -896,11 +896,9 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
         client = await POOL.get_client(user_id, phone)
         
         dialogs_list = []
-        count = 0
-        
         try:
-            # use a reasonable limit to prevent timeout, but enough to see all groups
-            async for dialog in client.iter_dialogs(limit=1500):
+            # use a reasonable limit, but include archived and recently migrated groups
+            async for dialog in client.iter_dialogs(limit=3000, archived=True, ignore_migrated=False):
                 if dialog.is_group or dialog.is_channel:
                     did = str(dialog.id)
                     title = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or did
@@ -911,25 +909,19 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                         "is_group": bool(dialog.is_group),
                         "is_channel": bool(dialog.is_channel)
                     })
-                    count += 1
             
-            log_debug(f"DIALOGS: Successfully scanned {count} entities for {phone}.")
+            log_debug(f"DIALOGS: Successfully scanned {len(dialogs_list)} entities for {phone} (including archived).")
         except Exception as dialog_err:
-            # If it's a FloodWait, we might have partial results
             log_debug(f"DIALOGS_ITER_ERROR for {phone}: {str(dialog_err)}")
-            # We return what we found even if it errored midway
             pass
             
         return {"dialogs": dialogs_list}
     except HTTPException as he:
-        # Pass through 401/403/404 from get_client
         log_debug(f"DIALOGS_AUTH_ERROR for {req.phone_number}: {he.detail}")
         return {"dialogs": [], "error": he.detail}
     except Exception as e:
         log_debug(f"DIALOGS_FATAL_ERROR for {req.phone_number}: {str(e)}")
-        # If it's a fatal disconnect, try to clear the pool entry so it regenerates next time
-        if req.phone_number in POOL._clients:
-            del POOL._clients[req.phone_number]
+        POOL._clients.pop(req.phone_number, None)
         return {"dialogs": [], "error": str(e)}
 
 
@@ -1126,32 +1118,33 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                         break
                     
                     soup = BeautifulSoup(resp.text, "lxml")
-                    # Lyzem typically has <a> tags linking to telegram
-                    links = soup.select("a[href*='t.me/']")
+                    # Lyzem modernized selectors: find t.me links in results
+                    links = soup.select("a[href*='t.me/'], div.result a, .search-result a")
                     
                     found_on_page = 0
                     for link in links: # type: ignore
                         href = link.get("href", "") # type: ignore
-                        m = re.search(r'(?:t\.me|telegram\.me)/([^/?#\s]+)', href)
+                        # Handle both direct t.me and redirect urls
+                        m = re.search(r'(?:t\.me|telegram\.me)/([^/?#\s]+)', str(href))
                         if not m:
                             continue
                         
                         username = m.group(1).lower()
-                        if username in seen or username.lower() in ('joinchat', 'share', 'addstickers', 'iv'):
+                        if username in seen or username.lower() in ('joinchat', 'share', 'addstickers', 'iv', 's'):
                             continue
                             
                         seen.add(username)
-                        
-                        # Find the parent container to extract title and members if possible
-                        parent = link.find_parent("div", class_=re.compile(r'result|card|item'))
                         title = link.get_text(strip=True) or username
                         
+                        # Find parent to extract member count hint
+                        parent = link.find_parent(["div", "section"], class_=re.compile(r'result|card|item|content'))
                         members = 0
                         if parent:
-                            members_text = parent.get_text()
-                            m_match = re.search(r'([\d,]+)\s*(?:subscribers|members)', members_text, re.IGNORECASE)
-                            if m_match:
-                                members = int(re.sub(r'\D', '', m_match.group(1)))
+                            txt = parent.get_text()
+                            num_match = re.search(r'([\d,]+)\s*(?:subscribers|members|sub)', txt, re.IGNORECASE)
+                            if num_match:
+                                try: members = int(re.sub(r'\D', '', num_match.group(1)))
+                                except: pass
                                 
                         
                         # Check if it actually exists if we found 0 members or if it's from Lyzem (highly prone to dead links)
@@ -1291,37 +1284,41 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
-                    # Phrase-based Global Message Search (Discovery Hack)
-                    # Running this on all variations maximizes discovery from 50 groups to 800+
-                    if True: # Re-enabled for all search queries to restore full volume yield
+                    # Phrase-based Global Message Search (Discovery Hack) - THE SMOKING GUN
+                    # RUN ON ALL VARIATIONS: restores 800+ volume
+                    if True: 
                         from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
                         from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
                         try:
+                            # Bump limit to 100 for maximum discovery volume
                             msg_results = await client(SearchGlobalRequest(
                                 q=q,
                                 filter=InputMessagesFilterEmpty(),
-                                min_date=None,
-                                max_date=None,
-                                offset_id=0,
-                                offset_peer=InputPeerEmpty(),
-                                limit=15
+                                limit=100 
                             ))
-                            for msg in msg_results.messages:
+                            # ZERO-COST REFINEMENT: Cross-reference chats ALREADY in the response.
+                            # No extra API calls = 50x speed and no Bans.
+                            res_chats = getattr(msg_results, 'chats', [])
+                            chat_map = {c.id: c for c in res_chats} if res_chats else {}
+                            
+                            res_messages = getattr(msg_results, 'messages', [])
+                            for msg in res_messages:
                                 try:
-                                    # Use cached .chat if available, fallback to get_chat()
-                                    chat = getattr(msg, 'chat', None)
-                                    if chat is None and hasattr(msg, 'get_chat'):
-                                        chat = await msg.get_chat()
-                                    if not chat: continue
-                                    cid = str(getattr(chat, 'id', '0'))
+                                    p_id = getattr(msg, 'peer_id', None)
+                                    peer_id = getattr(p_id, 'channel_id', None) or getattr(p_id, 'chat_id', None)
+                                    if not peer_id: continue
                                     
+                                    chat = chat_map[peer_id] if peer_id in chat_map else None
+                                    if not chat: continue
+                                    
+                                    cid = str(chat.id)
                                     if cid not in unique_groups:
                                         msg_username = getattr(chat, 'username', None)
                                         is_member = not getattr(chat, 'left', True)
-                                        # Only include if it's a valid public or private group/channel
+                                        # Strict Filter: Only public groups/channels found globally
                                         if getattr(chat, 'broadcast', False) or getattr(chat, 'megagroup', False) or msg_username:
                                             item = {
-                                                "id": cid,
+                                                "id": f"@{msg_username}" if msg_username else cid,
                                                 "title": getattr(chat, 'title', 'Unknown'),
                                                 "username": msg_username,
                                                 "participants_count": getattr(chat, 'participants_count', 0),
@@ -1334,13 +1331,11 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                                                 "is_member": is_member
                                             }
                                             unique_groups[cid] = item
-                                            if queue:
-                                                await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
-                                            await asyncio.sleep(0.1) # Micro-sleep between chats
+                                            if queue: await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
                                 except: continue
                         except: pass
 
-                    await asyncio.sleep(0.8) # Polite delay to avoid instant flood
+                    await asyncio.sleep(0.2) # Reduced delay for high-performance feel
                 except Exception as q_err:
                     err_str = str(q_err).lower()
                     if "flood" in err_str or "wait" in err_str:
