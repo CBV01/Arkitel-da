@@ -904,7 +904,7 @@ class ScrapeKeywordRequest(BaseModel):
 
 @app.post("/api/telegram/dialogs")
 async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_current_user_id)):
-    """Fetch all groups and channels for a given phone number, with robust error handling."""
+    """Fetch all groups and channels for a given phone number, with robust error reporting."""
     try:
         phone = req.phone_number.strip()
         if not phone:
@@ -915,9 +915,8 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
         
         dialogs_list = []
         try:
-            # use a reasonable limit, and include archived
-            # Wrap in a timeout to prevent hanging on large accounts
-            async with asyncio.timeout(30):
+            # use a long timeout, and include archived
+            async with asyncio.timeout(60):
                 async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
                     if dialog.is_group or dialog.is_channel:
                         did = str(dialog.id)
@@ -927,11 +926,10 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                         is_group = bool(dialog.is_group)
                         is_channel = bool(dialog.is_channel)
                         
-                        # In Telethon, supergroups have is_channel=True but are effectively groups
-                        # We can check if it's a megagroup if it's a channel
+                        # Fix for Telethon Megagroups (Supergroups)
                         is_supergroup = False
                         if is_channel and hasattr(dialog.entity, 'megagroup'):
-                            is_supergroup = bool(dialog.entity.megagroup)
+                            is_supergroup = bool(dialog.entity.megagroup) # type: ignore
                         
                         dialogs_list.append({
                             "id": did,
@@ -943,10 +941,17 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                 
                 log_debug(f"DIALOGS: Successfully scanned {len(dialogs_list)} entities for {phone}.")
         except asyncio.TimeoutError:
-            log_debug(f"DIALOGS_TIMEOUT for {phone}: Returning partial list of {len(dialogs_list)}")
+            log_debug(f"DIALOGS_TIMEOUT: {phone}. Returning {len(dialogs_list)} partial.")
+            if not dialogs_list:
+                return {"dialogs": [], "error": "Request timed out after 60s. This account might have too many groups or a slow connection. Please try again."}
         except Exception as dialog_err:
-            log_debug(f"DIALOGS_ITER_ERROR for {phone}: {str(dialog_err)}")
-            pass
+            err_str = str(dialog_err)
+            log_debug(f"DIALOGS_ITER_ERROR for {phone}: {err_str}")
+            if not dialogs_list:
+                # If it's a FloodWait, the user should see it!
+                if "flood" in err_str.lower():
+                    return {"dialogs": [], "error": f"Telegram is rate-limiting this request (FloodWait). Please wait a few minutes before trying to browse groups for this account."}
+                return {"dialogs": [], "error": f"Internal Error: {err_str}"}
             
         return {"dialogs": dialogs_list}
     except HTTPException as he:
