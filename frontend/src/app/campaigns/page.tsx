@@ -568,7 +568,11 @@ export default function CampaignsPage() {
                                                     className="w-full bg-input border border-border rounded-xl py-3 px-4 text-sm text-foreground focus:ring-2 focus:ring-indigo-500/50 outline-none"
                                                 >
                                                     <option value="">Select an account...</option>
-                                                    {accounts.map((acc, idx) => (<option key={idx} value={acc.phone_number}>{acc.phone_number}</option>))}
+                                                    {accounts.map((acc, idx) => (
+                                                        <option key={idx} value={acc.phone_number}>
+                                                            {acc.phone_number} {acc.status !== 'active' ? `(${acc.status.toUpperCase()})` : ''}
+                                                        </option>
+                                                    ))}
                                                 </select>
                                             </div>
 
@@ -695,6 +699,16 @@ export default function CampaignsPage() {
                                                 <div className="flex gap-3">
                                                     <span className="text-[10px] font-bold text-indigo-500">{selectedGroups.length} Included</span>
                                                     <span className="text-[10px] font-bold text-red-500">{excludedGroups.length} Excluded</span>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => fetchDialogs(campaignData.phone_number)}
+                                                        disabled={fetchingDialogs}
+                                                        className="p-1.5 hover:bg-foreground/10 rounded-lg text-indigo-400 disabled:opacity-30 flex items-center gap-1 transition-all"
+                                                        title="Force Refresh Groups"
+                                                    >
+                                                        <Clock size={12} className={fetchingDialogs ? "animate-spin" : ""} />
+                                                        <span className="text-[10px] font-bold uppercase tracking-tight">Refresh</span>
+                                                    </button>
                                                 </div>
                                             </div>
 

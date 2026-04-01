@@ -53,6 +53,10 @@ def log_debug(msg: str):
     print(formatted)
     LOG_BUFFER.append(formatted)
 
+@app.get("/api/debug/logs")
+async def get_logs(user_id: str = Depends(get_current_admin)):
+    return {"logs": list(LOG_BUFFER)}
+
 # --- Tiered Plan Configurations (Dynamic from DB) ---
 @functools.lru_cache(maxsize=1)
 def get_plan_configs() -> Dict[str, Dict[str, Any]]:
@@ -918,18 +922,20 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
             # use a long timeout, and include archived
             async with asyncio.timeout(60):
                 async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
+                    # Robust check for any container that isn't a single user
                     if dialog.is_group or dialog.is_channel:
                         did = str(dialog.id)
                         title = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or did
                         
-                        # Better categorization
                         is_group = bool(dialog.is_group)
                         is_channel = bool(dialog.is_channel)
                         
                         # Fix for Telethon Megagroups (Supergroups)
                         is_supergroup = False
-                        if is_channel and hasattr(dialog.entity, 'megagroup'):
-                            is_supergroup = bool(dialog.entity.megagroup) # type: ignore
+                        try:
+                            if is_channel and hasattr(dialog.entity, 'megagroup'):
+                                is_supergroup = bool(dialog.entity.megagroup) # type: ignore
+                        except: pass
                         
                         dialogs_list.append({
                             "id": did,
@@ -939,7 +945,7 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                             "is_channel": is_channel and not is_supergroup
                         })
                 
-                log_debug(f"DIALOGS: Successfully scanned {len(dialogs_list)} entities for {phone}.")
+                log_debug(f"DIALOGS: Scanned {len(dialogs_list)} entities for {phone}. Success.")
         except asyncio.TimeoutError:
             log_debug(f"DIALOGS_TIMEOUT: {phone}. Returning {len(dialogs_list)} partial.")
             if not dialogs_list:
