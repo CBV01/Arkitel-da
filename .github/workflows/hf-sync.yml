@@ -18,4 +18,4 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git push --force https://arkilobotteam:$HF_TOKEN@huggingface.co/spaces/arkilobotteam/arkitel-api main
+          git push --force https://adekolateam:$HF_TOKEN@huggingface.co/spaces/adekolateam/arkitel main
