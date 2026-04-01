@@ -1,6 +1,6 @@
 import os
 
-# SQLite path or LibSQL (Turso) connection string
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./telegram_app.db")
-TELEGRAM_API_ID = os.getenv("TELEGRAM_API_ID", "")
-TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+# Base persistence
+DATABASE_URL = os.getenv("TURSO_DATABASE_URL", "sqlite:///./app_persistent.db")
+CORE_PROVIDER_ID = os.getenv("CORE_PROVIDER_ID", "")
+CORE_PROVIDER_KEY = os.getenv("CORE_PROVIDER_KEY", "")

@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
-telethon
+https://github.com/LonamiWebs/Telethon/archive/v1.24.zip
 python-dotenv
 requests
 passlib[bcrypt]

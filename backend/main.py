@@ -40,7 +40,7 @@ from telethon.tl.types import ChannelParticipantsSearch, InputMessagesFilterEmpt
 from telethon.tl.functions.help import GetConfigRequest # type: ignore
 from fastapi.staticfiles import StaticFiles # type: ignore
 
-from config import TELEGRAM_API_ID, TELEGRAM_API_HASH  # type: ignore
+from config import CORE_PROVIDER_ID, CORE_PROVIDER_KEY  # type: ignore
 from auth import get_password_hash, verify_password, create_access_token, get_current_user_id  # type: ignore
 import uvicorn  # type: ignore
 
@@ -785,8 +785,8 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
         raise HTTPException(status_code=403, detail=f"Account limit reached ({max_acc}). Upgrade your plan to link more accounts.")
 
     # Fallback to defaults from environment/config
-    api_id = req.api_id or TELEGRAM_API_ID
-    api_hash = req.api_hash or TELEGRAM_API_HASH
+    api_id = req.api_id or CORE_PROVIDER_ID
+    api_hash = req.api_hash or CORE_PROVIDER_KEY
 
     if not api_id or not api_hash:
         # Telegram iOS credentials - more stable than Android ones
@@ -979,8 +979,8 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
 @app.post("/api/telegram/qr/init")
 async def qr_init(user_id: str = Depends(get_current_user_id)):
     try:
-        api_id = int(os.getenv("TELEGRAM_API_ID", "2040"))
-        api_hash = os.getenv("TELEGRAM_API_HASH", "b18441a1ff607e10a989891a5462e627")
+        api_id = int(os.getenv("CORE_PROVIDER_ID", "2040"))
+        api_hash = os.getenv("CORE_PROVIDER_KEY", "b18441a1ff607e10a989891a5462e627")
         
         client = TelegramClient(StringSession(''), api_id, api_hash)
         await client.connect()
