@@ -134,17 +134,24 @@ async def lifespan(app: FastAPI):
         print("CORE: Database Schema Initialized.")
         
         # Cleanup stuck tasks
-        conn = get_db_connection()
-        conn.execute("UPDATE tasks SET status = 'pending' WHERE status = 'processing'")
-        if hasattr(conn, "commit"): conn.commit()
-        if hasattr(conn, "close"): conn.close()
-        print("CORE: Stuck tasks reset to pending.")
-    except Exception as e:
-        print(f"CORE: Database Initialization ERROR: {e}")
+        try:
+            conn = get_db_connection()
+            conn.execute("UPDATE tasks SET status = 'pending' WHERE status = 'processing'")
+            if hasattr(conn, "commit"): conn.commit()
+            if hasattr(conn, "close"): conn.close()
+            print("CORE: Stuck tasks reset to pending.")
+        except Exception as db_e:
+            log_debug(f"CORE_DB_CLEANUP_ERROR: {db_e}")
 
-    print("CORE: Starting Task Automation Poller...")
-    poller_task = asyncio.create_task(task_poller())
-    print("CORE: System Ready and Poller Started.")
+        print("CORE: Starting Task Automation Poller...")
+        poller_task = asyncio.create_task(task_poller())
+        print("CORE: System Ready and Poller Started.")
+    except Exception as e:
+        log_debug(f"CRITICAL_STARTUP_ERROR: {e}")
+        print(f"CRITICAL_STARTUP_ERROR: {e}")
+        # We DO NOT re-raise, so the FastAPI server can still start on port 7860
+        # and we can debug it via the UI if needed.
+        poller_task = None # type: ignore
     
     yield
     
