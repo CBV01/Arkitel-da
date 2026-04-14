@@ -109,7 +109,9 @@ export default function LeadsPage() {
                 setAccounts(accs);
                 if (accs.length > 0) setExtractingPhone(accs[0].phone_number);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error("Operation failed:", e);
+        }
     };
 
     const handleBulkJoin = async () => {
@@ -279,7 +281,9 @@ export default function LeadsPage() {
             if (res.ok) {
                 fetchAllLeads();
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error("Operation failed:", e);
+        }
     };
 
     const handleExtract = async () => {

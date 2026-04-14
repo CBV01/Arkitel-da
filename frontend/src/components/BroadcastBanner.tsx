@@ -21,7 +21,9 @@ export function BroadcastBanner() {
                     const data = await res.json();
                     setBroadcasts(data.broadcasts || []);
                 }
-            } catch (e) {}
+            } catch (e) {
+                console.error("Failed to fetch broadcasts:", e);
+            }
         };
 
         fetchBroadcasts();

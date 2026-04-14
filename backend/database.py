@@ -8,6 +8,8 @@ Falls back to local SQLite if TURSO_DATABASE_URL is not set.
 import os
 import sqlite3
 import json
+import secrets
+import random
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -161,6 +163,29 @@ class TursoConnection:
 # Public helpers
 # ---------------------------------------------------------------------------
 
+class DbConnectionManager:
+    """Context manager for safe database connection handling."""
+    def __init__(self):
+        self.conn = None
+
+    def __enter__(self):
+        self.conn = get_db_connection()
+        return self.conn
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            try:
+                if hasattr(self.conn, "commit") and exc_type is None:
+                    self.conn.commit()
+            except Exception as e:
+                print(f"Error committing transaction: {e}")
+            try:
+                if hasattr(self.conn, "close"):
+                    self.conn.close()
+            except Exception as e:
+                print(f"Error closing connection: {e}")
+        return False  # Don't suppress exceptions
+
 def get_db_connection() -> Any:
     db_url = os.getenv("TURSO_DATABASE_URL", "")
     auth_token = os.getenv("TURSO_AUTH_TOKEN", "")
@@ -175,6 +200,10 @@ def get_db_connection() -> Any:
     conn = sqlite3.connect(local_path)
     conn.row_factory = sqlite3.Row
     return conn
+
+def get_db():
+    """Alias for get_db_connection for cleaner imports."""
+    return get_db_connection()
 
 
 def init_db():
@@ -350,15 +379,23 @@ def init_db():
     for col_name, col_type in needed_cols:
         try:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {col_name} {col_type}")
-        except:
-            pass # Column likely exists
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                print(f"Warning: Could not add column {col_name} to accounts: {e}")
+        except Exception as e:
+            print(f"Unexpected error adding column {col_name}: {e}")
 
     # Migration for leads table
     try:
         conn.execute("ALTER TABLE leads ADD COLUMN type TEXT DEFAULT 'group'")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column type to leads: {e}")
+    try:
         conn.execute("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraper'")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column source to leads: {e}")
 
     # Migration for users table (Premium Features & Plan Limits)
     user_cols = [
@@ -381,9 +418,12 @@ def init_db():
     for col_name, col_def in user_cols:
         try:
             conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
-        except:
-            pass
-            
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                print(f"Warning: Could not add column {col_name} to users: {e}")
+        except Exception as e:
+            print(f"Unexpected error adding column {col_name} to users: {e}")
+
     # Migration for coupons table
     coupon_cols = [
         ("max_daily_campaigns", "INTEGER"),
@@ -393,38 +433,46 @@ def init_db():
     for col_name, col_def in coupon_cols:
         try:
             conn.execute(f"ALTER TABLE coupons ADD COLUMN {col_name} {col_def}")
-        except:
-            pass
-    
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                print(f"Warning: Could not add column {col_name} to coupons: {e}")
+        except Exception as e:
+            print(f"Unexpected error adding column {col_name} to coupons: {e}")
+
     # Migration for tasks table: interval_minutes
     try:
         conn.execute("ALTER TABLE tasks ADD COLUMN interval_minutes INTEGER DEFAULT 0")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column interval_minutes to tasks: {e}")
 
     # Migration for tasks table: exclude_groups
     try:
         conn.execute("ALTER TABLE tasks ADD COLUMN exclude_groups TEXT DEFAULT '[]'")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column exclude_groups to tasks: {e}")
 
     # Migration for tasks table: processed_groups
     try:
         conn.execute("ALTER TABLE tasks ADD COLUMN processed_groups TEXT DEFAULT '[]'")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column processed_groups to tasks: {e}")
 
     # Migration for plans table: max_templates
     try:
         conn.execute("ALTER TABLE plans ADD COLUMN max_templates INTEGER DEFAULT 1")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column max_templates to plans: {e}")
 
     # Migration for users table: max_templates
     try:
         conn.execute("ALTER TABLE users ADD COLUMN max_templates INTEGER DEFAULT 1")
-    except:
-        pass
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            print(f"Warning: Could not add column max_templates to users: {e}")
 
     # Update seeding to match user's explicit request: Free(1), Basic(1), Standard(2), Premium(2), Unlimited(999)
     # Prices: Basic: 2000, Standard: 3500, Premium: 5000
@@ -442,9 +490,47 @@ def init_db():
             p
         )
 
-    # Seed default settings
-    conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', 'admin123')")
-    conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('global_passkey', '123456')")
+    # Seed default settings with secure random values if not already set
+    # Generate secure admin password
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    if not admin_password:
+        # Try to read from existing .env or generate new
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r") as f:
+                for line in f:
+                    if line.startswith("ADMIN_PASSWORD="):
+                        admin_password = line.split("=", 1)[1].strip()
+                        break
+        if not admin_password:
+            admin_password = secrets.token_urlsafe(8)
+            # Save to .env
+            try:
+                with open(env_path, "a") as f:
+                    f.write(f"ADMIN_PASSWORD={admin_password}\n")
+            except (IOError, OSError) as e:
+                print(f"DB_INIT: Failed to save ADMIN_PASSWORD to .env: {e}")
+
+    # Generate secure global passkey
+    global_passkey = os.getenv("GLOBAL_PASSKEY")
+    if not global_passkey:
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r") as f:
+                for line in f:
+                    if line.startswith("GLOBAL_PASSKEY="):
+                        global_passkey = line.split("=", 1)[1].strip()
+                        break
+        if not global_passkey:
+            global_passkey = str(random.randint(100000, 999999))
+            try:
+                with open(env_path, "a") as f:
+                    f.write(f"GLOBAL_PASSKEY={global_passkey}\n")
+            except (IOError, OSError) as e:
+                print(f"DB_INIT: Failed to save GLOBAL_PASSKEY to .env: {e}")
+
+    conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('admin_password', ?)", (admin_password,))
+    conn.execute("INSERT OR IGNORE INTO system_settings (key, value) VALUES ('global_passkey', ?)", (global_passkey,))
     
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()

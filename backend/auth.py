@@ -1,14 +1,35 @@
 import os
 import hashlib
 import binascii
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt  # type: ignore
 from fastapi import Depends, HTTPException, status, Request  # type: ignore
 from fastapi.security import OAuth2PasswordBearer  # type: ignore
 
-# Configuration
-SECRET_KEY = os.getenv("JWT_SECRET", "super-secret-key-change-this-in-production")
+# Configuration - Generate secure random secret if none provided
+def _get_or_create_secret() -> str:
+    """Get JWT secret from env or generate and save a secure one."""
+    env_secret = os.getenv("JWT_SECRET")
+    if env_secret and env_secret != "super-secret-key-change-this-in-production":
+        return env_secret
+    # Generate and save a cryptographically secure secret
+    secure_secret = secrets.token_urlsafe(32)
+    # Try to save to .env file for persistence
+    try:
+        env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r") as f:
+                content = f.read()
+            if "JWT_SECRET" not in content:
+                with open(env_path, "a") as f:
+                    f.write(f"\nJWT_SECRET={secure_secret}\n")
+    except (IOError, OSError) as e:
+        print(f"AUTH_INIT: Failed to save JWT_SECRET to .env: {e}")
+    return secure_secret
+
+SECRET_KEY = _get_or_create_secret()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 

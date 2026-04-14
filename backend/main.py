@@ -47,15 +47,46 @@ import uvicorn  # type: ignore
 # Simple in-memory log buffer
 LOG_BUFFER = collections.deque(maxlen=100)
 
+# Rate limiting storage (in-memory for simplicity)
+RATE_LIMIT_STORE: Dict[str, Dict[str, Any]] = {}
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX_REQUESTS = 10  # max requests per window for auth endpoints
+
+def check_rate_limit(client_ip: str, endpoint: str = "default") -> bool:
+    """Check if client has exceeded rate limit. Returns True if allowed, False if limited."""
+    now = datetime.now(timezone.utc).timestamp()
+    key = f"{client_ip}:{endpoint}"
+
+    if key not in RATE_LIMIT_STORE:
+        RATE_LIMIT_STORE[key] = {"count": 0, "window_start": now}
+
+    record = RATE_LIMIT_STORE[key]
+
+    # Reset window if expired
+    if now - record["window_start"] > RATE_LIMIT_WINDOW:
+        record["count"] = 0
+        record["window_start"] = now
+
+    record["count"] += 1
+
+    if record["count"] > RATE_LIMIT_MAX_REQUESTS:
+        log_debug(f"RATE_LIMIT: {client_ip} exceeded limit on {endpoint}")
+        return False
+
+    return True
+
+def get_client_ip(request: Request) -> str:
+    """Extract client IP from request, handling proxies."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
 def log_debug(msg: str):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     formatted = f"[{timestamp}] {msg}"
     print(formatted)
     LOG_BUFFER.append(formatted)
-
-@app.get("/api/debug/logs")
-async def get_logs(user_id: str = Depends(get_current_admin)):
-    return {"logs": list(LOG_BUFFER)}
 
 # --- Tiered Plan Configurations (Dynamic from DB) ---
 @functools.lru_cache(maxsize=1)
@@ -119,8 +150,10 @@ def check_and_reset_daily_limits(conn, user_id, user_row):
                 )
                 if hasattr(conn, "commit"): conn.commit()
                 return True
-        except:
-            pass
+        except ValueError as e:
+            log_debug(f"SUBSCRIPTION: Invalid date format for {user_id}: {e}")
+        except Exception as e:
+            log_debug(f"SUBSCRIPTION: Error checking expiry for {user_id}: {e}")
 
     return False
 
@@ -207,14 +240,17 @@ async def verify_telegram_info(username: str) -> Dict[str, Any]:
                     members = int(re.sub(r'\D', '', m.group(1)))
             
             return {
-                "exists": True, 
-                "participants_count": members, 
+                "exists": True,
+                "participants_count": members,
                 "title": title_elem.get_text(strip=True)
             }
-    except:
-        # Fallback to assuming it exists if the check itself fails (e.g. network error)
-        return {"exists": True, "participants_count": 0}
-    
+    except httpx.HTTPError as e:
+        log_debug(f"TG_VERIFY: HTTP error checking {username}: {e}")
+        return {"exists": True, "participants_count": 0}  # Assume exists on network error
+    except Exception as e:
+        log_debug(f"TG_VERIFY: Error checking {username}: {e}")
+        return {"exists": True, "participants_count": 0}  # Assume exists on error
+
     # Final default return for safety
     return {"exists": True, "participants_count": 0}
 
@@ -252,6 +288,11 @@ app.add_middleware(
 if not os.path.exists("static/avatars"):
     os.makedirs("static/avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Debug endpoint for logs (must be after app initialization)
+@app.get("/api/debug/logs")
+async def get_logs(user_id: str = Depends(get_current_admin)):
+    return {"logs": list(LOG_BUFFER)}
 
 async def fetch_tg_profile_data(client: TelegramClient, phone_number: str):
     """Fetches profile details and downloads photo for an authenticated client."""
@@ -326,13 +367,15 @@ async def resolve_tg_entity(client, target):
                 # Try as-is
                 entity = await client.get_entity(int(target_str))
                 return entity
-            except Exception:
+            except Exception as e:
+                log_debug(f"RESOLVE: Direct ID resolve failed: {e}")
                 # If it's a positive number, try adding -100 prefix (common for Channels/Supergroups)
                 if not target_str.startswith('-'):
                     try:
                         entity = await client.get_entity(int(f"-100{target_str}"))
                         return entity
-                    except: pass
+                    except Exception as e2:
+                        log_debug(f"RESOLVE: -100 prefix resolve failed: {e2}")
         
         # 3. Try resolving as invite link / URL
         if "t.me/" in target_str or "telegram.me/" in target_str:
@@ -379,10 +422,13 @@ async def resolve_tg_entity(client, target):
             if row and row[0]:
                 try:
                     entity = await client.get_entity(row[0])
+                    if hasattr(conn, "close"): conn.close()
                     return entity
-                except: pass
+                except Exception as e:
+                    log_debug(f"RESOLVE: DB lookup resolve failed for {row[0]}: {e}")
             if hasattr(conn, "close"): conn.close()
-        except: pass
+        except Exception as e:
+            log_debug(f"RESOLVE: DB lookup failed: {e}")
 
     except Exception as gl_e:
         log_debug(f"RESOLVE_FATAL_ERR for {target}: {str(gl_e)}")
@@ -550,28 +596,29 @@ class TelegramPool:
                 me = await new_client.get_me() if not hasattr(new_client, 'me_cache') else getattr(new_client, 'me_cache')
                 new_client.me_cache = me # type: ignore # Simple custom cache
                 log_debug(f"POOL: Node {phone_number} ( @{getattr(me,'username','?')} ) online.")
-            except: pass
-            
+            except Exception as e:
+                log_debug(f"POOL: Warning - get_me failed for {phone_number}: {e}")
+
             # Persist status
             try:
                 conn = get_db_connection()
                 conn.execute("UPDATE accounts SET status = 'active' WHERE phone_number = ?", (phone_number,))
                 if hasattr(conn, "commit"): conn.commit()
                 if hasattr(conn, "close"): conn.close()
-            except: pass
+            except Exception as e:
+                log_debug(f"POOL: Failed to persist status for {phone_number}: {e}")
             
             self._clients[session_key] = new_client
             return new_client
 
     async def disconnect_all(self):
-
         """Cleans up all clients on server shutdown."""
         log_debug(f"POOL: Terminating {len(self._clients)} active node sessions...")
         for client in self._clients.values():
             try:
                 await client.disconnect()
-            except:
-                pass
+            except Exception as e:
+                log_debug(f"POOL: Error disconnecting client: {e}")
         self._clients.clear()
 
 # Initialize Global Instance
@@ -676,74 +723,124 @@ class PermanentExcludeRequest(BaseModel):
 # --- Authentication Endpoints ---
 
 @app.post("/api/auth/register")
-async def register(user: UserRegister):
+async def register(request: Request, user: UserRegister):
+    # Rate limiting
+    client_ip = get_client_ip(request)
+    if not check_rate_limit(client_ip, "register"):
+        raise HTTPException(status_code=429, detail="Too many registration attempts. Please try again later.")
+
+    # Input validation
+    if not user.username or len(user.username.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Username is required")
+    if len(user.username.strip()) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(user.username) > 50:
+        raise HTTPException(status_code=400, detail="Username must be less than 50 characters")
+    if not user.password or len(user.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(user.password) > 128:
+        raise HTTPException(status_code=400, detail="Password must be less than 128 characters")
+
     conn = get_db_connection()
     # Check if user exists
-    user_check = conn.execute("SELECT id FROM users WHERE username = ?", (user.username,)).fetchone()
+    user_check = conn.execute("SELECT id FROM users WHERE username = ?", (user.username.strip(),)).fetchone()
     if user_check:
         if hasattr(conn, "close"): conn.close()
         raise HTTPException(status_code=400, detail="Username already taken")
-    
+
     user_id = str(uuid.uuid4())
     pw_hash = get_password_hash(user.password)
-    
+
     conn.execute(
         "INSERT INTO users (id, username, password_hash, role, email) VALUES (?, ?, ?, ?, ?)",
-        (user_id, user.username, pw_hash, "user", user.email)
+        (user_id, user.username.strip(), pw_hash, "user", user.email)
     )
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
-    print(f"AUTH: Registered new user {user.username} with ID {user_id}")
+    log_debug(f"AUTH: Registered new user '{user.username}' from {client_ip}")
     return {"status": "success", "message": "Registered successfully"}
 
 @app.post("/api/auth/login")
-async def login(user: UserRegister):
+async def login(request: Request, user: UserRegister):
+    # Rate limiting
+    client_ip = get_client_ip(request)
+    if not check_rate_limit(client_ip, "login"):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
+
+    # Input validation
+    if not user.username or len(user.username.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Username is required")
+    if not user.password or len(user.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
     conn = get_db_connection()
-    db_user = conn.execute("SELECT id, password_hash, role FROM users WHERE username = ?", (user.username,)).fetchone()
+    db_user = conn.execute("SELECT id, password_hash, role FROM users WHERE username = ?", (user.username.strip(),)).fetchone()
     if hasattr(conn, "close"): conn.close()
-    
+
     if not db_user or not verify_password(user.password, db_user[1]):
+        log_debug(f"AUTH_FAILED: Login attempt for user '{user.username}' from {client_ip}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    
+
+    log_debug(f"AUTH_SUCCESS: User '{user.username}' logged in from {client_ip}")
     access_token = create_access_token(data={"sub": db_user[0], "role": db_user[2]})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/api/auth/admin-login")
-async def admin_login(req: AdminLoginRequest):
+async def admin_login(request: Request, req: AdminLoginRequest):
+    # Rate limiting - stricter for admin login
+    client_ip = get_client_ip(request)
+    if not check_rate_limit(client_ip, "admin_login"):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+
+    # Input validation
+    if not req.password or len(req.password) == 0:
+        raise HTTPException(status_code=400, detail="Password is required")
+
     conn = get_db_connection()
     # Check if a passkey exists in settings. Use 'admin_password' or fallback to 'global_passkey'
     row = conn.execute("SELECT value FROM system_settings WHERE key = 'admin_password'").fetchone()
     if not row:
         row = conn.execute("SELECT value FROM system_settings WHERE key = 'global_passkey'").fetchone()
-    
+
     if hasattr(conn, "close"): conn.close()
-    
+
     # Default admin password if none ever set
-    admin_pw = row[0] if row else "admin123" 
-    
+    admin_pw = row[0] if row else "admin123"
+
     if req.password != admin_pw:
+        log_debug(f"ADMIN_AUTH_FAILED: Admin login attempt from {client_ip}")
         raise HTTPException(status_code=401, detail="Invalid administrative password")
-    
+
+    log_debug(f"ADMIN_AUTH_SUCCESS: Admin logged in from {client_ip}")
     access_token = create_access_token(data={"sub": "admin_virtual_id", "role": "admin"})
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/api/auth/verify-passkey")
-async def verify_passkey(req: PasskeyVerify, user_id: str = Depends(get_current_user_id)):
+async def verify_passkey(request: Request, req: PasskeyVerify, user_id: str = Depends(get_current_user_id)):
+    # Rate limiting
+    client_ip = get_client_ip(request)
+    if not check_rate_limit(client_ip, "verify_passkey"):
+        raise HTTPException(status_code=429, detail="Too many attempts. Please try again later.")
+
+    # Input validation
+    if not req.passkey or len(req.passkey) == 0:
+        raise HTTPException(status_code=400, detail="Passkey is required")
+
     conn = get_db_connection()
     # Fetch global passkey
     stored_passkey = conn.execute("SELECT value FROM system_settings WHERE key = 'global_passkey'").fetchone()
     if not stored_passkey:
-        # Default passkey if none set (e.g., initial setup)
-        # You should probably set this during init_db or admin setup
-        stored_passkey = ["123456"] 
-    
+        stored_passkey = ["123456"]
+
     if req.passkey != stored_passkey[0]:
+        log_debug(f"PASSKEY_FAILED: Invalid passkey attempt for user {user_id} from {client_ip}")
         if hasattr(conn, "close"): conn.close()
         raise HTTPException(status_code=401, detail="Invalid passkey")
-    
+
     conn.execute("UPDATE users SET passkey_verified = 1 WHERE id = ?", (user_id,))
     if hasattr(conn, "commit"): conn.commit()
     if hasattr(conn, "close"): conn.close()
+    log_debug(f"PASSKEY_SUCCESS: User {user_id} verified passkey")
     return {"status": "success"}
 
 @app.get("/api/auth/me")
@@ -768,19 +865,29 @@ async def get_me(user_id: str = Depends(get_current_user_id)):
 
 @app.post("/api/telegram/send-code")
 async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_user_id)):
+    # Input validation
+    if not req.phone_number or len(req.phone_number.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    # Basic phone number format validation (should start with + and have digits)
+    phone_clean = req.phone_number.strip()
+    if not phone_clean.startswith('+') or not phone_clean[1:].replace(' ', '').replace('-', '').isdigit():
+        raise HTTPException(status_code=400, detail="Invalid phone number format. Use +1234567890")
+    if len(phone_clean.replace(' ', '').replace('-', '')) < 10:
+        raise HTTPException(status_code=400, detail="Phone number too short")
+
     # Limit check
     conn = get_db_connection()
     user = conn.execute("SELECT max_accounts, plan FROM users WHERE id = ?", (user_id,)).fetchone()
     count_row = conn.execute("SELECT COUNT(*) FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
     if hasattr(conn, "close"): conn.close()
-    
+
     plan = (user["plan"] if user else "free") or "free"
     plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
-    
+
     # Use user-specific override or fallback to plan default
     max_acc = user["max_accounts"] if user and user["max_accounts"] is not None else plan_cfg["max_accounts"]
     current_count = count_row[0] if count_row else 0
-    
+
     if user_id != "admin_virtual_id" and plan != "unlimited" and current_count >= max_acc:
         raise HTTPException(status_code=403, detail=f"Account limit reached ({max_acc}). Upgrade your plan to link more accounts.")
 
@@ -789,10 +896,9 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
     api_hash = req.api_hash or CORE_PROVIDER_KEY
 
     if not api_id or not api_hash:
-        # Telegram iOS credentials - more stable than Android ones
         api_id = "2040"
         api_hash = "b18441a1ff607e10a989891a5462e627"
-        
+
     try:
         # Each login can use its own API ID and Hash
         client = TelegramClient(StringSession(), int(api_id), api_hash)
@@ -817,15 +923,23 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
 
 @app.post("/api/telegram/verify-code")
 async def verify_code(req: VerifyCodeRequest, user_id: str = Depends(get_current_user_id)):
+    # Input validation
+    if not req.phone_number or len(req.phone_number.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    if not req.code or len(req.code.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Verification code is required")
+    if not req.phone_code_hash or len(req.phone_code_hash) == 0:
+        raise HTTPException(status_code=400, detail="Phone code hash is required")
+
     auth_key = f"{user_id}:{req.phone_number}"
     session_data = auth_sessions.get(auth_key)
     if not session_data:
         raise HTTPException(status_code=400, detail="Login session expired or phone number mismatch. Please request a new code.")
-    
+
     client = session_data["client"]
     api_id = int(session_data["api_id"])
     api_hash = session_data["api_hash"]
-    
+
     try:
         # Use the ALREADY CONNECTED client
         await client.sign_in(
@@ -922,13 +1036,36 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
             return {"dialogs": [], "error": "No phone number provided"}
 
         log_debug(f"DIALOGS: Fetching kernel for {phone} (User: {user_id})...")
+
+        # First check if account exists and is active
+        conn = get_db_connection()
+        account = conn.execute("SELECT session_string, api_id, api_hash, status FROM accounts WHERE phone_number = ? AND user_id = ?", (phone, user_id)).fetchone()
+        if not account:
+            # Try admin-owned accounts
+            account = conn.execute("SELECT session_string, api_id, api_hash, status FROM accounts WHERE phone_number = ? AND user_id = 'admin_virtual_id'", (phone,)).fetchone()
+        if hasattr(conn, "close"): conn.close()
+
+        if not account:
+            log_debug(f"DIALOGS: Account {phone} not found for user {user_id}")
+            return {"dialogs": [], "error": f"Account {phone} not found. Please make sure the account is properly connected."}
+
+        if account["status"] != "active":
+            log_debug(f"DIALOGS: Account {phone} has status '{account['status']}', not 'active'")
+            return {"dialogs": [], "error": f"Account status is '{account['status']}'. Please reconnect the account."}
+
+        log_debug(f"DIALOGS: Account found, status={account['status']}, session length={len(account['session_string']) if account['session_string'] else 0}")
+
         client = await POOL.get_client(user_id, phone)
-        
+        log_debug(f"DIALOGS: Client connected successfully for {phone}")
+
         dialogs_list = []
         try:
             # use a long timeout, and include archived
+            log_debug(f"DIALOGS: Starting iter_dialogs with limit=2000, archived=True...")
             async with asyncio.timeout(60):
+                dialog_count = 0
                 async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
+                    dialog_count += 1
                     # Robust check for any container that isn't a single user
                     if dialog.is_group or dialog.is_channel:
                         did = str(dialog.id)
@@ -942,7 +1079,8 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                         try:
                             if is_channel and hasattr(dialog.entity, 'megagroup'):
                                 is_supergroup = bool(dialog.entity.megagroup) # type: ignore
-                        except: pass
+                        except Exception as e:
+                            log_debug(f"DIALOGS: Supergroup check failed: {e}")
                         
                         dialogs_list.append({
                             "id": did,
@@ -951,8 +1089,8 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                             "is_group": is_group or is_supergroup,
                             "is_channel": is_channel and not is_supergroup
                         })
-                
-                log_debug(f"DIALOGS: Scanned {len(dialogs_list)} entities for {phone}. Success.")
+
+                log_debug(f"DIALOGS: Iterated {dialog_count} dialogs, found {len(dialogs_list)} groups/channels for {phone}. Success.")
         except asyncio.TimeoutError:
             log_debug(f"DIALOGS_TIMEOUT: {phone}. Returning {len(dialogs_list)} partial.")
             if not dialogs_list:
@@ -1194,8 +1332,10 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                             txt = parent.get_text()
                             num_match = re.search(r'([\d,]+)\s*(?:subscribers|members|sub)', txt, re.IGNORECASE)
                             if num_match:
-                                try: members = int(re.sub(r'\D', '', num_match.group(1)))
-                                except: pass
+                                try:
+                                    members = int(re.sub(r'\D', '', num_match.group(1)))
+                                except ValueError as e:
+                                    log_debug(f"SCRAPER: Failed to parse member count: {e}")
                                 
                         
                         # Check if it actually exists if we found 0 members or if it's from Lyzem (highly prone to dead links)
@@ -1384,8 +1524,11 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                                             }
                                             unique_groups[cid] = item
                                             if queue: await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
-                                except: continue
-                        except: pass
+                                except Exception as msg_err:
+                                    log_debug(f"SCRAPER: Message processing error: {msg_err}")
+                                    continue
+                        except Exception as search_err:
+                            log_debug(f"SCRAPER: Global search error: {search_err}")
 
                     await asyncio.sleep(0.2) # Reduced delay for high-performance feel
                 except Exception as q_err:
@@ -2183,12 +2326,23 @@ async def update_user_vitals(uid: str, req: UserVitalsUpdateRequest, admin_id: s
 @app.get("/api/admin/monetization/coupons")
 async def get_coupons_admin(admin_id: str = Depends(get_current_admin)):
     conn = get_db_connection()
-    rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
-    if hasattr(conn, "close"): conn.close()
-    def _safe(r, k):
-        try: return r[k]
-        except: return None
-    return {"coupons": [dict(id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"], created_at=r["created_at"], max_daily_campaigns=_safe(r, "max_daily_campaigns"), max_daily_keywords=_safe(r, "max_daily_keywords"), scrape_limit=_safe(r, "scrape_limit")) for r in rows]}
+    try:
+        rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
+
+        def _safe(r, k):
+            try:
+                return r[k]
+            except (KeyError, TypeError, IndexError) as e:
+                log_debug(f"COUPON: Missing field {k}: {e}")
+                return None
+
+        return {"coupons": [dict(
+            id=r["id"], code=r["code"], price=r["price"], is_active=r["is_active"],
+            created_at=r["created_at"], max_daily_campaigns=_safe(r, "max_daily_campaigns"),
+            max_daily_keywords=_safe(r, "max_daily_keywords"), scrape_limit=_safe(r, "scrape_limit")
+        ) for r in rows]}
+    finally:
+        if hasattr(conn, "close"): conn.close()
 
 class CouponCreateRequest(BaseModel):
     code: str
@@ -2784,6 +2938,22 @@ async def get_campaigns(user_id: str = Depends(get_current_user_id)):
 
 @app.post("/api/telegram/campaigns")
 async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_current_user_id)):
+    # Input validation
+    if not req.name or len(req.name.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Campaign name is required")
+    if len(req.name) > 100:
+        raise HTTPException(status_code=400, detail="Campaign name must be less than 100 characters")
+    if not req.phone_number or len(req.phone_number.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    if not req.message or len(req.message.strip()) == 0:
+        raise HTTPException(status_code=400, detail="Message is required")
+    if len(req.message) > 4096:
+        raise HTTPException(status_code=400, detail="Message must be less than 4096 characters")
+    if not req.schedule_time or len(req.schedule_time) == 0:
+        raise HTTPException(status_code=400, detail="Schedule time is required")
+    if req.interval_hours < 0 or req.interval_minutes < 0:
+        raise HTTPException(status_code=400, detail="Interval values cannot be negative")
+
     conn = get_db_connection()
     # Plan Limit Check
     if user_id != "admin_virtual_id":
@@ -2791,20 +2961,20 @@ async def create_campaign(req: CampaignRequest, user_id: str = Depends(get_curre
         if not user_row:
             if hasattr(conn, "close"): conn.close()
             raise HTTPException(status_code=404, detail="User not found")
-        
+
         # Reset daily counts if needed
         check_and_reset_daily_limits(conn, user_id, user_row)
-        
+
         plan = user_row["plan"] or "free"
         plan_cfg = get_plan_configs().get(plan, get_plan_configs()["free"])
-        
+
         max_daily = int(user_row["max_daily_campaigns"] or plan_cfg["max_daily_campaigns"])
         current_daily = int(user_row["daily_campaign_count"] or 0)
-        
+
         if current_daily >= max_daily and plan != "unlimited":
             if hasattr(conn, "close"): conn.close()
             raise HTTPException(status_code=403, detail=f"Daily limit reached ({max_daily}/{max_daily}). Upgrade your plan to send more.")
-        
+
         # WE NO LONGER INCREMENT HERE. WE INCREMENT ON SUCCESSFUL SEND IN THE BACKGROUND.
 
 
@@ -3098,8 +3268,10 @@ async def admin_clear_all_leads(admin_id: str = Depends(get_current_admin)):
         conn.execute("DELETE FROM leads")
         conn.execute("DELETE FROM scraped_groups")
         conn.execute("DELETE FROM scrape_history")
-        try: conn.execute("VACUUM")
-        except: pass
+        try:
+            conn.execute("VACUUM")
+        except sqlite3.Error as e:
+            log_debug(f"ADMIN: VACUUM operation failed: {e}")
         if hasattr(conn, "commit"): conn.commit()
         log_debug("ADMIN: GLOBAL PURGE - All Leads Data wiped.")
         return {"status": "success", "message": "Global leads database has been completely purged."}
@@ -3292,12 +3464,14 @@ async def task_poller():
             
             try:
                 target_groups = ast.literal_eval(groups_str)
-            except:
+            except (SyntaxError, ValueError) as e:
+                log_debug(f"BKG_TASK[{task_id}]: Invalid target_groups format: {e}")
                 target_groups = [groups_str] if groups_str else []
 
             try:
                 exclude_list = ast.literal_eval(exclude_groups_str) if exclude_groups_str else []
-            except:
+            except (SyntaxError, ValueError) as e:
+                log_debug(f"BKG_TASK[{task_id}]: Invalid exclude_groups format: {e}")
                 exclude_list = []
             
             # Fetch and merge permanent excludes for this user
@@ -3309,7 +3483,8 @@ async def task_poller():
                         p_ex = json.loads(u_ex_row[0])
                         if isinstance(p_ex, list):
                             exclude_list.extend(p_ex)
-                    except: pass
+                    except (json.JSONDecodeError, TypeError) as e:
+                        log_debug(f"BKG_TASK[{task_id}]: Failed to parse permanent excludes: {e}")
                 if hasattr(ex_conn, "close"): ex_conn.close()
             except Exception as e:
                 print(f"BKG_TASK[{task_id}]: Error loading permanent excludes: {e}")
@@ -3326,13 +3501,15 @@ async def task_poller():
 
             try:
                 processed_list = ast.literal_eval(processed_groups_str) if processed_groups_str else []
-            except:
+            except (SyntaxError, ValueError) as e:
+                log_debug(f"BKG_TASK[{task_id}]: Invalid processed_groups format: {e}")
                 processed_list = []
             processed_list = [str(e).strip() for e in (processed_list if isinstance(processed_list, list) else [])]
 
             try:
                 failed_list = ast.literal_eval(failed_groups_str) if failed_groups_str else []
-            except:
+            except (SyntaxError, ValueError) as e:
+                log_debug(f"BKG_TASK[{task_id}]: Invalid failed_groups format: {e}")
                 failed_list = []
             if not isinstance(failed_list, list): failed_list = []
             

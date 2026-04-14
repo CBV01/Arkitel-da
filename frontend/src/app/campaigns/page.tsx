@@ -48,7 +48,9 @@ export default function CampaignsPage() {
                 const data = await res.json();
                 setUserStatus(data);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error("Operation failed:", e);
+        }
     };
 
     useEffect(() => {
@@ -66,7 +68,9 @@ export default function CampaignsPage() {
                     setSelectedGroups(JSON.parse(preselected));
                     sessionStorage.removeItem('selected_lead_groups');
                     setIsCreating(true);
-                } catch (e) { }
+                } catch (e) {
+            console.error("Operation failed:", e);
+        }
             }
         }
     }, []);
@@ -87,19 +91,26 @@ export default function CampaignsPage() {
     };
 
     const fetchDialogs = async (phone: string) => {
-        if (!phone) return;
+        if (!phone) {
+            console.log("fetchDialogs: No phone number provided");
+            return;
+        }
+        console.log(`fetchDialogs: Starting fetch for ${phone}`);
         setFetchingDialogs(true);
         setDialogs([]);
-        setCurrentPage(1); // Reset to first page
-        setCreationError(""); // Clear previous errors
-        
+        setCurrentPage(1);
+        setCreationError("");
+
         try {
             const res = await apiFetch('/api/telegram/dialogs', {
                 method: 'POST',
                 body: JSON.stringify({ phone_number: phone })
             });
-            
+
+            console.log(`fetchDialogs: Response status ${res.status}`);
             const text = await res.text();
+            console.log(`fetchDialogs: Response body:`, text.substring(0, 500));
+
             let data: any = {};
             try {
                 data = JSON.parse(text);
@@ -109,14 +120,17 @@ export default function CampaignsPage() {
 
             if (res.ok) {
                 setDialogs(data.dialogs || []);
+                console.log(`fetchDialogs: Loaded ${data.dialogs?.length || 0} dialogs`);
                 if (data.error && (data.dialogs || []).length === 0) {
                     setCreationError(`Account Error: ${data.error}`);
                 }
             } else {
-                setCreationError(data.detail || data.error || `Server returned ${res.status}: ${res.statusText}`);
+                const errorMsg = data.detail || data.error || `Server returned ${res.status}: ${res.statusText}`;
+                console.error(`fetchDialogs: Error - ${errorMsg}`);
+                setCreationError(errorMsg);
             }
         } catch (err: any) {
-            console.error("Failed to fetch dialogs", err);
+            console.error("fetchDialogs: Fetch failed", err);
             setCreationError(`Failed to load groups: ${err.message}`);
         } finally {
             setFetchingDialogs(false);
@@ -130,7 +144,9 @@ export default function CampaignsPage() {
                 const data = await res.json();
                 setTemplates(data.templates || []);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error("Operation failed:", e);
+        }
     };
 
     const fetchPermanentExcludes = async () => {
@@ -141,7 +157,9 @@ export default function CampaignsPage() {
                 setPermanentExcludes(data.ids || []);
                 setExcludedGroups(data.ids || []);
             }
-        } catch (e) { }
+        } catch (e) {
+            console.error("Operation failed:", e);
+        }
     };
 
     const updatePermanentExcludes = async (ids: string[]) => {
@@ -150,7 +168,9 @@ export default function CampaignsPage() {
                 method: 'POST',
                 body: JSON.stringify({ ids })
             });
-        } catch (e) { }
+        } catch (e) {
+            console.error("Operation failed:", e);
+        }
     };
 
     const fetchAccounts = async () => {
@@ -452,7 +472,9 @@ export default function CampaignsPage() {
                                                     if (failed.length > 0) {
                                                         return <span className="text-[9px] font-bold text-red-400 uppercase tracking-widest bg-red-400/10 px-1.5 py-0.5 rounded-md">{failed.length} Failed</span>
                                                     }
-                                                } catch (e) { }
+                                                } catch (e) {
+            console.error("Operation failed:", e);
+        }
                                                 return null;
                                             })()}
                                         </div>
@@ -491,7 +513,9 @@ export default function CampaignsPage() {
                                                         </button>
                                                     )
                                                 }
-                                            } catch (e) { }
+                                            } catch (e) {
+            console.error("Operation failed:", e);
+        }
                                             return null;
                                         })()}
                                         {(camp.status === 'processing' || camp.status === 'paused') && (
@@ -788,8 +812,13 @@ export default function CampaignsPage() {
                                                 <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
                                                     {fetchingDialogs ? (
                                                         <div className="flex flex-col items-center justify-center h-full opacity-20"><Loader2 className="animate-spin" /></div>
+                                                    ) : dialogs.length === 0 && !creationError ? (
+                                                        <div className="text-center py-10 text-xs text-foreground/40">
+                                                            <p className="font-bold mb-2">No groups loaded</p>
+                                                            <p className="text-[10px] text-foreground/30">Select an account above to load its groups and channels.<br/>Make sure the account is active and has joined some groups.</p>
+                                                        </div>
                                                     ) : filteredDialogs.length === 0 ? (
-                                                        <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-bold">No results</div>
+                                                        <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-bold">No results match your search/filter</div>
                                                     ) : (
                                                         filteredDialogs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((d: any) => (
                                                             <div

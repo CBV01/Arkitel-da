@@ -2,7 +2,7 @@ fastapi
 uvicorn
 pydantic
 pydantic-settings
-https://github.com/LonamiWebs/Telethon/archive/v1.24.zip
+telethon
 python-dotenv
 requests
 passlib[bcrypt]
@@ -11,3 +11,4 @@ python-jose[cryptography]
 httpx
 beautifulsoup4
 lxml
+aiofiles
