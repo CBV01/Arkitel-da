@@ -1398,20 +1398,40 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
     """Layer 1: Use Telegram API contacts.search with many keyword variations."""
     unique_groups: Dict[str, Dict[str, Any]] = {}
     
-    # Build a more concise but effective variation list to speed up results
+    # Build maximally broad variation list
     search_queries = [base_query]
     suffixes = [
-        # Most effective variations first
-        "group", "channel", "official", "community", "chat",
-        "global", "vip", "online", "news", "support",
-        "crypto", "iptv", "marketing", "leads"
+        # Generic variations
+        "official", "group", "channel", "community", "chat", "hub",
+        "network", "team", "zone", "world", "global", "vip", "pro",
+        "2", "3", "online", "free", "live", "top", "best", "new",
+        "real", "original", "main", "updates", "news", "info",
+        "global chat", "portal", "support", "service", "market",
+        "store", "shop", "deals", "premium", "lite", "backup",
+        "archive", "community hub", "discussion", "lounge",
+        "broadcast", "alerts", "notices", "leads", "clients",
+        "customers", "hq", "international", "connect", "links",
+        "services", "help", "prices", "vip access", "admin",
+        "global group", "hub chat", "direct", "access", "portal hub",
+        "official group", "official channel", "community chat", "leads group",
+        
+        # 25+ Hyper-Niche Targeted Words (IPTV, Crypto, Marketing, Tools)
+        "streams", "vvod", "players", "subscriptions", "servers", 
+        "resellers", "panels", "smart tv", "firestick", "movies", 
+        "series", "sports", "signals", "trading", "crypto", "bitcoin",
+        "forex", "investments", "airdrops", "nft", "web3", "calls", 
+        "pumps", "marketing", "seo", "b2b", "leads gen", "traffic",
+        "affiliate", "ecommerce", "dropshipping", "sales", "ads", 
+        "tools", "software", "development", "coders", "bots", "api",
+        "tech", "designs", "promotions", "freelancers", "gigs", "jobs"
+
     ]
     for suffix in suffixes:
         search_queries.append(f"{base_query} {suffix}")
     
-    # Numeric variants only for very short keywords
-    if len(base_query) < 8:
-        for n in ["1", "2", "3"]:
+    # Numeric variants for short single-word keywords
+    if " " not in base_query and len(base_query) < 15:
+        for n in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
             search_queries.append(f"{base_query}{n}")
 
     print(f"SCRAPER[telegram] {len(search_queries)} variations Ãƒâ€” {len(rows)} accounts = "
@@ -1420,7 +1440,10 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
     for row in rows:
         acc_phone = row[3]
         try:
+            if queue: await queue.put({"type": "progress", "msg": f"Connecting to Telegram engine via {acc_phone[-4:]}..."}) # type: ignore
             client = await POOL.get_client(user_id, acc_phone)
+            if queue: await queue.put({"type": "progress", "msg": f"Engine connected. Starting broad sweep for '{base_query}'..."}) # type: ignore
+            
             for q in search_queries:
                 try:
                     if queue: await queue.put({"type": "progress", "msg": f"TG Search ({acc_phone[-4:]}): Testing '{q}'..."}) # type: ignore
