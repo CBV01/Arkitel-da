@@ -407,7 +407,16 @@ async def resolve_tg_entity(client, target):
                     from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
                     
                     # Search globally for this username
-                    await client(SearchGlobalRequest(q=username, filter=InputMessagesFilterEmpty(), limit=1))
+                    await client(SearchGlobalRequest(
+                        q=username, 
+                        filter=InputMessagesFilterEmpty(), 
+                        min_date=None, 
+                        max_date=None, 
+                        offset_rate=0, 
+                        offset_peer=InputPeerEmpty(), 
+                        offset_id=0, 
+                        limit=1
+                    ))
                     # Try again after search
                     entity = await client.get_entity(username)
                     return entity
@@ -562,10 +571,9 @@ class TelegramPool:
                 else: 
                     log_debug(f"POOL: Node {phone_number} socket closed. Reconnecting...")
                 
-            log_debug(f"POOL: Deploying persistent kernel for {phone_number} (Owner: {owner_id})")
-            new_client = TelegramClient(StringSession(session_str), api_id, api_hash)
-            
             # Use a slightly longer timeout for connection to prevent flakes on slow proxies/VPS
+            # Optimization: connection_retries=3, timeout=10
+            new_client = TelegramClient(StringSession(session_str), api_id, api_hash, connection_retries=3, timeout=10)
             await new_client.connect()
             
             # Multi-check for authorization (Don't disconnect instantly on flakes)
@@ -901,7 +909,8 @@ async def send_code(req: PhoneLoginRequest, user_id: str = Depends(get_current_u
 
     try:
         # Each login can use its own API ID and Hash
-        client = TelegramClient(StringSession(), int(api_id), api_hash)
+        # Optimization: connection_retries=3, timeout=10 for faster response
+        client = TelegramClient(StringSession(), int(api_id), api_hash, connection_retries=3, timeout=10)
         await client.connect()
         send_code_res = await client.send_code_request(req.phone_number)
         
@@ -1062,10 +1071,12 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
         try:
             # use a long timeout, and include archived
             log_debug(f"DIALOGS: Starting iter_dialogs with limit=2000, archived=True...")
-            async with asyncio.timeout(60):
-                dialog_count = 0
+            
+            async def get_all_dialogs():
+                count = 0
+                results = []
                 async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
-                    dialog_count += 1
+                    count += 1
                     # Robust check for any container that isn't a single user
                     if dialog.is_group or dialog.is_channel:
                         did = str(dialog.id)
@@ -1082,15 +1093,17 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                         except Exception as e:
                             log_debug(f"DIALOGS: Supergroup check failed: {e}")
                         
-                        dialogs_list.append({
+                        results.append({
                             "id": did,
                             "name": title,
                             "title": title,
                             "is_group": is_group or is_supergroup,
                             "is_channel": is_channel and not is_supergroup
                         })
+                return results, count
 
-                log_debug(f"DIALOGS: Iterated {dialog_count} dialogs, found {len(dialogs_list)} groups/channels for {phone}. Success.")
+            dialogs_list, dialog_count = await asyncio.wait_for(get_all_dialogs(), timeout=60)
+            log_debug(f"DIALOGS: Iterated {dialog_count} dialogs, found {len(dialogs_list)} groups/channels for {phone}. Success.")
         except asyncio.TimeoutError:
             log_debug(f"DIALOGS_TIMEOUT: {phone}. Returning {len(dialogs_list)} partial.")
             if not dialogs_list:
@@ -1120,7 +1133,8 @@ async def qr_init(user_id: str = Depends(get_current_user_id)):
         api_id = int(os.getenv("CORE_PROVIDER_ID", "2040"))
         api_hash = os.getenv("CORE_PROVIDER_KEY", "b18441a1ff607e10a989891a5462e627")
         
-        client = TelegramClient(StringSession(''), api_id, api_hash)
+        # Optimization: connection_retries=3, timeout=10
+        client = TelegramClient(StringSession(''), api_id, api_hash, connection_retries=3, timeout=10)
         await client.connect()
         
         qr = await client.qr_login()
@@ -1384,40 +1398,20 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
     """Layer 1: Use Telegram API contacts.search with many keyword variations."""
     unique_groups: Dict[str, Dict[str, Any]] = {}
     
-    # Build maximally broad variation list
+    # Build a more concise but effective variation list to speed up results
     search_queries = [base_query]
     suffixes = [
-        # Generic variations
-        "official", "group", "channel", "community", "chat", "hub",
-        "network", "team", "zone", "world", "global", "vip", "pro",
-        "2", "3", "online", "free", "live", "top", "best", "new",
-        "real", "original", "main", "updates", "news", "info",
-        "global chat", "portal", "support", "service", "market",
-        "store", "shop", "deals", "premium", "lite", "backup",
-        "archive", "community hub", "discussion", "lounge",
-        "broadcast", "alerts", "notices", "leads", "clients",
-        "customers", "hq", "international", "connect", "links",
-        "services", "help", "prices", "vip access", "admin",
-        "global group", "hub chat", "direct", "access", "portal hub",
-        "official group", "official channel", "community chat", "leads group",
-        
-        # 25+ Hyper-Niche Targeted Words (IPTV, Crypto, Marketing, Tools)
-        "streams", "vvod", "players", "subscriptions", "servers", 
-        "resellers", "panels", "smart tv", "firestick", "movies", 
-        "series", "sports", "signals", "trading", "crypto", "bitcoin",
-        "forex", "investments", "airdrops", "nft", "web3", "calls", 
-        "pumps", "marketing", "seo", "b2b", "leads gen", "traffic",
-        "affiliate", "ecommerce", "dropshipping", "sales", "ads", 
-        "tools", "software", "development", "coders", "bots", "api",
-        "tech", "designs", "promotions", "freelancers", "gigs", "jobs"
-
+        # Most effective variations first
+        "group", "channel", "official", "community", "chat",
+        "global", "vip", "online", "news", "support",
+        "crypto", "iptv", "marketing", "leads"
     ]
     for suffix in suffixes:
         search_queries.append(f"{base_query} {suffix}")
     
-    # Numeric variants for short single-word keywords
-    if " " not in base_query and len(base_query) < 15:
-        for n in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
+    # Numeric variants only for very short keywords
+    if len(base_query) < 8:
+        for n in ["1", "2", "3"]:
             search_queries.append(f"{base_query}{n}")
 
     print(f"SCRAPER[telegram] {len(search_queries)} variations Ãƒâ€” {len(rows)} accounts = "
@@ -1485,6 +1479,11 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             msg_results = await client(SearchGlobalRequest(
                                 q=q,
                                 filter=InputMessagesFilterEmpty(),
+                                min_date=None,
+                                max_date=None,
+                                offset_rate=0,
+                                offset_peer=InputPeerEmpty(),
+                                offset_id=0,
                                 limit=100 
                             ))
                             # ZERO-COST REFINEMENT: Cross-reference chats ALREADY in the response.
