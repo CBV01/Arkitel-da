@@ -1078,20 +1078,35 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
                 async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
                     count += 1
                     # Robust check for any container that isn't a single user
-                    if dialog.is_group or dialog.is_channel:
+                    # In Telethon:
+                    # - is_user: Private chats
+                    # - is_group: Basic groups
+                    # - is_channel: Channels AND Supergroups (Megagroups)
+                    
+                    if not dialog.is_user:
                         did = str(dialog.id)
-                        title = getattr(dialog, 'name', '') or getattr(dialog, 'title', '') or did
+                        # Ensure we have a valid title
+                        title = getattr(dialog, 'name', None) or getattr(dialog, 'title', None)
+                        if not title and hasattr(dialog, 'entity'):
+                            title = getattr(dialog.entity, 'title', None) or getattr(dialog.entity, 'username', None)
                         
+                        if not title:
+                            title = f"Unnamed ({did})"
+                            
                         is_group = bool(dialog.is_group)
                         is_channel = bool(dialog.is_channel)
                         
-                        # Fix for Telethon Megagroups (Supergroups)
+                        # Supergroup check (Megagroups are technically channels in Telethon)
                         is_supergroup = False
                         try:
-                            if is_channel and hasattr(dialog.entity, 'megagroup'):
-                                is_supergroup = bool(dialog.entity.megagroup) # type: ignore
-                        except Exception as e:
-                            log_debug(f"DIALOGS: Supergroup check failed: {e}")
+                            from telethon.tl.types import Channel # type: ignore
+                            if isinstance(dialog.entity, Channel) and getattr(dialog.entity, 'megagroup', False):
+                                is_supergroup = True
+                        except:
+                            pass
+                        
+                        # LOGGING: See what we found
+                        log_debug(f"DIALOGS: Found '{title}' (id={did}, is_group={is_group}, is_channel={is_channel}, is_super={is_supergroup})")
                         
                         results.append({
                             "id": did,
@@ -1492,23 +1507,25 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
-                    # Phrase-based Global Message Search (Discovery Hack) - THE SMOKING GUN
-                    # RUN ON ALL VARIATIONS: restores 800+ volume
-                    if True: 
-                        from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
-                        from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
-                        try:
-                            # Bump limit to 100 for maximum discovery volume
-                            msg_results = await client(SearchGlobalRequest(
-                                q=q,
-                                filter=InputMessagesFilterEmpty(),
-                                min_date=None,
-                                max_date=None,
-                                offset_rate=0,
-                                offset_peer=InputPeerEmpty(),
-                                offset_id=0,
-                                limit=100 
-                            ))
+            # Optimization: Only run Global Message Search on the base query and top 3 variations
+            # Running on 100+ variations causes instant Rate Limits / slow response
+            should_run_global = (q == base_query or q in search_queries[1:4])
+            
+            if should_run_global: 
+                from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
+                from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
+                try:
+                    # Bump limit to 100 for maximum discovery volume
+                    msg_results = await client(SearchGlobalRequest(
+                        q=q,
+                        filter=InputMessagesFilterEmpty(),
+                        min_date=None,
+                        max_date=None,
+                        offset_rate=0,
+                        offset_peer=InputPeerEmpty(),
+                        offset_id=0,
+                        limit=100 
+                    ))
                             # ZERO-COST REFINEMENT: Cross-reference chats ALREADY in the response.
                             # No extra API calls = 50x speed and no Bans.
                             res_chats = getattr(msg_results, 'chats', [])

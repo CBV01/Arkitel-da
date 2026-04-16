@@ -279,16 +279,20 @@ export default function ScraperPage() {
             const reader = res.body.getReader();
             const decoder = new TextDecoder("utf-8");
             let done = false;
+            let partialLine = '';
 
             while (!done) {
                 const { value, done: readerDone } = await reader.read();
                 done = readerDone;
                 if (value) {
                     const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split('\n');
+                    const lines = (partialLine + chunk).split('\n');
+                    partialLine = lines.pop() || '';
+                    
                     for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const dataStr = line.replace('data: ', '').trim();
+                        const trimmed = line.trim();
+                        if (trimmed.startsWith('data: ')) {
+                            const dataStr = trimmed.replace('data: ', '').trim();
                             if (dataStr) {
                                 try {
                                     const parsed = JSON.parse(dataStr);
@@ -307,7 +311,7 @@ export default function ScraperPage() {
                                         setError(parsed.msg);
                                     }
                                 } catch (e) {
-                                    console.error("Parse err", e);
+                                    console.error("Parse err", e, dataStr);
                                 }
                             }
                         }
