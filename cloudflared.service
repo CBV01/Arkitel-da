@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflare Tunnel for ArkiTel Backend
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/tmp/cloudflared tunnel --url http://localhost:8000 --no-autoupdate
+Restart=always
+RestartSec=5
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target

@@ -1071,74 +1071,71 @@ async def get_dialogs(req: FetchDialogsRequest, user_id: str = Depends(get_curre
         dialogs_list = []
         try:
             # use a long timeout, and include archived
-            log_debug(f"DIALOGS: Starting iter_dialogs with limit=2000, archived=True...")
+            log_debug(f"DIALOGS: Starting iter_dialogs with limit=5000, archived=True...")
             
-            async def get_all_dialogs():
+            async def fetch_process():
                 count = 0
-                results = []
-                async for dialog in client.iter_dialogs(limit=2000, archived=True, ignore_migrated=False):
-                    count += 1
-                    # Robust check for any container that isn't a single user
-                    # In Telethon:
-                    # - is_user: Private chats
-                    # - is_group: Basic groups
-                    # - is_channel: Channels AND Supergroups (Megagroups)
-                    
-                    if not dialog.is_user:
-                        did = str(dialog.id)
-                        # Ensure we have a valid title
-                        title = getattr(dialog, 'name', None) or getattr(dialog, 'title', None)
-                        if not title and hasattr(dialog, 'entity'):
-                            title = getattr(dialog.entity, 'title', None) or getattr(dialog.entity, 'username', None)
-                        
-                        if not title:
-                            title = f"Unnamed ({did})"
+                try:
+                    async for dialog in client.iter_dialogs(limit=5000, archived=True, ignore_migrated=False):
+                        count += 1
+                        if not dialog.is_user:
+                            did = str(dialog.id)
+                            # Ensure we have a valid title
+                            title = getattr(dialog, 'name', None) or getattr(dialog, 'title', None)
+                            if not title and hasattr(dialog, 'entity'):
+                                title = getattr(dialog.entity, 'title', None) or getattr(dialog.entity, 'username', None)
                             
-                        is_group = bool(dialog.is_group)
-                        is_channel = bool(dialog.is_channel)
-                        
-                        # Supergroup check (Megagroups are technically channels in Telethon)
-                        is_supergroup = False
-                        try:
-                            from telethon.tl.types import Channel # type: ignore
-                            if isinstance(dialog.entity, Channel) and getattr(dialog.entity, 'megagroup', False):
-                                is_supergroup = True
-                        except:
-                            pass
-                        
-                        # LOGGING: See what we found
-                        log_debug(f"DIALOGS: Found '{title}' (id={did}, is_group={is_group}, is_channel={is_channel}, is_super={is_supergroup})")
-                        
-                        results.append({
-                            "id": did,
-                            "name": title,
-                            "title": title,
-                            "is_group": is_group or is_supergroup,
-                            "is_channel": is_channel and not is_supergroup
-                        })
-                return results, count
+                            if not title:
+                                title = f"Unnamed ({did})"
+                                
+                            is_group = bool(dialog.is_group)
+                            is_channel = bool(dialog.is_channel)
+                            
+                            # Supergroup check (Megagroups are technically channels in Telethon)
+                            is_supergroup = False
+                            try:
+                                from telethon.tl.types import Channel # type: ignore
+                                if (hasattr(dialog, 'entity') and isinstance(dialog.entity, Channel)) or (hasattr(dialog, 'is_channel') and dialog.is_channel):
+                                    if hasattr(dialog.entity, 'megagroup') and dialog.entity.megagroup:
+                                        is_supergroup = True
+                                    elif not getattr(dialog.entity, 'broadcast', True):
+                                        # If it's a channel but NOT a broadcast, it's a supergroup
+                                        is_supergroup = True
+                            except:
+                                pass
+                            
+                            dialogs_list.append({
+                                "id": did,
+                                "name": title,
+                                "title": title,
+                                "is_group": is_group or is_supergroup,
+                                "is_channel": is_channel and not is_supergroup
+                            })
+                    return count
+                except Exception as iter_e:
+                    log_debug(f"DIALOGS_ITER_ERROR during stream: {iter_e}")
+                    return count
 
-            dialogs_list, dialog_count = await asyncio.wait_for(get_all_dialogs(), timeout=60)
-            log_debug(f"DIALOGS: Iterated {dialog_count} dialogs, found {len(dialogs_list)} groups/channels for {phone}. Success.")
-        except asyncio.TimeoutError:
-            log_debug(f"DIALOGS_TIMEOUT: {phone}. Returning {len(dialogs_list)} partial.")
-            if not dialogs_list:
-                return {"dialogs": [], "error": "Request timed out after 60s. This account might have too many groups or a slow connection. Please try again."}
+            try:
+                await asyncio.wait_for(fetch_process(), timeout=90)
+                log_debug(f"DIALOGS: Found {len(dialogs_list)} groups/channels for {phone}. Success.")
+            except asyncio.TimeoutError:
+                log_debug(f"DIALOGS_TIMEOUT: {phone}. Returning {len(dialogs_list)} partial results after 90s.")
+            
         except Exception as dialog_err:
             err_str = str(dialog_err)
-            log_debug(f"DIALOGS_ITER_ERROR for {phone}: {err_str}")
+            log_debug(f"DIALOGS_FATAL_ERROR for {phone}: {err_str}")
             if not dialogs_list:
-                # If it's a FloodWait, the user should see it!
                 if "flood" in err_str.lower():
-                    return {"dialogs": [], "error": f"Telegram is rate-limiting this request (FloodWait). Please wait a few minutes before trying to browse groups for this account."}
+                    return {"dialogs": [], "error": "Telegram is rate-limiting this request (FloodWait). Please wait a few minutes."}
                 return {"dialogs": [], "error": f"Internal Error: {err_str}"}
             
         return {"dialogs": dialogs_list}
     except HTTPException as he:
-        log_debug(f"DIALOGS_AUTH_ERROR for {req.phone_number}: {he.detail}")
+        log_debug(f"DIALOGS_HTTP_ERROR for {req.phone_number}: {he.detail}")
         return {"dialogs": [], "error": he.detail}
     except Exception as e:
-        log_debug(f"DIALOGS_FATAL_ERROR for {req.phone_number}: {str(e)}")
+        log_debug(f"DIALOGS_CRITICAL_ERROR for {req.phone_number}: {str(e)}")
         POOL._clients.pop(req.phone_number, None)
         return {"dialogs": [], "error": str(e)}
 
@@ -1382,7 +1379,7 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
                             "id": f"@{username}",
                             "title": title,
                             "username": username,
-                            "participants_count": members,
+                            "participants_count": members or 0,
                             "type": "channel", # Lyzem mostly indexes channels
                             "is_private": False,
                             "country": "Global",
@@ -1411,85 +1408,44 @@ async def _scrape_lyzem(base_query: str, max_pages: int = 10, queue: Optional[as
 
 
 async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[asyncio.Queue] = None, user_id: str = "") -> Dict[str, Dict[str, Any]]:
-    """Layer 1: Use Telegram API contacts.search with many keyword variations."""
+    """Layer 1: Use Telegram API contacts.search with many keyword variations in parallel across accounts."""
     unique_groups: Dict[str, Dict[str, Any]] = {}
     
-    # Build maximally broad variation list
+    # Build variation list
     search_queries = [base_query]
-    suffixes = [
-        # Generic variations
-        "official", "group", "channel", "community", "chat", "hub",
-        "network", "team", "zone", "world", "global", "vip", "pro",
-        "2", "3", "online", "free", "live", "top", "best", "new",
-        "real", "original", "main", "updates", "news", "info",
-        "global chat", "portal", "support", "service", "market",
-        "store", "shop", "deals", "premium", "lite", "backup",
-        "archive", "community hub", "discussion", "lounge",
-        "broadcast", "alerts", "notices", "leads", "clients",
-        "customers", "hq", "international", "connect", "links",
-        "services", "help", "prices", "vip access", "admin",
-        "global group", "hub chat", "direct", "access", "portal hub",
-        "official group", "official channel", "community chat", "leads group",
-        
-        # 25+ Hyper-Niche Targeted Words (IPTV, Crypto, Marketing, Tools)
-        "streams", "vvod", "players", "subscriptions", "servers", 
-        "resellers", "panels", "smart tv", "firestick", "movies", 
-        "series", "sports", "signals", "trading", "crypto", "bitcoin",
-        "forex", "investments", "airdrops", "nft", "web3", "calls", 
-        "pumps", "marketing", "seo", "b2b", "leads gen", "traffic",
-        "affiliate", "ecommerce", "dropshipping", "sales", "ads", 
-        "tools", "software", "development", "coders", "bots", "api",
-        "tech", "designs", "promotions", "freelancers", "gigs", "jobs"
-
-    ]
+    suffixes = ["official", "group", "channel", "chat", "hub", "network", "vip", "pro", "online", "free", "live", "market", "premium", "community"]
     for suffix in suffixes:
         search_queries.append(f"{base_query} {suffix}")
-    
-    # Numeric variants for short single-word keywords
-    if " " not in base_query and len(base_query) < 15:
-        for n in ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]:
-            search_queries.append(f"{base_query}{n}")
 
-    print(f"SCRAPER[telegram] {len(search_queries)} variations Ãƒâ€” {len(rows)} accounts = "
-          f"up to {len(search_queries) * len(rows) * 100} raw results")
-
-    for row in rows:
+    async def scrape_account(row):
         acc_phone = row[3]
         try:
-            if queue: await queue.put({"type": "progress", "msg": f"Connecting to Telegram engine via {acc_phone[-4:]}..."}) # type: ignore
+            if queue: await queue.put({"type": "progress", "msg": f"Connecting {acc_phone[-4:]}..."})
             client = await POOL.get_client(user_id, acc_phone)
-            if queue: await queue.put({"type": "progress", "msg": f"Engine connected. Starting broad sweep for '{base_query}'..."}) # type: ignore
             
             for q in search_queries:
                 try:
-                    if queue: await queue.put({"type": "progress", "msg": f"TG Search ({acc_phone[-4:]}): Testing '{q}'..."}) # type: ignore
-                    search_result = await client(SearchRequest(q=q, limit=500))
+                    # Flush to event loop
+                    await asyncio.sleep(0)
+                    search_result = await client(SearchRequest(q=q, limit=100))
 
                     for chat in search_result.chats:
-                        if not chat:
-                            continue
+                        if not chat: continue
                         chat_id_str = str(getattr(chat, 'id', '0'))
                         
-                        # Membership check
                         is_member = not getattr(chat, 'left', True)
-                        
                         if chat_id_str in unique_groups:
-                            if is_member: unique_groups[chat_id_str]["is_member"] = True  # type: ignore
+                            if is_member: unique_groups[chat_id_str]["is_member"] = True
                             continue
                             
                         is_private = getattr(chat, 'username', None) is None
                         title = getattr(chat, 'title', 'Unknown')
                         username = getattr(chat, 'username', None)
-                        
-                        # PREFER username as the ID if it exists - globally resolvable!
                         final_id = f"@{username}" if username else chat_id_str
                         
-                        participants_count = (
-                            getattr(chat, 'participants_count', 0)
-                            or getattr(chat, 'megagroup_participants', 0)
-                            or 0
-                        )
+                        participants_count = int(getattr(chat, 'participants_count', 0) or getattr(chat, 'megagroup_participants', 0) or 0)
                         chat_type = 'channel' if getattr(chat, 'broadcast', False) else 'group'
+                        
                         item = {
                             "id": final_id,
                             "title": title,
@@ -1504,92 +1460,15 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                             "is_member": is_member
                         }
                         unique_groups[chat_id_str] = item
+                        if queue: await queue.put({"type": "result", "layer": 1, "data": item})
 
-                        if queue:
-                            await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
-                    
-                    # Optimization: Only run Global Message Search on the base query and top 3 variations
-                    # Running on 100+ variations causes instant Rate Limits / slow response
-                    should_run_global = (q == base_query or q in search_queries[1:4])
-                    
-                    if should_run_global: 
-                        from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
-                        from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
-                        try:
-                            # Bump limit to 100 for maximum discovery volume
-                            msg_results = await client(SearchGlobalRequest(
-                                q=q,
-                                filter=InputMessagesFilterEmpty(),
-                                min_date=None,
-                                max_date=None,
-                                offset_rate=0,
-                                offset_peer=InputPeerEmpty(),
-                                offset_id=0,
-                                limit=100 
-                            ))
-                            # ZERO-COST REFINEMENT: Cross-reference chats ALREADY in the response.
-                            # No extra API calls = 50x speed and no Bans.
-                            res_chats = getattr(msg_results, 'chats', [])
-                            if not res_chats: continue
-                            
-                            res_messages = getattr(msg_results, 'messages', [])
-                            for msg in res_messages:
-                                try:
-                                    p_id = getattr(msg, 'peer_id', None)
-                                    peer_id = getattr(p_id, 'channel_id', None) or getattr(p_id, 'chat_id', None)
-                                    if not peer_id: continue
-                                    
-                                    # Safe loop-based lookup avoids complex dict inference lints
-                                    chat = next((c for c in res_chats if getattr(c, 'id', None) == peer_id), None)
-                                    if not chat: continue
-                                    
-                                    cid = str(chat.id)
-                                    if cid not in unique_groups:
-                                        msg_username = getattr(chat, 'username', None)
-                                        is_member = not getattr(chat, 'left', True)
-                                        # Strict Filter: Only public groups/channels found globally
-                                        if getattr(chat, 'broadcast', False) or getattr(chat, 'megagroup', False) or msg_username:
-                                            item = {
-                                                "id": f"@{msg_username}" if msg_username else cid,
-                                                "title": getattr(chat, 'title', 'Unknown'),
-                                                "username": msg_username,
-                                                "participants_count": getattr(chat, 'participants_count', 0),
-                                                "type": 'channel' if getattr(chat, 'broadcast', False) else 'group',
-                                                "is_private": msg_username is None,
-                                                "country": "Global",
-                                                "global_shows": 1,
-                                                "user_shows": 1,
-                                                "source": "telegram_msg",
-                                                "is_member": is_member
-                                            }
-                                            unique_groups[cid] = item
-                                            if queue: await queue.put({"type": "result", "layer": 1, "data": item}) # type: ignore
-                                except Exception as msg_err:
-                                    log_debug(f"SCRAPER: Message processing error: {msg_err}")
-                                    continue
-                        except Exception as search_err:
-                            log_debug(f"SCRAPER: Global search error: {search_err}")
-
-                    await asyncio.sleep(0.2) # Reduced delay for high-performance feel
+                    # Random short delay between queries to avoid ban
+                    await asyncio.sleep(random.uniform(0.5, 1.5))
                 except Exception as q_err:
                     err_str = str(q_err).lower()
-                    if "flood" in err_str or "wait" in err_str:
-                        # Extract the required wait seconds from Telethon error (e.g. "A wait of 34 seconds is required")
-                        import re
-                        match = re.search(r'wait of (\d+)', err_str)
-                        wait_sec = int(match.group(1)) if match else 5
-                        
-                        # Cap extreme waits so stream doesn't infinitely hang, but wait out the standard 5-60s bans
-                        if wait_sec > 60:
-                            print(f"SCRAPER[telegram] acc={acc_phone} hit HUGE {wait_sec}s FloodWait. Skipping to next account.")
-                            break
-                        
-                        print(f"SCRAPER[telegram] acc={acc_phone} hit {wait_sec}s FloodWait on '{q}', pausing then continuing...")
-                        await asyncio.sleep(wait_sec + 1)
-                        continue # DO NOT BREAK! Continue the 50 variations to hit max yield!
-                    else:
-                        print(f"SCRAPER[telegram] query='{q}' acc={acc_phone} err: {q_err}")
-                        continue
+                    if "flood" in err_str:
+                        break # Stop this account if rate limited
+                    continue
         except Exception as e:
             print(f"SCRAPER[telegram] account {acc_phone} connection error: {e}")
         # REMOVED disconnect() to keep POOL connections alive for campaigns

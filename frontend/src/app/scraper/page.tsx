@@ -638,7 +638,7 @@ export default function ScraperPage() {
                                                     </div>
                                                 </td>
                                                 <td className="p-4 text-right">
-                                                    <span className="text-sm font-bold text-foreground/80 tracking-tight">{result.participants_count.toLocaleString()}</span>
+                                                    <span className="text-sm font-bold text-foreground/80 tracking-tight">{(result.participants_count || 0).toLocaleString()}</span>
                                                     <span className="text-[10px] text-foreground/20 block font-bold uppercase mt-0.5 tracking-tighter">Net Reach</span>
                                                 </td>
                                                 <td className="p-4 pr-6">

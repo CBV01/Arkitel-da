@@ -391,8 +391,8 @@ export default function CampaignsPage() {
     const filteredDialogs = dialogs.filter((d: any) => {
         const matchesSearch = d.title?.toLowerCase().includes(searchTerm.toLowerCase()) || d.id?.toString().includes(searchTerm);
         if (!matchesSearch) return false;
-        if (filterType === 'groups') return d.is_group || (d.is_channel && d.name?.toLowerCase().includes('group'));
-        if (filterType === 'channels') return d.is_channel && !d.is_group && !d.name?.toLowerCase().includes('group');
+        if (filterType === 'groups') return d.is_group;
+        if (filterType === 'channels') return d.is_channel;
         return true;
     });
 
@@ -817,29 +817,38 @@ export default function CampaignsPage() {
                                                             <p className="font-bold mb-2">No groups loaded</p>
                                                             <p className="text-[10px] text-foreground/30">Select an account above to load its groups and channels.<br/>Make sure the account is active and has joined some groups.</p>
                                                         </div>
-                                                    ) : filteredDialogs.length === 0 ? (
-                                                        <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-bold">No results match your search/filter</div>
                                                     ) : (
-                                                        filteredDialogs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((d: any) => (
-                                                            <div
-                                                                key={d.id}
-                                                                onClick={() => toggleGroup(d.id)}
-                                                                className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${selectedGroups.includes(d.id) ? 'bg-indigo-500/10 border-indigo-500/30' : excludedGroups.includes(d.id) ? 'bg-red-500/10 border-red-500/30' : 'bg-background border-border hover:bg-foreground/[0.02]'}`}
-                                                            >
-                                                                <div className="flex items-center gap-3 min-w-0">
-                                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 text-white' : excludedGroups.includes(d.id) ? 'bg-red-500 text-white' : 'bg-foreground/5 text-foreground/40'}`}>
-                                                                        {d.title?.charAt(0) || '?'}
-                                                                    </div>
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-xs font-bold text-foreground truncate">{d.title}</p>
-                                                                        <p className="text-[10px] text-foreground/30">ID: {d.id}</p>
-                                                                    </div>
+                                                        <>
+                                                            {creationError && dialogs.length > 0 && (
+                                                                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                                    <AlertCircle size={14} /> Note: {creationError} (Showing partial results)
                                                                 </div>
-                                                                <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 border-indigo-500' : excludedGroups.includes(d.id) ? 'bg-red-500 border-red-500' : 'border-border'}`}>
-                                                                    {(selectedGroups.includes(d.id) || excludedGroups.includes(d.id)) && <Check size={10} className="text-white mx-auto mt-0.5" />}
-                                                                </div>
-                                                            </div>
-                                                        ))
+                                                            )}
+                                                            {filteredDialogs.length === 0 ? (
+                                                                <div className="text-center py-10 text-[10px] text-foreground/20 uppercase font-bold">No results match your search/filter</div>
+                                                            ) : (
+                                                                filteredDialogs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((d: any) => (
+                                                                    <div
+                                                                        key={d.id}
+                                                                        onClick={() => toggleGroup(d.id)}
+                                                                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${selectedGroups.includes(d.id) ? 'bg-indigo-500/10 border-indigo-500/30' : excludedGroups.includes(d.id) ? 'bg-red-500/10 border-red-500/30' : 'bg-background border-border hover:bg-foreground/[0.02]'}`}
+                                                                    >
+                                                                        <div className="flex items-center gap-3 min-w-0">
+                                                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 text-white' : excludedGroups.includes(d.id) ? 'bg-red-500 text-white' : 'bg-foreground/5 text-foreground/40'}`}>
+                                                                                {d.title?.charAt(0) || '?'}
+                                                                            </div>
+                                                                            <div className="min-w-0">
+                                                                                <p className="text-xs font-bold text-foreground truncate">{d.title}</p>
+                                                                                <p className="text-[10px] text-foreground/30">ID: {d.id}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${selectedGroups.includes(d.id) ? 'bg-indigo-500 border-indigo-500' : excludedGroups.includes(d.id) ? 'bg-red-500 border-red-500' : 'border-border'}`}>
+                                                                            {(selectedGroups.includes(d.id) || excludedGroups.includes(d.id)) && <Check size={10} className="text-white mx-auto mt-0.5" />}
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </>
                                                     )}
                                                 </div>
                                             </div>
