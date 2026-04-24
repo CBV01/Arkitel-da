@@ -15,6 +15,7 @@ import collections
 import asyncio
 import random
 import json
+import sqlite3
 import base64
 from typing import Optional, List, Dict, Any, Union, cast
 import re
@@ -1507,25 +1508,25 @@ async def _scrape_telegram_search(base_query: str, rows: list, queue: Optional[a
                         if queue:
                             await queue.put({"type": "result", "layer": 1, "data": item})  # type: ignore
                     
-            # Optimization: Only run Global Message Search on the base query and top 3 variations
-            # Running on 100+ variations causes instant Rate Limits / slow response
-            should_run_global = (q == base_query or q in search_queries[1:4])
-            
-            if should_run_global: 
-                from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
-                from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
-                try:
-                    # Bump limit to 100 for maximum discovery volume
-                    msg_results = await client(SearchGlobalRequest(
-                        q=q,
-                        filter=InputMessagesFilterEmpty(),
-                        min_date=None,
-                        max_date=None,
-                        offset_rate=0,
-                        offset_peer=InputPeerEmpty(),
-                        offset_id=0,
-                        limit=100 
-                    ))
+                    # Optimization: Only run Global Message Search on the base query and top 3 variations
+                    # Running on 100+ variations causes instant Rate Limits / slow response
+                    should_run_global = (q == base_query or q in search_queries[1:4])
+                    
+                    if should_run_global: 
+                        from telethon.tl.functions.messages import SearchGlobalRequest # type: ignore
+                        from telethon.tl.types import InputMessagesFilterEmpty # type: ignore
+                        try:
+                            # Bump limit to 100 for maximum discovery volume
+                            msg_results = await client(SearchGlobalRequest(
+                                q=q,
+                                filter=InputMessagesFilterEmpty(),
+                                min_date=None,
+                                max_date=None,
+                                offset_rate=0,
+                                offset_peer=InputPeerEmpty(),
+                                offset_id=0,
+                                limit=100 
+                            ))
                             # ZERO-COST REFINEMENT: Cross-reference chats ALREADY in the response.
                             # No extra API calls = 50x speed and no Bans.
                             res_chats = getattr(msg_results, 'chats', [])
